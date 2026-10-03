@@ -51,8 +51,8 @@ scripts/leakcheck.py --demo              # self-test: proves every rule still fi
 scripts/install-hooks.sh                 # sets core.hooksPath to .githooks
 ```
 
-CI runs `--demo` before the real scan, so a scanner that stopped detecting anything fails the build
-rather than passing silently. If the scanner flags a line that legitimately needs the shape, add
+`scripts/ci-local.sh` runs `--demo` before the real scan, so a scanner that stopped detecting
+anything fails the check rather than passing silently. If the scanner flags a line that legitimately needs the shape, add
 `leakcheck: allow=<rule>` on that line — scoped to that one rule, never blanket. Do not weaken a
 rule to make a commit pass, and do not bypass the hooks.
 
@@ -451,8 +451,9 @@ of Python from this matrix, print the resolved dependency on each leg. For the s
 run on one interpreter proves nothing here: the four legs resolve two different libraries.
 
 **The nightly and `filterwarnings` are the early-warning system, and they earned their keep.** The
-nightly `schedule` in `ci.yml` re-runs the matrix against freshly resolved dependencies on an
-unchanged commit, and `filterwarnings = ["error::DeprecationWarning:hass_axi.*"]` in `pyproject.toml`
+nightly `schedule` in `ci.yml` re-ran the matrix against freshly resolved dependencies on an
+unchanged commit — while GitHub Actions was enabled; it is disabled now, so nothing re-runs it on a
+schedule and `scripts/ci-local.sh --matrix` is the by-hand equivalent — and `filterwarnings = ["error::DeprecationWarning:hass_axi.*"]` in `pyproject.toml`
 promotes a deprecation raised *through this package* into a failure. Together they converted a
 future hard break into a red build on the day upstream published, on a commit that had not changed —
 which is the signature to look for: **green then red on the same SHA is an external release, not a
@@ -1094,7 +1095,7 @@ Three testing gotchas already paid for:
   merely closes the socket leaks a thread per test.
 
 `skills/hass-axi/SKILL.md` is generated from the CLI's command table. Change the commands, then run
-`hass-axi setup skill` and commit the result; CI fails if the two disagree.
+`hass-axi setup skill` and commit the result; `scripts/ci-local.sh` fails if the two disagree.
 
 Supported Pythons are 3.9 through 3.12. `from __future__ import annotations` is what makes the
 `X | None` annotation syntax safe on 3.9 — keep it at the top of every module.
@@ -1105,7 +1106,9 @@ Three workflows, split by where the work is cheap:
 
 - **`.github/workflows/ci.yml`** — the heavy matrix (leak scan, lint, `pytest` on 3.9 through 3.12,
   the generated-skill check) on the maintainer's self-hosted runner. Triggers: push to `main`, a
-  nightly `schedule`, and `workflow_dispatch`. Never pull requests.
+  nightly `schedule`, and `workflow_dispatch`. Never pull requests. Each job runs one section of
+  `scripts/ci-local.sh`. GitHub Actions is disabled on this repository, so today those checks run
+  only through that script, which the no-mistakes gate runs on every change (`.no-mistakes.yaml`).
 - **`.github/workflows/hygiene.yml`** — the leak scan alone, on `ubuntu-latest`, on `pull_request`
   (including `edited`). Scans the tracked tree *and* the pull request's own title and body. Exactly
   one GitHub-hosted check per PR, and it takes seconds.
@@ -1261,10 +1264,12 @@ A change that makes one of those fail is a regression in the guard, not a discov
   last release tag. It deliberately does **not** `needs:` the release-please job — it has to fail on
   its own account, including on a run where release-please itself errored. It exists because a hook
   cannot see a message typed into GitHub's squash-merge box.
-- `.github/workflows/ci.yml` runs the same audit nightly, so an allowance that has outlived its
-  cause surfaces without waiting for a merge, and installs `node` in the `test` job so the
-  agreement between the engines is enforced rather than skipped. Nightly matters more than it looks
-  now that the audit reads pull request bodies: a body edited a week after the merge changes what
+- `scripts/ci-local.sh --only commits` runs the same audit on every gate run, and `ci.yml` calls it
+  nightly, so an allowance that has outlived its cause surfaces without waiting for a merge; `ci.yml`
+  also installs `node` in the `test` job so the agreement between the engines is enforced rather
+  than skipped, which a local run does only where `node` is on `PATH`. With Actions disabled the
+  nightly runs nowhere, and that matters more than it looks now that the audit reads pull request
+  bodies: a body edited a week after the merge changes what
   the next release contains, with nothing else having run in between.
 - `.github/workflows/hygiene.yml` gained a step, which is the one exception to "keep this workflow
   to the one cheap job". It is not coverage for its own sake: it checks the pull request body, which

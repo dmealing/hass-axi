@@ -1,0 +1,24 @@
+# no-mistakes gate configuration — hass-axi
+#
+# GitHub Actions is disabled on this repository, so `.github/workflows/ci.yml`
+# runs nowhere. `scripts/ci-local.sh` runs the same checks locally, and pinning
+# the gate to it is what keeps them running on every change. Without commands
+# declared here, the gate's test step is an agent choosing what to run.
+#
+# The two commands together are a bare `scripts/ci-local.sh`, cut along its
+# `--only` sections so neither step repeats the other: ruff is the lint step,
+# and everything else — the leak scan, the commit-message audit, pytest and the
+# generated-skill check — is the test step. `scripts/ci-local.sh --help` says
+# what each section runs. The gate runs pytest once, on the interpreter that
+# builds .venv; the 3.9-3.12 matrix is `scripts/ci-local.sh --matrix`, run by
+# hand (see the script's header for why).
+#
+# The gate checks out a fresh worktree with no .venv; the script builds one
+# with scripts/dev-setup.sh the first time a section needs it.
+#
+# This file must sit at the repository root, and the gate reads it from the
+# default branch, so an edit here takes effect only once it is merged to main.
+
+commands:
+  test: "scripts/ci-local.sh --only leakcheck --only commits --only test --only skill"
+  lint: "scripts/ci-local.sh --only lint"

@@ -23,6 +23,11 @@
 # whole matrix twice against identical commits. One copy went green while its
 # twin sat queued for over an hour, leaving the PR permanently "unstable".
 #
+# Every check is a section of `scripts/ci-local.sh`, which the no-mistakes gate
+# also runs; each job here only schedules one section on the runner. GitHub
+# Actions is currently disabled on this repository, so today the script and the
+# gate are the only things that run these checks.
+#
 # The filename stays `ci.yml` on purpose. `workflow_dispatch` resolves a workflow
 # only if the file is already on the default branch, so a renamed file could not
 # have been dispatched on its own branch — and this workflow was verified end to
@@ -59,11 +64,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # Prove the scanner still detects what it claims to before trusting it.
-      - name: Self-test against a synthetic dirty fixture
-        run: python3 scripts/leakcheck.py --demo
-      - name: Scan every tracked file
-        run: python3 scripts/leakcheck.py
+      # --demo first: prove the scanner still detects what it claims to before
+      # trusting its scan of every tracked file.
+      - run: scripts/ci-local.sh --only leakcheck
   # A commit message release-please cannot parse is dropped from the changelog
   # and the version bump while the release workflow exits 0. `release.yml` fails
   # on that too, but it only runs on `main`; here it also runs nightly, so an
@@ -88,12 +91,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Self-test the checker
-        run: python3 scripts/commitcheck.py --demo
-      - name: Audit every commit since the last release
+      - name: Self-test the checker, then audit every commit since the last release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 scripts/commitcheck.py --since-release --pull-requests require
+        run: scripts/ci-local.sh --only commits
 
   # EVERY job that needs third-party packages installs into a fresh `.venv` and
   # calls the tools by path out of it. That is not ceremony. This runner runs as
@@ -122,8 +123,7 @@ jobs:
       - run: python -m venv --clear .venv
       - run: .venv/bin/python -m pip install --upgrade pip
       - run: .venv/bin/pip install -e ".[dev]"
-      - run: .venv/bin/ruff check .
-      - run: .venv/bin/ruff format --check .
+      - run: scripts/ci-local.sh --only lint
 
   test:
     name: test (py${{ matrix.python-version }})
@@ -153,7 +153,7 @@ jobs:
       - run: python -m venv --clear .venv
       - run: .venv/bin/python -m pip install --upgrade pip
       - run: .venv/bin/pip install -e ".[dev]"
-      - run: .venv/bin/pytest
+      - run: scripts/ci-local.sh --only test
 
   skill:
     name: skill is current
@@ -170,8 +170,9 @@ jobs:
       - run: .venv/bin/python -m pip install --upgrade pip
       - run: .venv/bin/pip install -e ".[dev]"
       # The committed skill is generated from the CLI's own command table — from
-      # THIS checkout's, which is why it is the venv's `hass-axi` and not `PATH`'s.
-      - run: .venv/bin/hass-axi setup skill --check
+      # THIS checkout's, which is why the script calls the venv's `hass-axi` and
+      # not `PATH`'s.
+      - run: scripts/ci-local.sh --only skill
 
   # Nothing watches a workflow that runs on main and overnight, so a failure has
   # to come and find someone.

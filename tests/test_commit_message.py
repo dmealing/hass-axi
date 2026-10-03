@@ -815,8 +815,13 @@ def test_the_release_audit_requires_the_pull_request_bodies():
     `auto` would degrade to git's copy of the messages the moment a token went
     missing, and report success -- which is the exact failure this change fixes.
     """
+    # ci.yml delegates the audit to scripts/ci-local.sh, so the flag lives there.
+    local = (REPO_ROOT / "scripts" / "ci-local.sh").read_text(encoding="utf-8")
     for name in ("release.yml", "ci.yml"):
         workflow = (REPO_ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        if name == "ci.yml":
+            assert "scripts/ci-local.sh --only commits" in workflow, name
+            workflow += local
         assert "--since-release --pull-requests require" in workflow, name
         assert "GITHUB_TOKEN" in workflow, name
 

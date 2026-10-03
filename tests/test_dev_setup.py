@@ -42,7 +42,9 @@ VENV_PIP = ".venv/bin/pip"
 # `.github/` is CI, which has created its own virtualenv since before this
 # guard existed, and `scripts/dev-setup.sh` is the safe entry point itself —
 # the one file allowed to describe in full the hazard it replaces.
-ALLOWED = (r"\.github/", r"scripts/dev-setup\.sh")
+# `scripts/ci-local.sh --matrix` installs only into throwaway `uv` venvs it
+# has just created and deletes on exit.
+ALLOWED = (r"\.github/", r"scripts/dev-setup\.sh", r"scripts/ci-local\.sh")
 
 
 def tracked_text_files():
@@ -92,6 +94,9 @@ def test_the_setup_script_and_ci_build_the_same_environment():
     """
     script = SETUP_SCRIPT.read_text(encoding="utf-8")
     ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    # ci.yml builds the venv and then runs each check through scripts/ci-local.sh.
+    assert "scripts/ci-local.sh --only test" in ci
+    ci += (REPO_ROOT / "scripts" / "ci-local.sh").read_text(encoding="utf-8")
     for shared in ("-m venv", ".venv/bin/pip install", ".venv/bin/pytest"):
         assert shared in script, f"scripts/dev-setup.sh does not use {shared!r}"
         assert shared in ci, f"ci.yml does not use {shared!r}"
