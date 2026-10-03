@@ -446,7 +446,9 @@ need them and because an agent that has the tool should not have to leave it —
 what `hass-axi` is for.
 
 - **`state list` / `state get`** — the runtime view over REST: what an entity is doing right now and
-  its attributes, with `--domain`, `--state`, `--search`, `--fields` and `--limit`.
+  its attributes, with `--domain`, `--state`, `--search`, `--fields` and `--limit`, plus `--stale
+  <age>` — entities of any domain not reported for at least that long, the generic form of the home
+  view's stale-sensor count.
 - **`service list` / `service get`** — discover what an installation can be asked to do.
 - **`template render`** — render a Jinja template server-side, from `--template`, `--template-file`
   or stdin. It sees every entity Home Assistant knows about.
