@@ -282,7 +282,7 @@ def test_each_kind_is_asked_for_the_types_it_keeps(run_cli, ws_env, ws_server):
     )
     sent = [c for c in ws_server.received if c["type"] == "recorder/statistics_during_period"]
     by_ids = {tuple(c["statistic_ids"]): c for c in sent}
-    assert set(by_ids[("sensor.example_legacy_meter",)]["types"]) == {"change", "state", "sum"}
+    assert set(by_ids[("sensor.example_legacy_meter",)]["types"]) == {"change", "state"}
     assert set(by_ids[("sensor.example_temperature",)]["types"]) == {"mean", "min", "max"}
     assert all(c["end_time"] == "2026-01-02T00:00:00+00:00" for c in sent)
 
@@ -433,6 +433,18 @@ def test_a_circular_statistic_is_averaged_as_an_angle(run_cli, ws_env, ws_server
     # The arithmetic mean of 350 and 10 is 180 -- due south for a northerly wind.
     assert row["mean"] in (0.0, 360.0)
     assert row["kind"] == "circular mean"
+    # And their min and max would claim a 340-degree spread, so neither is given.
+    assert "min" not in row and "max" not in row
+
+
+def test_history_asks_once_for_two_spellings_of_one_entity(run_cli, rest_env, rest_server):
+    """Home Assistant lowercases the filter, so both spellings are one timeline."""
+    code, doc = as_json(
+        run_cli, ["history", "get", "light.Example_Lamp", "light.example_lamp"], rest_env
+    )
+    assert code == 0
+    assert [e["entity_id"] for e in doc["history"]] == ["light.Example_Lamp"]
+    assert "filter_entity_id=light.Example_Lamp&" in rest_server.requests[-1]["query"]
 
 
 # -------------------------------------------------------------------- sensor

@@ -67,16 +67,15 @@ class Config:
     #: in use, which :func:`select_reachable` moves along this list.
     candidates: tuple = ()
 
-    @property
-    def fell_back(self) -> bool:
-        """Whether a candidate other than the first is the one in use."""
-        return bool(self.candidates) and self.base_url != self.candidates[0]
-
-    def candidate_note(self) -> str:
-        """``candidate 2 of 3`` when a fallback happened, else ``""``."""
-        if not self.fell_back:
+    def fallback_note(self) -> str:
+        """What to print when a candidate other than the first is in use, else ``""``."""
+        if not self.candidates or self.base_url == self.candidates[0]:
             return ""
-        return f"candidate {self.candidates.index(self.base_url) + 1} of {len(self.candidates)}"
+        position = self.candidates.index(self.base_url) + 1
+        return (
+            f"candidate {position} of {len(self.candidates)}; "
+            "the URLs before it in HA_URL did not answer"
+        )
 
     @property
     def rest_root(self) -> str:

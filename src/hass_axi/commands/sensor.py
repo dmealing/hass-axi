@@ -115,6 +115,7 @@ def run(ctx, sub: str, parsed):
             set_aside += 1
             continue
         rows.append(_row(state, entry, device_names, device_areas, area_names, current))
+    visible = rows
     total = len(rows)
 
     scope: list = []
@@ -146,13 +147,6 @@ def run(ctx, sub: str, parsed):
         doc["sensors"] = f"0 sensors found {where}"
         # What is here, so an agent whose filter matched nothing can see the
         # values that would have matched rather than guessing again.
-        visible = [
-            _row(
-                s, registry.get(s.get("entity_id")), device_names, device_areas, area_names, current
-            )
-            for s in states
-            if parsed.get("all") or not _set_aside(registry.get(s.get("entity_id")) or {})
-        ]
         doc["device_classes"] = sorted({r["device_class"] for r in visible if r["device_class"]})
         doc["units"] = sorted({r["unit"] for r in visible if r["unit"]})
         doc["help"] = HelpBlock(

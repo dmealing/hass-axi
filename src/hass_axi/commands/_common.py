@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from ..errors import AxiError, NotFound, UsageError
+from . import _window
 
 #: Preview length for long free-text values before `--full` is needed.
 PREVIEW_CHARS = 1200
@@ -28,6 +29,26 @@ def last_reported(state: dict) -> str:
     latter the fallback for an instance that predates it.
     """
     return state.get("last_reported") or state.get("last_updated") or ""
+
+
+def not_reported_for(items: list, threshold, current) -> list:
+    """``(moment, item)`` for each item silent for at least ``threshold``, oldest first.
+
+    ``items`` are states or `state list` rows -- both carry `state` and the
+    report times :func:`last_reported` reads. `unavailable` and `unknown` are
+    left out: they are listed on their own, and a second listing would count
+    one fact twice. The home view's stale count and `state list --stale` both
+    come through here, which is what keeps the two numbers equal.
+    """
+    found = []
+    for item in items:
+        if item.get("state") in ("unavailable", "unknown"):
+            continue
+        moment = _window.parse_timestamp(last_reported(item))
+        if moment is not None and current - moment >= threshold:
+            found.append((moment, item))
+    found.sort(key=lambda pair: pair[0])
+    return found
 
 
 def registry_name(entry: dict, device_names: dict) -> str:

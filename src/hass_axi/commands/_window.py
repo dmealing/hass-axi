@@ -82,6 +82,11 @@ def window(parsed, *, default_start: str = DEFAULT_START) -> tuple:
     return start, end
 
 
+def describe(start: datetime, end: datetime, suffix: str = "") -> str:
+    """The `window:` line every recorder read prints: both bounds and the span."""
+    return f"{iso(start)} to {iso(end)} ({span((end - start).total_seconds())}{suffix})"
+
+
 def iso(moment: datetime) -> str:
     """The wire form Home Assistant parses: ISO 8601, UTC, whole seconds."""
     return moment.astimezone(timezone.utc).replace(microsecond=0).isoformat()

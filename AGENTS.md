@@ -868,7 +868,7 @@ the same views, and `tests/test_double_fidelity.py` pins the shapes that matter.
   `has_sum` means a meter; `mean_type` 1 an arithmetic mean, 2 a circular one (`has_mean` is the
   pre-`mean_type` spelling and is still read). Asking `recorder/statistics_during_period` for a type
   a statistic does not keep is not an error — the value comes back `None` — so `statistics get`
-  groups ids by kind and requests `change,state,sum` or `mean,min,max` per group. A statistic with no
+  groups ids by kind and requests `change,state` or `mean,min,max` per group. A statistic with no
   rows in the window is absent from the answer, not an empty list.
 - **The total is the sum of `change`.** Not `sum[-1] - sum[0]`, which loses the first bucket, and not
   the live state. Values arrive in the display unit, which the recorder converts to.
@@ -887,7 +887,11 @@ the same views, and `tests/test_double_fidelity.py` pins the shapes that matter.
   its device is alive whether or not the value moved; an automation, a zone or a closed door reports
   only on change, and counting those would bury a dead sensor under every quiet entity.
   `state list --stale` is the generic form, any domain, and agrees with the home view's count for
-  `--domain sensor` because both skip `unavailable` and `unknown`.
+  `--domain sensor` because both go through `_common.not_reported_for`.
+- **A circular statistic (a bearing) reports a circular mean and no min or max**: across the 0/360
+  wrap both lie. Daily and weekly buckets start at the installation's local midnight while the
+  missing-bucket count aligns in UTC; that is safe only because every count rounds down whole
+  periods, so keep it rounding down.
 
 ## What the README leads with, and why it is not a feature list
 

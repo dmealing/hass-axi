@@ -40,9 +40,8 @@ def run(ctx, sub: str, parsed):
     latency_ms = round((time.perf_counter() - started) * 1000)
 
     doc: dict = {"ok": True, "url": config.base_url}
-    note = config.candidate_note()
-    if note:
-        doc["fallback"] = f"{note}; the URLs before it in HA_URL did not answer"
+    if config.fallback_note():
+        doc["fallback"] = config.fallback_note()
     doc["latency_ms"] = latency_ms
     try:
         info = rest.config_info()

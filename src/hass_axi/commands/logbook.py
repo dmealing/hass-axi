@@ -67,7 +67,7 @@ def run(ctx, sub: str, parsed):
     limit = parse_limit(parsed.get("limit"), default=DEFAULT_LIMIT)
     fields = select_fields(parsed.get("fields"), LIST_FIELDS, DEFAULT_LIST_FIELDS)
     shown = rows[-limit:]
-    window = f"{_window.iso(start)} to {_window.iso(end)} ({_window.span((end - start).total_seconds())})"
+    window = _window.describe(start, end)
 
     if not shown:
         scope = f" for {', '.join(ids)}" if ids else ""

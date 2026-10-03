@@ -55,7 +55,12 @@ COMMAND = Command(
 
 
 def run(ctx, sub: str, parsed):
-    requested = _unique(parsed.positionals)
+    # Home Assistant lowercases the filter, so two spellings of one id are one
+    # timeline; the first spelling asked for is the one reported back.
+    first_spelling: dict = {}
+    for entity_id in parsed.positionals:
+        first_spelling.setdefault(entity_id.lower(), entity_id)
+    requested = list(first_spelling.values())
     start, end = _window.window(parsed)
     limit = parse_limit(parsed.get("limit"), default=DEFAULT_LIMIT)
     timelines = ctx.rest().history(requested, _window.iso(start), _window.iso(end))
@@ -88,7 +93,7 @@ def run(ctx, sub: str, parsed):
         entities.append(summary)
 
     doc = {
-        "window": f"{_window.iso(start)} to {_window.iso(end)} ({_window.span((end - start).total_seconds())})",
+        "window": _window.describe(start, end),
         "history": entities,
     }
     help_lines = []
@@ -162,11 +167,3 @@ def _durations(points: list, end) -> dict:
         held[state] = held.get(state, 0.0) + max(0.0, (until - moment).total_seconds())
     ranked = sorted(held.items(), key=lambda item: -item[1])
     return {state: _window.span(seconds) for state, seconds in ranked}
-
-
-def _unique(ids: list) -> list:
-    seen: list = []
-    for entity_id in ids:
-        if entity_id not in seen:
-            seen.append(entity_id)
-    return seen

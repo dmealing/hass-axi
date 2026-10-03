@@ -47,9 +47,10 @@ _PERIOD_WORD = {
     "month": "monthly",
 }
 
-#: The `types` to ask for, by kind. `state` rides along with a sum so a reset
-#: can be seen; `change` is what the total is built from.
-SUM_TYPES = ["change", "state", "sum"]
+#: The `types` to ask for, by kind. `change` is what the total is built from,
+#: and `state` rides along so a reset can be seen; the running `sum` is not
+#: read, so it is not asked for.
+SUM_TYPES = ["change", "state"]
 MEAN_TYPES = ["mean", "min", "max"]
 
 COMMAND = Command(
@@ -268,9 +269,8 @@ def _get(ctx, parsed):
         )
         for sid in requested
     ]
-    span = _window.span((end - start).total_seconds())
     doc = {
-        "window": f"{_window.iso(start)} to {_window.iso(end)} ({span}, {_PERIOD_WORD[period]} buckets)",
+        "window": _window.describe(start, end, f", {_PERIOD_WORD[period]} buckets"),
         "statistics": rows,
     }
     help_lines = []
@@ -316,12 +316,18 @@ def summarize(meta: dict, rows: list, start, period: str, with_buckets: bool = F
         lows = [m for m in (_number(r.get("min")) for r in rows) if m is not None]
         highs = [m for m in (_number(r.get("max")) for r in rows) if m is not None]
         if kind == "circular mean":
+            # A bearing wraps at 360, so neither the arithmetic mean nor the
+            # smallest and largest value say anything: 350 and 10 average 180
+            # and span 340 degrees, for a wind that never left north.
             summary["mean"] = _round(_circular_mean(means)) if means else None
-            caveats.append("a circular quantity such as a bearing: the mean is a circular mean")
+            caveats.append(
+                "a circular quantity such as a bearing: the mean is a circular mean, and min "
+                "and max are not reported because they wrap"
+            )
         else:
             summary["mean"] = _round(sum(means) / len(means)) if means else None
-        summary["min"] = _round(min(lows)) if lows else None
-        summary["max"] = _round(max(highs)) if highs else None
+            summary["min"] = _round(min(lows)) if lows else None
+            summary["max"] = _round(max(highs)) if highs else None
         if not means:
             caveats.append("the buckets carry no mean value")
 
@@ -366,13 +372,14 @@ def _sum_caveats(rows: list, unit: str) -> list:
         if state is None:
             continue
         change = _number(row.get("change"))
-        if previous is not None and state < previous and (change is None or change >= 0):
-            resets.append(_window.parse_timestamp(row.get("start")))
+        moment = _window.parse_timestamp(row.get("start"))
+        dropped = previous is not None and state < previous
+        if dropped and (change is None or change >= 0) and moment is not None:
+            resets.append(moment)
         previous = state
     if resets:
-        times = [moment for moment in resets if moment is not None]
-        days = (times[-1] - times[0]).total_seconds() / 86400 if len(times) > 1 else 0
-        if len(times) >= 2 and abs(days / (len(times) - 1) - 1) <= 0.1:
+        days = (resets[-1] - resets[0]).total_seconds() / 86400
+        if len(resets) >= 2 and abs(days / (len(resets) - 1) - 1) <= 0.1:
             caveats.append(
                 f"the meter reset {len(resets)} times, about once a day, so its live state is a "
                 "since-reset reading rather than a running total; the total here counts across "
@@ -393,6 +400,12 @@ def _missing_buckets(rows: list, start, period: str) -> str:
     only after its period ends, so the most recent one is routinely not there
     yet and calling it missing would put a caveat on every healthy statistic.
     Monthly buckets vary in length and are not checked.
+
+    The slots are aligned in UTC while daily and weekly buckets start at the
+    installation's local midnight and Monday. That cannot invent a missing
+    bucket: the offset is less than one period, and every count here is a whole
+    number of periods rounded down, so only a gap of a full period or more is
+    ever counted -- a 23- or 25-hour day across a clock change included.
     """
     step = _PERIOD_SECONDS.get(period)
     if not step or not rows:

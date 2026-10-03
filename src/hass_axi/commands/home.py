@@ -12,7 +12,7 @@ from ..errors import AxiError, fault_class
 from ..output import HelpBlock
 from ..readonly import READ, active_var
 from . import _window
-from ._common import domain_of, friendly_name, last_reported, plural
+from ._common import domain_of, friendly_name, not_reported_for, plural
 
 DESCRIPTION = (
     "Agent CLI for Home Assistant. Reads and writes the registries REST cannot reach and "
@@ -129,30 +129,15 @@ def low_batteries(states: list) -> list:
 
 
 def stale_entities(states: list, current, after: str = STALE_AFTER) -> list:
-    """Sensors whose integration has reported nothing for ``after``, oldest first.
-
-    Entities that are `unavailable` or `unknown` are left out: they are listed
-    on their own, and a second listing would count one fact twice.
-    """
-    threshold = _window.parse_age(after)
-    rows = []
-    for state in states:
-        if domain_of(state.get("entity_id", "")) not in STALE_DOMAINS:
-            continue
-        if state.get("state") in ("unavailable", "unknown"):
-            continue
-        moment = _window.parse_timestamp(last_reported(state))
-        if moment is None or current - moment < threshold:
-            continue
-        rows.append((moment, state))
-    rows.sort(key=lambda item: item[0])
+    """Sensors whose integration has reported nothing for ``after``, oldest first."""
+    sensors = [s for s in states if domain_of(s.get("entity_id", "")) in STALE_DOMAINS]
     return [
         {
             "entity_id": state.get("entity_id", ""),
             "name": friendly_name(state),
             "age": _window.age((current - moment).total_seconds()),
         }
-        for moment, state in rows
+        for moment, state in not_reported_for(sensors, _window.parse_age(after), current)
     ]
 
 
@@ -174,8 +159,8 @@ def run(ctx, sub: str, parsed):
 
     config = ctx.config()
     doc["url"] = config.base_url
-    if config.candidate_note():
-        doc["fallback"] = f"{config.candidate_note()}; the URLs before it in HA_URL did not answer"
+    if config.fallback_note():
+        doc["fallback"] = config.fallback_note()
     # Announced only when it is on, matching the `context` document the session
     # hook prints: an unset switch is not worth the tokens, but an agent that
     # cannot see a set one plans writes it will never be allowed to make, and

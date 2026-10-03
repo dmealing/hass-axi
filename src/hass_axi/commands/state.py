@@ -22,6 +22,7 @@ from ._common import (
     friendly_name,
     last_reported,
     matches_search,
+    not_reported_for,
     parse_limit,
     project,
     select_fields,
@@ -89,7 +90,7 @@ def run(ctx, sub: str, parsed):
     return _get(ctx, parsed)
 
 
-def _row(state: dict) -> dict:
+def _row(state: dict, current) -> dict:
     """The one place a state row is built -- `list` and `get` both come here.
 
     The missing-`entity_id` default is `""` rather than the id `get` was asked
@@ -107,13 +108,14 @@ def _row(state: dict) -> dict:
         "last_changed": state.get("last_changed", ""),
         "last_updated": state.get("last_updated", ""),
         "last_reported": last_reported(state),
-        "age": _window.age_of(last_reported(state), _window.now()),
+        "age": _window.age_of(last_reported(state), current),
     }
 
 
 def _list(ctx, parsed):
     states = ctx.rest().states()
-    rows = [_row(state) for state in states]
+    current = _window.now()
+    rows = [_row(state, current) for state in states]
     total = len(rows)
 
     scope: list = []
@@ -133,7 +135,7 @@ def _list(ctx, parsed):
         scope.append(f"matching {search!r}")
     stale = parsed.get("stale")
     if stale:
-        rows = _narrow_to_stale(rows, stale)
+        rows = _narrow_to_stale(rows, stale, current)
         scope.append(f"not reported in {stale}")
 
     matched = len(rows)
@@ -169,12 +171,8 @@ def _list(ctx, parsed):
     }
 
 
-def _narrow_to_stale(rows: list, raw: str) -> list:
-    """Keep the rows whose integration has reported nothing for ``raw``, oldest first.
-
-    `unavailable` and `unknown` rows are kept out, as the home view keeps them
-    out of its own stale count, so the two always agree on the number.
-    """
+def _narrow_to_stale(rows: list, raw: str, current) -> list:
+    """Keep the rows whose integration has reported nothing for ``raw``, oldest first."""
     threshold = _window.parse_age(raw)
     if threshold is None:
         raise UsageError(
@@ -182,16 +180,7 @@ def _narrow_to_stale(rows: list, raw: str) -> list:
             help_lines=["Run `hass-axi state list --stale 24h` (ages: s, m, h, d, w)"],
             code="BAD_TIME",
         )
-    current = _window.now()
-    kept = []
-    for row in rows:
-        if row["state"] in ("unavailable", "unknown"):
-            continue
-        moment = _window.parse_timestamp(row["last_reported"])
-        if moment is not None and current - moment >= threshold:
-            kept.append((moment, row))
-    kept.sort(key=lambda item: item[0])
-    return [row for _, row in kept]
+    return [row for _, row in not_reported_for(rows, threshold, current)]
 
 
 def _narrow_to_area(ctx, rows: list, area_filter, scope: list) -> list:
@@ -234,7 +223,7 @@ def _get(ctx, parsed):
                 )
 
     doc = {
-        "state": _row(state),
+        "state": _row(state, _window.now()),
         "attributes": attributes if attributes else {},
     }
     if not attributes:
