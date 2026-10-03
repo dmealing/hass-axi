@@ -87,15 +87,13 @@ sec_leakcheck() {
 
 sec_commits() {
   python3 scripts/commitcheck.py --demo
-  local token=${GITHUB_TOKEN:-${GH_TOKEN:-}}
-  if [ -z "$token" ] && command -v gh >/dev/null 2>&1; then
-    token=$(gh auth token 2>/dev/null || true)
-  fi
-  if [ -z "$token" ]; then
+  # Ask commitcheck's own resolver whether a token exists, so the order it
+  # tries them in is written once.
+  if ! python3 -c 'import sys; sys.path.insert(0, "scripts"); import commitcheck; sys.exit(not commitcheck.github_token())'; then
     echo "SKIP: commitcheck --since-release: no GitHub token (GITHUB_TOKEN, GH_TOKEN, gh auth token)"
     return 0
   fi
-  GITHUB_TOKEN=$token python3 scripts/commitcheck.py --since-release --pull-requests require
+  python3 scripts/commitcheck.py --since-release --pull-requests require
 }
 
 sec_lint() {
