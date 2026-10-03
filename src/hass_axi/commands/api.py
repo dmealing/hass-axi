@@ -1,4 +1,4 @@
-"""`ha-axi api` -- an authenticated escape hatch to any REST path."""
+"""`hass-axi api` -- an authenticated escape hatch to any REST path."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")
 COMMAND = Command(
     name="api",
     summary="Make an authenticated request to any Home Assistant REST path",
-    usage="usage: ha-axi api [<method>] <path> [flags]",
+    usage="usage: hass-axi api [<method>] <path> [flags]",
     default_sub="api",
     subs=(
         Sub(
@@ -35,13 +35,13 @@ COMMAND = Command(
     ),
     notes=(
         f"methods: {', '.join(METHODS)}; GET is used when no method is given",
-        "the registries are not reachable over REST -- use `ha-axi ws` for those",
+        "the registries are not reachable over REST -- use `hass-axi ws` for those",
     ),
     examples=(
-        "ha-axi api /config",
-        "ha-axi api /states/light.example_lamp",
-        "ha-axi api POST /services/light/turn_on --field entity_id=light.example_lamp",
-        'ha-axi api POST /template --body \'{"template": "{{ now() }}"}\'',
+        "hass-axi api /config",
+        "hass-axi api /states/light.example_lamp",
+        "hass-axi api POST /services/light/turn_on --field entity_id=light.example_lamp",
+        'hass-axi api POST /template --body \'{"template": "{{ now() }}"}\'',
     ),
 )
 
@@ -98,21 +98,23 @@ def _method_and_path(positionals: list):
     if not values:
         raise UsageError(
             "a path is required",
-            help_lines=["Run `ha-axi api /config`", "Run `ha-axi api GET /states`"],
+            help_lines=["Run `hass-axi api /config`", "Run `hass-axi api GET /states`"],
             code="MISSING_PATH",
         )
     if values[0].upper() in METHODS:
         if len(values) < 2:
             raise UsageError(
                 f"a path is required after {values[0].upper()}",
-                help_lines=["Run `ha-axi api POST /services/light/turn_on --field entity_id=<id>`"],
+                help_lines=[
+                    "Run `hass-axi api POST /services/light/turn_on --field entity_id=<id>`"
+                ],
                 code="MISSING_PATH",
             )
         return values[0].upper(), values[1]
     if len(values) > 1:
         raise UsageError(
             f"unexpected argument {values[1]!r}",
-            help_lines=[f"methods must come first: `ha-axi api GET {values[0]}`"],
+            help_lines=[f"methods must come first: `hass-axi api GET {values[0]}`"],
             code="UNEXPECTED_ARGUMENT",
         )
     return "GET", values[0]

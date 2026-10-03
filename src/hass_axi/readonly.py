@@ -1,6 +1,6 @@
 """The read-only gate: one environment variable, enforced at every dispatch.
 
-``HA_AXI_READ_ONLY`` makes a session incapable of changing anything. It is an
+``HASS_AXI_READ_ONLY`` makes a session incapable of changing anything. It is an
 environment variable and deliberately not a flag: a flag is omitted by exactly
 the caller that most needs it, and an operator who wants a session that cannot
 write wants that of every command the session runs, including the ones it is
@@ -25,9 +25,9 @@ supplies an opaque path and the method is the only fact there is -- and there
 it errs closed: only the methods HTTP itself defines as safe get through.
 
 **It holds on both transports.** REST and WebSocket are separate code routes
-into one server, so both :mod:`ha_axi.rest` and :mod:`ha_axi.ws` refuse a write
+into one server, so both :mod:`hass_axi.rest` and :mod:`hass_axi.ws` refuse a write
 of their own accord, ahead of the request, whether or not the dispatch gate in
-:mod:`ha_axi.cli` ran first. Enforcing it there rather than in each command
+:mod:`hass_axi.cli` ran first. Enforcing it there rather than in each command
 body is what stops a new command bypassing the guard by forgetting to call a
 helper.
 """
@@ -35,9 +35,17 @@ helper.
 from __future__ import annotations
 
 from .errors import EXIT_USAGE, AxiError
+from .output import deprecated_variable
 
 #: The switch. There is no flag, and no other spelling.
-ENV_VAR = "HA_AXI_READ_ONLY"
+ENV_VAR = "HASS_AXI_READ_ONLY"
+
+#: The switch's name before this tool was renamed from ``ha-axi``. Still
+#: honoured, because an upgrade that silently turned the guard off is the one
+#: outcome this variable is not allowed to have; announced on stderr each run
+#: so the operator moves to :data:`ENV_VAR`. It is a second *name*, not a second
+#: rule: set and not blank enables it, exactly as for the new one.
+LEGACY_ENV_VAR = "HA_AXI_READ_ONLY"
 
 #: Cannot change anything on the installation or on this machine.
 READ = "read"
@@ -74,10 +82,26 @@ def enabled(environ) -> bool:
     off while an operator believes it is on -- one unrecognised spelling, one
     case that was not folded -- and the whole point of this variable is that
     being wrong about it is not survivable. Blank is treated as unset, matching
-    how every other variable is read in :mod:`ha_axi.config`.
+    how every other variable is read in :mod:`hass_axi.config`.
     """
-    value = (environ or {}).get(ENV_VAR)
-    return bool(value and value.strip())
+    return bool(active_var(environ))
+
+
+def active_var(environ) -> str:
+    """The variable that made this session read-only, or ``""`` when none did.
+
+    :data:`ENV_VAR` wins when both are set. Naming the one that is actually set
+    is what lets `doctor` and the home view tell an operator which variable to
+    unset -- telling them to unset the new name while the old one holds the
+    switch would leave them with a guard they cannot find.
+    """
+    for name in (ENV_VAR, LEGACY_ENV_VAR):
+        value = (environ or {}).get(name)
+        if value and value.strip():
+            if name == LEGACY_ENV_VAR:
+                deprecated_variable(LEGACY_ENV_VAR, ENV_VAR)
+            return name
+    return ""
 
 
 def verdict(access) -> str:
@@ -101,8 +125,9 @@ def refusal(operation: str) -> ReadOnlyRefused:
         f"`{operation}` is a write, and {ENV_VAR} is set",
         help_lines=[
             "This session is read-only; the command was refused before anything changed",
-            "Reads still work, e.g. `ha-axi state list`, `ha-axi entity list`, `ha-axi area list`",
-            f"Unset {ENV_VAR} to allow writes; it is a switch, so any non-empty value enables it",
+            "Reads still work, e.g. `hass-axi state list`, `hass-axi entity list`, `hass-axi area list`",
+            f"Unset {ENV_VAR} (or {LEGACY_ENV_VAR}, its deprecated spelling) to allow writes; "
+            "it is a switch, so any non-empty value enables it",
         ],
         code="READ_ONLY",
     )

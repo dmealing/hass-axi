@@ -1,7 +1,7 @@
-"""`ha-axi ws` -- an escape hatch to any WebSocket command.
+"""`hass-axi ws` -- an escape hatch to any WebSocket command.
 
 Every registry operation the typed commands perform is declared in
-:data:`ha_axi.ws.REGISTRY`; this command exposes that table directly, so a
+:data:`hass_axi.ws.REGISTRY`; this command exposes that table directly, so a
 capability Home Assistant adds is reachable before a typed wrapper exists.
 """
 
@@ -17,7 +17,7 @@ from ._common import parse_json_flag, parse_pairs, plural
 COMMAND = Command(
     name="ws",
     summary="Send a command over the Home Assistant WebSocket API",
-    usage="usage: ha-axi ws <command> [flags]",
+    usage="usage: hass-axi ws <command> [flags]",
     default_sub="ws",
     subs=(
         Sub(
@@ -46,10 +46,10 @@ COMMAND = Command(
         "--params-json takes a whole JSON object; --param takes repeated key=value pairs",
     ),
     examples=(
-        "ha-axi ws --list",
-        "ha-axi ws entity.list",
-        "ha-axi ws area.update --param area_id=example_room --param name='Example Study'",
-        "ha-axi ws --raw config/floor_registry/list",
+        "hass-axi ws --list",
+        "hass-axi ws entity.list",
+        "hass-axi ws area.update --param area_id=example_room --param name='Example Study'",
+        "hass-axi ws --raw config/floor_registry/list",
     ),
 )
 
@@ -71,8 +71,8 @@ def _resolve(parsed) -> str:
         raise UsageError(
             "--raw needs an API command type",
             help_lines=[
-                "Run `ha-axi ws --raw config/floor_registry/list`",
-                "Run `ha-axi ws --list` to see the declared commands",
+                "Run `hass-axi ws --raw config/floor_registry/list`",
+                "Run `hass-axi ws --list` to see the declared commands",
             ],
             code="MISSING_COMMAND",
         )
@@ -84,14 +84,14 @@ def _resolve(parsed) -> str:
         if "/" in name:
             raise UsageError(
                 f"{name!r} looks like a raw API type, which needs --raw",
-                help_lines=[f"Run `ha-axi ws --raw {name}`"],
+                help_lines=[f"Run `hass-axi ws --raw {name}`"],
                 code="UNKNOWN_COMMAND",
             )
         raise UsageError(
             f"unknown websocket command: {name}",
             help_lines=[
                 f"declared commands: {', '.join(sorted(REGISTRY))}",
-                "Run `ha-axi ws --list` to see each command's parameters",
+                "Run `hass-axi ws --list` to see each command's parameters",
             ],
             code="UNKNOWN_COMMAND",
         )
@@ -101,12 +101,12 @@ def _resolve(parsed) -> str:
 def access(sub: str, parsed) -> str:
     """The read-only verdict for one WebSocket escape-hatch invocation.
 
-    Printing the table changes nothing, so `--list` and a bare `ha-axi ws` are
+    Printing the table changes nothing, so `--list` and a bare `hass-axi ws` are
     reads. Anything else is judged by the *type* it resolves to, which is what
     makes `--raw config/entity_registry/update` refuse exactly as
     `entity.update` does: the type is what reaches the installation, and a
     second spelling of it must not buy a second verdict. A type no declaration
-    names is a write -- see :func:`ha_axi.ws.access_for_type`.
+    names is a write -- see :func:`hass_axi.ws.access_for_type`.
     """
     if _listing_only(parsed):
         return READ
@@ -135,7 +135,7 @@ def run(ctx, sub: str, parsed):
             raise UsageError(
                 f"{name} needs {', '.join(missing)}",
                 help_lines=[
-                    f"Run `ha-axi ws {name} "
+                    f"Run `hass-axi ws {name} "
                     + " ".join(f"--param {k}=<value>" for k in command.required)
                     + "`"
                 ],
@@ -167,8 +167,8 @@ def _list(parsed):
         "commands": rows,
         "help": HelpBlock(
             [
-                "Run `ha-axi ws <command> --param key=value` to send one",
-                "Run `ha-axi ws --raw <api/type>` for a command that is not declared here",
+                "Run `hass-axi ws <command> --param key=value` to send one",
+                "Run `hass-axi ws --raw <api/type>` for a command that is not declared here",
             ]
         ),
     }

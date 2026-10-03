@@ -208,15 +208,15 @@ def resolve_area(areas: list, needle: str) -> dict:
             f"{needle!r} matches more than one area: {ids}",
             help_lines=[
                 "Pass the area_id instead of the name",
-                "Run `ha-axi area list` to see each area's id",
+                "Run `hass-axi area list` to see each area's id",
             ],
             code="AMBIGUOUS_AREA",
         )
     raise NotFound(
         f"no area with id or name {needle!r}",
         help_lines=[
-            "Run `ha-axi area list` to see the areas that exist",
-            f'Run `ha-axi area create --name "{needle}"` to add it',
+            "Run `hass-axi area list` to see the areas that exist",
+            f'Run `hass-axi area create --name "{needle}"` to add it',
         ],
         code="NO_SUCH_AREA",
     )
@@ -236,9 +236,9 @@ def _no_such_device(needle: str, *, by_name: bool) -> NotFound:
     command was well formed and only the live registry could say the subject is
     not there.
     """
-    help_lines = ["Run `ha-axi device list --fields device_id,name` to see each device's id"]
+    help_lines = ["Run `hass-axi device list --fields device_id,name` to see each device's id"]
     if by_name:
-        help_lines.insert(0, f'Run `ha-axi device list --search "{needle}"` to find it')
+        help_lines.insert(0, f'Run `hass-axi device list --search "{needle}"` to find it')
     return NotFound(
         f"no device with {'id or name' if by_name else 'id'} {needle!r}",
         help_lines=help_lines,
@@ -289,7 +289,7 @@ def resolve_device_ref(devices: list, needle: str) -> dict:
             f"{needle!r} matches more than one device: {ids}",
             help_lines=[
                 "Pass the device_id instead of the name",
-                "Run `ha-axi device list --fields device_id,name` to see each device's id",
+                "Run `hass-axi device list --fields device_id,name` to see each device's id",
             ],
             code="AMBIGUOUS_DEVICE",
         )

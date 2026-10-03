@@ -10,8 +10,7 @@ from ..argspec import Command, Sub
 from ..config import missing_env_vars, setup_help
 from ..errors import AxiError, fault_class
 from ..output import HelpBlock
-from ..readonly import ENV_VAR as READ_ONLY_VAR
-from ..readonly import READ
+from ..readonly import READ, active_var
 from ._common import domain_of
 
 DESCRIPTION = (
@@ -23,10 +22,10 @@ DESCRIPTION = (
 COMMAND = Command(
     name="home",
     summary="Show the current installation at a glance",
-    usage="usage: ha-axi",
+    usage="usage: hass-axi",
     default_sub="home",
     subs=(Sub(name="home", summary="Show connection status and a state summary", access=READ),),
-    examples=("ha-axi",),
+    examples=("hass-axi",),
 )
 
 TOP_DOMAINS = 8
@@ -55,7 +54,7 @@ def run(ctx, sub: str, parsed):
         # Coded like every other failure: a caller who asked for live state and
         # cannot have it has met a config fault, and scripts that gate on this
         # view rely on telling configured from not. The session hook prints
-        # `ha-axi context` rather than this view, precisely because this branch
+        # `hass-axi context` rather than this view, precisely because this branch
         # exits 1 -- see `commands/context.py`.
         doc["error"] = f"{' and '.join(missing)} not set in the environment"
         doc["code"] = "NOT_CONFIGURED"
@@ -81,7 +80,7 @@ def run(ctx, sub: str, parsed):
             doc["code"] = exc.code
             doc["class"] = exc.fault_class
         doc["help"] = HelpBlock(
-            [*exc.help_lines, "Run `ha-axi doctor` to see which transport is failing"]
+            [*exc.help_lines, "Run `hass-axi doctor` to see which transport is failing"]
         )
         doc["__exit_code__"] = 1
         return doc
@@ -111,22 +110,24 @@ def run(ctx, sub: str, parsed):
             {"domain": name, "entities": total} for name, total in ranked[:TOP_DOMAINS]
         ]
 
-    help_lines = ["Run `ha-axi state list --domain <domain>` to list entity states"]
+    help_lines = ["Run `hass-axi state list --domain <domain>` to list entity states"]
     if len(ranked) > TOP_DOMAINS:
         help_lines.append(
-            f"Run `ha-axi state list` for all {len(states)} entities across {len(counts)} domains"
+            f"Run `hass-axi state list` for all {len(states)} entities across {len(counts)} domains"
         )
     help_lines.extend(
         [
-            "Run `ha-axi entity list --area <id|name>` to read the registry, which REST cannot reach",
-            "Run `ha-axi area list` to see the areas defined here",
+            "Run `hass-axi entity list --area <id|name>` to read the registry, which REST cannot reach",
+            "Run `hass-axi area list` to see the areas defined here",
         ]
     )
     if config.read_only:
-        help_lines.append(f"This session is read-only; unset {READ_ONLY_VAR} to allow writes")
+        help_lines.append(
+            f"This session is read-only; unset {active_var(ctx.environ)} to allow writes"
+        )
     else:
         help_lines.append(
-            "Run `ha-axi service call <domain>.<service> --target-entity <entity_id>` to act"
+            "Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to act"
         )
     doc["help"] = HelpBlock(help_lines)
     return doc

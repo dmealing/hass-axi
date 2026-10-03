@@ -111,7 +111,7 @@ def render_root_help() -> str:
     specs = command_specs()
     names = ", ".join(COMMAND_ORDER)
     lines = [
-        "usage: ha-axi [command] [subcommand] [args] [flags]",
+        "usage: hass-axi [command] [subcommand] [args] [flags]",
         f"description: {home_command.DESCRIPTION}",
         f"commands[{len(COMMAND_ORDER) + 1}]:",
         f"  (none)=home, {names}",
@@ -129,12 +129,12 @@ def render_root_help() -> str:
     lines.extend(
         [
             "examples:",
-            "  ha-axi",
-            "  ha-axi state list --domain light",
-            "  ha-axi entity list --area 'Example Room'",
-            "  ha-axi entity update light.example_lamp --name 'Reading Lamp' --area example_room",
-            "  ha-axi service call light.turn_on --target-entity light.example_lamp",
-            "  ha-axi doctor",
+            "  hass-axi",
+            "  hass-axi state list --domain light",
+            "  hass-axi entity list --area 'Example Room'",
+            "  hass-axi entity update light.example_lamp --name 'Reading Lamp' --area example_room",
+            "  hass-axi service call light.turn_on --target-entity light.example_lamp",
+            "  hass-axi doctor",
         ]
     )
     return "\n".join(lines)
@@ -224,7 +224,7 @@ def _resolve_timeout(raw) -> float | None:
     if raw is _MISSING_VALUE:
         raise UsageError(
             "--timeout needs a value",
-            help_lines=["Run `ha-axi --timeout 60 <command>`"],
+            help_lines=["Run `hass-axi --timeout 60 <command>`"],
             code="BAD_TIMEOUT",
         )
     try:
@@ -232,13 +232,13 @@ def _resolve_timeout(raw) -> float | None:
     except (TypeError, ValueError):
         raise UsageError(
             f"--timeout needs a number of seconds, got {raw!r}",
-            help_lines=["Run `ha-axi --timeout 60 <command>`"],
+            help_lines=["Run `hass-axi --timeout 60 <command>`"],
             code="BAD_TIMEOUT",
         ) from None
     if value <= 0:
         raise UsageError(
             f"--timeout must be greater than 0, got {value:g}",
-            help_lines=["Run `ha-axi --timeout 60 <command>`"],
+            help_lines=["Run `hass-axi --timeout 60 <command>`"],
             code="BAD_TIMEOUT",
         )
     return value
@@ -261,14 +261,14 @@ def _unknown_command(name: str):
     if suggestion:
         return UsageError(
             f"unknown command: {name}; use `{suggestion}` instead",
-            help_lines=[f"Run `ha-axi {suggestion} --help` for its subcommands"],
+            help_lines=[f"Run `hass-axi {suggestion} --help` for its subcommands"],
             code="UNKNOWN_COMMAND",
         )
     return UsageError(
         f"unknown command: {name}",
         help_lines=[
             f"commands: {', '.join(COMMAND_ORDER)}",
-            "Run `ha-axi --help` for the full reference",
+            "Run `hass-axi --help` for the full reference",
         ],
         code="UNKNOWN_COMMAND",
     )
@@ -282,7 +282,7 @@ def _pick_sub(command: Command, argv: list) -> tuple:
             return sub, argv[1:]
 
     default = command.find(command.default_sub) if command.default_sub else None
-    # A default subcommand is what makes `ha-axi device` mean `ha-axi device
+    # A default subcommand is what makes `hass-axi device` mean `hass-axi device
     # list`. It must not also swallow a *mistyped* subcommand name: on a command
     # that has others, a bare leading token the default sub declares no
     # positional to hold can only be one, and `unexpected argument 'updat' for
@@ -300,7 +300,7 @@ def _pick_sub(command: Command, argv: list) -> tuple:
             f"unknown subcommand `{leading}` for `{command.name}`",
             help_lines=[
                 f"subcommands: {', '.join(s.name for s in command.subs)}",
-                f"Run `ha-axi {command.name} --help` for the full reference",
+                f"Run `hass-axi {command.name} --help` for the full reference",
             ],
             code="UNKNOWN_SUBCOMMAND",
         )
@@ -308,7 +308,7 @@ def _pick_sub(command: Command, argv: list) -> tuple:
         f"`{command.name}` needs a subcommand",
         help_lines=[
             f"subcommands: {', '.join(s.name for s in command.subs)}",
-            f"Run `ha-axi {command.name} --help` for the full reference",
+            f"Run `hass-axi {command.name} --help` for the full reference",
         ],
         code="MISSING_SUBCOMMAND",
     )
@@ -320,8 +320,8 @@ def _access(module, sub, parsed) -> str:
     The first of the three enforcement points, and the specific one: it names
     the command, and it runs before any transport is built, so a refused write
     reaches neither the network nor the credential loader. The transports guard
-    themselves as well -- see :func:`ha_axi.rest.access_for_request` and
-    :func:`ha_axi.ws.access_for_type` -- because this gate can only judge what
+    themselves as well -- see :func:`hass_axi.rest.access_for_request` and
+    :func:`hass_axi.ws.access_for_type` -- because this gate can only judge what
     the declaration says, and the two escape hatches carry their subject in
     their arguments.
 
@@ -341,7 +341,7 @@ def _error_document(exc: AxiError) -> dict:
     """The one shape every failure is printed in.
 
     ``class`` sits beside ``code`` rather than replacing it, and it is derived
-    from the code through :data:`ha_axi.errors.CODES` rather than declared a
+    from the code through :data:`hass_axi.errors.CODES` rather than declared a
     second time at each raise site -- one vocabulary, read two ways, so the two
     cannot drift. The code says which thing went wrong and the class says what
     kind of thing it is, which is what an agent needs before it can decide
@@ -369,7 +369,7 @@ def main(argv: list | None = None, *, environ=None) -> int:
 
     try:
         if _wants_version(globals_):
-            output.write({"ha-axi": __version__}, mode)
+            output.write({"hass-axi": __version__}, mode)
             return EXIT_OK
 
         if not rest:
@@ -401,7 +401,7 @@ def main(argv: list | None = None, *, environ=None) -> int:
             globals_.update(parsed.globals)
             mode = _mode(globals_)
             if _wants_version(globals_):
-                output.write({"ha-axi": __version__}, mode)
+                output.write({"hass-axi": __version__}, mode)
                 return EXIT_OK
 
         if globals_.get("debug"):
@@ -432,9 +432,9 @@ def main(argv: list | None = None, *, environ=None) -> int:
                 "class": errors.fault_class("INTERNAL_ERROR"),
                 "help": HelpBlock(
                     [
-                        "This is a bug in ha-axi; the command did not complete",
+                        "This is a bug in hass-axi; the command did not complete",
                         "Re-run with `--debug` for a diagnostic trace on stderr",
-                        "Report it at https://github.com/dmealing/ha-axi/issues",
+                        "Report it at https://github.com/dmealing/hass-axi/issues",
                     ]
                 ),
             },

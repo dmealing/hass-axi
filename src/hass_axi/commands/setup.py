@@ -1,4 +1,4 @@
-"""`ha-axi setup` -- install the session integrations and the agent skill."""
+"""`hass-axi setup` -- install the session integrations and the agent skill."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from ..readonly import DYNAMIC, READ, WRITE
 
 COMMAND = Command(
     name="setup",
-    summary="Install or repair the agent integrations for ha-axi",
-    usage="usage: ha-axi setup <subcommand> [flags]",
+    summary="Install or repair the agent integrations for hass-axi",
+    usage="usage: hass-axi setup <subcommand> [flags]",
     subs=(
         Sub(
             name="hooks",
             # `setup` writes to this machine rather than to Home Assistant, and
-            # counts as a write anyway. HA_AXI_READ_ONLY says this tool does not
+            # counts as a write anyway. HASS_AXI_READ_ONLY says this tool does not
             # write; splitting that into "not your house" and "not your
             # dotfiles" is a distinction nobody asked for, and the safe half of
             # it is refusing both.
@@ -43,9 +43,9 @@ COMMAND = Command(
         "hook installation is idempotent and repairs the path after a reinstall or a move",
     ),
     examples=(
-        "ha-axi setup hooks",
-        "ha-axi setup skill",
-        "ha-axi setup skill --check",
+        "hass-axi setup hooks",
+        "hass-axi setup skill",
+        "hass-axi setup skill --check",
     ),
 )
 
@@ -73,7 +73,7 @@ def _hooks(parsed):
         doc["__exit_code__"] = 1
     else:
         doc["help"] = HelpBlock(
-            ["Restart your agent session to receive ha-axi ambient context at session start"]
+            ["Restart your agent session to receive hass-axi ambient context at session start"]
         )
     return doc
 
@@ -90,7 +90,7 @@ def _skill(ctx, parsed):
             return {
                 "skill": str(path),
                 "status": "missing",
-                "help": HelpBlock([f"Run `ha-axi setup skill --path {root}` to write it"]),
+                "help": HelpBlock([f"Run `hass-axi setup skill --path {root}` to write it"]),
                 "__exit_code__": 1,
             }
         try:
@@ -98,14 +98,14 @@ def _skill(ctx, parsed):
         except OSError as exc:
             raise UsageError(
                 f"could not read {path}: {exc.strerror or exc}",
-                help_lines=[f"Run `ha-axi setup skill --path {root}` to rewrite it"],
+                help_lines=[f"Run `hass-axi setup skill --path {root}` to rewrite it"],
                 code="UNREADABLE",
             ) from None
         if committed != content:
             return {
                 "skill": str(path),
                 "status": "stale",
-                "help": HelpBlock([f"Run `ha-axi setup skill --path {root}` to regenerate it"]),
+                "help": HelpBlock([f"Run `hass-axi setup skill --path {root}` to regenerate it"]),
                 "__exit_code__": 1,
             }
         return {"skill": str(path), "status": "current"}
@@ -127,7 +127,7 @@ def _skill(ctx, parsed):
         "status": "written" if changed else "current",
         "help": HelpBlock(
             [
-                f"Install it in an agent with `npx skills add dmealing/ha-axi --skill {skill.SKILL_NAME}`"
+                f"Install it in an agent with `npx skills add dmealing/hass-axi --skill {skill.SKILL_NAME}`"
             ]
         ),
     }

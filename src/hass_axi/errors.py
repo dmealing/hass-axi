@@ -21,8 +21,8 @@ Two more classes fall out of what Home Assistant actually returns, rather than
 out of a wish for symmetry. ``permission`` is separate from ``auth`` because
 Home Assistant answers "your credential is fine, you are not allowed" on both
 transports and the fix is a different account, not a different token -- see
-:func:`ha_axi.rest.RestClient._http_error` and
-:func:`ha_axi.ws.WsClient._command_error`. ``refused`` is separate from
+:func:`hass_axi.rest.RestClient._http_error` and
+:func:`hass_axi.ws.WsClient._command_error`. ``refused`` is separate from
 ``not_found`` because a service that exists and rejected these arguments is
 fixed by changing the arguments.
 
@@ -66,7 +66,7 @@ CLASS_NOT_FOUND = "not_found"
 #: Reached, permitted, the subject exists, and this request was refused. Change
 #: the arguments.
 CLASS_REFUSED = "refused"
-#: A bug in ha-axi. Nothing the caller did causes it and nothing it does fixes it.
+#: A bug in hass-axi. Nothing the caller did causes it and nothing it does fixes it.
 CLASS_INTERNAL = "internal"
 #: The fail-closed answer for a code this table does not declare. It is never
 #: reachable from a released build -- the sweep in ``tests/test_error_codes.py``
@@ -170,7 +170,7 @@ CODES: dict = {
     "UNSUPPORTED_CAPABILITY": CLASS_REFUSED,
     "RESPONSE_REQUIRED": CLASS_REFUSED,
     "RESPONSE_NOT_SUPPORTED": CLASS_REFUSED,
-    # -- internal: a bug in ha-axi.
+    # -- internal: a bug in hass-axi.
     "INTERNAL_ERROR": CLASS_INTERNAL,
     "ID_REUSE": CLASS_INTERNAL,
 }

@@ -1,4 +1,4 @@
-"""`ha-axi device` -- the device registry, which is WebSocket-only.
+"""`hass-axi device` -- the device registry, which is WebSocket-only.
 
 The device is the level a name or an area is usually wrong *at*. An entity with
 no area of its own inherits its device's, and an entity with no name of its own
@@ -49,7 +49,7 @@ DEFAULT_LIST_FIELDS = ["device_id", "name", "area"]
 COMMAND = Command(
     name="device",
     summary="Read and update the device registry over the WebSocket API",
-    usage="usage: ha-axi device <subcommand> [flags]",
+    usage="usage: hass-axi device <subcommand> [flags]",
     default_sub="list",
     subs=(
         Sub(
@@ -89,15 +89,15 @@ COMMAND = Command(
         "does not let anything change it",
         "devices accept a device_id or the displayed name anywhere <id|name> appears",
         "disabling or deleting a device is deliberately not exposed here; "
-        "use `ha-axi ws device.update` if you mean it",
+        "use `hass-axi ws device.update` if you mean it",
     ),
     examples=(
-        "ha-axi device list",
-        "ha-axi device list --area 'Example Room'",
-        "ha-axi device list --search example --fields device_id,name,model",
-        "ha-axi device get <device_id>",
-        "ha-axi device update 'Example Ceiling' --name 'Hall Ceiling'",
-        "ha-axi device update <device_id> --area 'Example Room' --clear-name",
+        "hass-axi device list",
+        "hass-axi device list --area 'Example Room'",
+        "hass-axi device list --search example --fields device_id,name,model",
+        "hass-axi device get <device_id>",
+        "hass-axi device update 'Example Ceiling' --name 'Hall Ceiling'",
+        "hass-axi device update <device_id> --area 'Example Room' --clear-name",
     ),
 )
 
@@ -189,16 +189,16 @@ def _list(ctx, parsed):
         return {
             "devices": f"0 devices found {where}",
             "total": f"{total} devices in the device registry",
-            "help": HelpBlock(["Run `ha-axi device list` with no filters to see every device"]),
+            "help": HelpBlock(["Run `hass-axi device list` with no filters to see every device"]),
         }
 
     limit = parse_limit(parsed.get("limit"), default=DEFAULT_LIMIT)
     fields = select_fields(parsed.get("fields"), LIST_FIELDS, DEFAULT_LIST_FIELDS)
     shown = rows[:limit]
     count = count_line(len(shown), matched, total, filtered=bool(scope))
-    help_lines = ["Run `ha-axi entity list --area <id|name>` to see the entities in an area"]
+    help_lines = ["Run `hass-axi entity list --area <id|name>` to see the entities in an area"]
     if len(shown) < matched:
-        help_lines.append(f"Run `ha-axi device list --limit {matched}` to see all {matched}")
+        help_lines.append(f"Run `hass-axi device list --limit {matched}` to see all {matched}")
 
     return {"count": count, "devices": project(shown, fields), "help": HelpBlock(help_lines)}
 
@@ -221,9 +221,9 @@ def _get(ctx, parsed):
         "device": row,
         "help": HelpBlock(
             [
-                f"Run `ha-axi entity list --device {row['device_id']}` "
+                f"Run `hass-axi entity list --device {row['device_id']}` "
                 "to see the entities it supplies",
-                f'Run `ha-axi device update {row["device_id"]} --name "<name>"` to rename it',
+                f'Run `hass-axi device update {row["device_id"]} --name "<name>"` to rename it',
             ]
         ),
     }
@@ -252,7 +252,7 @@ def _update(ctx, parsed):
         parsed,
         ("--name", "--clear-name"),
         ("--area", "--clear-area"),
-        invocation=f"ha-axi device update {needle}",
+        invocation=f"hass-axi device update {needle}",
     )
 
     changes: dict = {}
@@ -268,8 +268,8 @@ def _update(ctx, parsed):
         raise UsageError(
             "nothing to update",
             help_lines=[
-                f'Run `ha-axi device update {needle} --name "<name>"` to rename it',
-                f"Run `ha-axi device update {needle} --area <id|name>` to move it",
+                f'Run `hass-axi device update {needle} --name "<name>"` to rename it',
+                f"Run `hass-axi device update {needle} --area <id|name>` to move it",
             ],
             code="NO_CHANGES",
         )

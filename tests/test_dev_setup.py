@@ -95,7 +95,7 @@ def test_the_setup_script_and_ci_build_the_same_environment():
     for shared in ("-m venv", ".venv/bin/pip install", ".venv/bin/pytest"):
         assert shared in script, f"scripts/dev-setup.sh does not use {shared!r}"
         assert shared in ci, f"ci.yml does not use {shared!r}"
-    for printed in (".venv/bin/ruff", ".venv/bin/ha-axi setup skill --check"):
+    for printed in (".venv/bin/ruff", ".venv/bin/hass-axi setup skill --check"):
         assert printed in script, f"scripts/dev-setup.sh does not point at {printed!r}"
 
 

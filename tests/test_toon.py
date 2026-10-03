@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ha_axi.toon import encode
+from hass_axi.toon import encode
 
 
 def test_uniform_object_array_uses_tabular_form():

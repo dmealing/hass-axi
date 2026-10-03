@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Block installation-specific data from entering this public repository.
 
-ha-axi talks to home automation installations, so the failure mode that matters
+hass-axi talks to home automation installations, so the failure mode that matters
 is not a bug -- it is a commit that quietly describes, or grants access to, the
 installation it was developed against. A rule a human has to remember is not a
 control, so this scanner runs from a pre-commit hook, a commit-msg hook, and CI.
@@ -818,7 +818,7 @@ def clean_pull_request():
         (
             "body",
             "## Intent\n\n"
-            "`src/ha_axi/toon.py` formats through `Decimal(repr(value))` inside the range.\n\n"
+            "`src/hass_axi/toon.py` formats through `Decimal(repr(value))` inside the range.\n\n"
             "```\n"
             "rootdir: /github/workspace\n"
             "collected 590 items\n"

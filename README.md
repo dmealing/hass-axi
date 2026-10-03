@@ -1,4 +1,4 @@
-# ha-axi
+# hass-axi
 
 An Agent eXperience Interface (AXI) CLI for Home Assistant.
 
@@ -9,7 +9,7 @@ area and device registries are reachable only over the WebSocket API**, so admin
 installation from a script means hand-rolling a WebSocket client, or clicking through the UI
 instead.
 
-That is the first of the two jobs `ha-axi` exists for. The second is getting a service call *right*
+That is the first of the two jobs `hass-axi` exists for. The second is getting a service call *right*
 — checked before it is sent, and explained when Home Assistant refuses it with a status code and no
 body. Everything else the tool does — states, templates, arbitrary REST paths, arbitrary WebSocket
 commands — is [plumbing those two need](#everything-else-it-reaches), and is table stakes anywhere.
@@ -22,7 +22,7 @@ One command renames an entity and moves it to a room, over the WebSocket API, re
 name or by id:
 
 ```
-$ ha-axi entity update light.example_lamp --name 'Reading Lamp' --area 'Example Room'
+$ hass-axi entity update light.example_lamp --name 'Reading Lamp' --area 'Example Room'
 entity: light.example_lamp
 updated[2]: area_id,name
 name: Reading Lamp
@@ -36,7 +36,7 @@ that actually changed, and `area_source` says where the area in that row came fr
 is the one a caller cannot work out for itself, and it matters because of this:
 
 ```
-$ ha-axi entity get sensor.example_bridge_dawn
+$ hass-axi entity get sensor.example_bridge_dawn
 entity:
   entity_id: sensor.example_bridge_dawn
   name: Example Bridge Next dawn
@@ -61,32 +61,32 @@ registries**: a name somebody set wins outright, and otherwise the device's disp
 to the entity's own half. A client that reads the entity row alone reports that entity as
 unassigned and nameless. Both are wrong, and both are wrong silently.
 
-`ha-axi` applies both rules in **every** view that names an entity, so the filters agree with what
+`hass-axi` applies both rules in **every** view that names an entity, so the filters agree with what
 a user sees:
 
 ```
-$ ha-axi entity list --area 'Example Hall' --limit 3 --fields entity_id,name,area,platform
+$ hass-axi entity list --area 'Example Hall' --limit 3 --fields entity_id,name,area,platform
 count: 3 of 9 matched (23 total)
 entities[3]{entity_id,name,area,platform}:
   sensor.example_bridge_dawn,Example Bridge Next dawn,Example Hall,sun
   binary_sensor.example_bridge_rising,Example Bridge Solar rising,Example Hall,sun
   sensor.example_bridge_dusk,Example Bridge Next dusk,Example Hall,sun
 help[3]:
-  Run `ha-axi entity get <entity_id>` for one entry in full
-  Run `ha-axi entity list --limit 9` to see all 9
-  Run `ha-axi entity update <entity_id> --name "<name>" --area <id|name>` to change one
+  Run `hass-axi entity get <entity_id>` for one entry in full
+  Run `hass-axi entity list --limit 9` to see all 9
+  Run `hass-axi entity update <entity_id> --name "<name>" --area <id|name>` to change one
 ```
 
 ```
-$ ha-axi entity list --search 'Example Bridge' --limit 2 --fields entity_id,name,original_name
+$ hass-axi entity list --search 'Example Bridge' --limit 2 --fields entity_id,name,original_name
 count: 2 of 9 matched (23 total)
 entities[2]{entity_id,name,original_name}:
   sensor.example_bridge_dawn,Example Bridge Next dawn,Next dawn
   binary_sensor.example_bridge_rising,Example Bridge Solar rising,Solar rising
 help[3]:
-  Run `ha-axi entity get <entity_id>` for one entry in full
-  Run `ha-axi entity list --limit 9` to see all 9
-  Run `ha-axi entity update <entity_id> --name "<name>" --area <id|name>` to change one
+  Run `hass-axi entity get <entity_id>` for one entry in full
+  Run `hass-axi entity list --limit 9` to see all 9
+  Run `hass-axi entity update <entity_id> --name "<name>" --area <id|name>` to change one
 ```
 
 `--search` matches the composed name, which is why searching for the name a user reads finds the
@@ -97,7 +97,7 @@ The same fallback keeps the arithmetic honest. `area list` counts an entity into
 really in, and the per-area counts plus `unassigned_entities` sum to the size of the registry:
 
 ```
-$ ha-axi area list
+$ hass-axi area list
 count: 3 areas
 unassigned_entities: 12
 areas[3]{area_id,name,entities,devices,floor_id}:
@@ -105,9 +105,9 @@ areas[3]{area_id,name,entities,devices,floor_id}:
   example_room,Example Room,2,0,""
   example_study,Example Study,0,0,""
 help[3]:
-  Run `ha-axi entity list --area <id|name>` to see what one area holds
-  Run `ha-axi area update <id|name> --name '<name>'` to rename one
-  Run `ha-axi entity list --area none` to find entities with no area
+  Run `hass-axi entity list --area <id|name>` to see what one area holds
+  Run `hass-axi area update <id|name> --name '<name>'` to rename one
+  Run `hass-axi entity list --area none` to find entities with no area
 ```
 
 `entity_id` is **not stable identity** and nothing here encourages treating it as such: filter by
@@ -121,7 +121,7 @@ The typed write surface is `entity update` — `--name`, `--area` and `--icon`, 
 `--clear-*` that falls back to what the integration supplies, plus `--new-id` to rename the
 `entity_id` itself — together with `area create` and `area update`, and `device get` and
 `device update` on the registry behind them. Deleting an area is deliberately not given a typed
-command; `ha-axi ws area.delete` is there if you mean it, and the same goes for disabling or
+command; `hass-axi ws area.delete` is there if you mean it, and the same goes for disabling or
 deleting a device.
 
 **The device is usually the level a name or an area is wrong at**, which is why `device update`
@@ -141,16 +141,16 @@ empty list. Three different outcomes arrive on the wire looking identical, and a
 forwards the call and prints the reply reports all three as success.
 
 **An entity that cannot do the thing is dropped in silence** when it was reached through an area or
-a device. `ha-axi` reads the capability the service publishes and says so before sending:
+a device. `hass-axi` reads the capability the service publishes and says so before sending:
 
 ```
-$ ha-axi service call cover.set_cover_position --target-area example_room --data position=50
+$ hass-axi service call cover.set_cover_position --target-area example_room --data position=50
 error: "cover.set_cover_position needs a supported_features bitmask containing any of 4, and no entity the target matched has one: cover.example_blind reports 3"
 code: UNSUPPORTED_CAPABILITY
 help[4]:
-  Run `ha-axi state list --area example_room --domain cover` to see what is there
-  Run `ha-axi area list` to see each area's id and how much it holds
-  Run `ha-axi service get cover.set_cover_position` to see what this service targets
+  Run `hass-axi state list --area example_room --domain cover` to see what is there
+  Run `hass-axi area list` to see each area's id and how much it holds
+  Run `hass-axi service get cover.set_cover_position` to see what this service targets
   Run the same command with --no-check to send it anyway
 ```
 
@@ -165,29 +165,29 @@ claim about itself, and a wrong claim must not become a wall.
 **A target that matched nothing** exits 1 and says so, rather than reporting a successful no-op:
 
 ```
-$ ha-axi service call light.turn_on --target-area example_study
+$ hass-axi service call light.turn_on --target-area example_study
 error: "area example_study matched 0 entities light.turn_on can act on, so the call did nothing"
 code: NO_ENTITIES_TARGETED
 help[3]:
-  Run `ha-axi state list --area example_study --domain light` to see what is there
-  Run `ha-axi area list` to see each area's id and how much it holds
-  Run `ha-axi service get light.turn_on` to see what this service targets
+  Run `hass-axi state list --area example_study --domain light` to see what is there
+  Run `hass-axi area list` to see each area's id and how much it holds
+  Run `hass-axi service get light.turn_on` to see what this service targets
 ```
 
 **A call that genuinely had nothing to do** is a success, and says which:
 
 ```
-$ ha-axi service call light.turn_off --target-entity light.example_lamp
+$ hass-axi service call light.turn_off --target-entity light.example_lamp
 service: light.turn_off
 changed: light.turn_off accepted with 0 states changed
 target: entity light.example_lamp matched 1 entity; which reported no state change
 help[2]:
-  Run `ha-axi state get <entity_id>` to see an entity's current state
-  Run `ha-axi service get light.turn_off` to see what this service targets
+  Run `hass-axi state get <entity_id>` to see an entity's current state
+  Run `hass-axi service get light.turn_off` to see what this service targets
 ```
 
 Home Assistant returns the states that actually changed, so `[]` means both "everything was already
-as asked" and "nothing was reached at all" and it never says which. `ha-axi` resolves the target
+as asked" and "nothing was reached at all" and it never says which. `hass-axi` resolves the target
 when, and only when, the change set is empty and a target was given: reaching nothing exits 1,
 reaching something exits 0 with the count and any entity that was `unavailable` and therefore
 skipped. Which domains a service can reach is read from its published `target`, never guessed from
@@ -197,15 +197,15 @@ its name.
 `400` — the status line and no body — so an unknown service, an undeclared field and a missing
 required one are indistinguishable on the wire. (Two refusals are worse still: a named entity
 lacking a capability, and a `--response` call that matched nothing, arrive as a plain-text `500`
-with a fixed apology.) `ha-axi` fetches the service model at that point and answers from it:
+with a fixed apology.) `hass-axi` fetches the service model at that point and answers from it:
 
 ```
-$ ha-axi service call light.turn_on --target-entity light.example_lamp --data brightnes=180
+$ hass-axi service call light.turn_on --target-entity light.example_lamp --data brightnes=180
 error: light.turn_on does not accept field brightnes
 code: UNKNOWN_SERVICE_FIELD
 help[2]:
   fields for light.turn_on: transition, rgb_color, color_temp_kelvin, brightness_pct, brightness_step_pct, effect, rgbw_color, rgbww_color, color_name, hs_color, xy_color, brightness, brightness_step, white, profile, flash
-  Run `ha-axi service get light.turn_on` for their types and which are required
+  Run `hass-axi service get light.turn_on` for their types and which are required
 ```
 
 A call that succeeds pays for none of that: the explanation is failure-path only. The model is
@@ -215,7 +215,7 @@ never cached — an integration added or removed rewrites it, and nothing signal
 and never describes integrations you do not have:
 
 ```
-$ ha-axi service get cover.set_cover_position
+$ hass-axi service get cover.set_cover_position
 service: cover.set_cover_position
 name: set_cover_position
 description: ""
@@ -224,11 +224,11 @@ target: entity domain cover; supported_features matching any of 4
 fields[1]{field,required,type,description}:
   position,true,number,""
 help[2]:
-  Run `ha-axi service call cover.set_cover_position --target-entity <entity_id> --data position=<value>` to call it
-  Run `ha-axi state get <entity_id>` and compare its supported_features attribute
+  Run `hass-axi service call cover.set_cover_position --target-entity <entity_id> --data position=<value>` to call it
+  Run `hass-axi state get <entity_id>` and compare its supported_features attribute
 ```
 
-**What `ha-axi` deliberately does not do is turn that model into commands.** Home Assistant
+**What `hass-axi` deliberately does not do is turn that model into commands.** Home Assistant
 publishes enough metadata to generate a typed command per service, and generating them would mean
 roughly 77 nouns and 327 subcommands wrapping the one command that already reaches all of them —
 each firing at a device without asking whether it can do the thing. Consuming the model to
@@ -238,9 +238,9 @@ reaches every field of every service, forever, with no metadata to go stale.
 ## Install
 
 ```sh
-pip install ha-axi
+pip install hass-axi
 # or run it without installing
-uvx ha-axi entity list --area 'Example Room'
+uvx hass-axi entity list --area 'Example Room'
 ```
 
 From a checkout:
@@ -250,11 +250,11 @@ scripts/dev-setup.sh       # creates .venv and installs this checkout into it
 scripts/install-hooks.sh   # point core.hooksPath at .githooks
 ```
 
-`ha-axi` is normally installed as an isolated user-level tool with its own launcher on `PATH`, and
+`hass-axi` is normally installed as an isolated user-level tool with its own launcher on `PATH`, and
 an editable install into whatever interpreter happens to be ambient overwrites that launcher and
 points it at the checkout — so deleting the checkout leaves the reader's own installation dead.
 `dev-setup.sh` builds `.venv` instead, the environment `.github/workflows/ci.yml` already uses, and
-every development command runs out of it: `.venv/bin/pytest`, `.venv/bin/ruff`, `.venv/bin/ha-axi`.
+every development command runs out of it: `.venv/bin/pytest`, `.venv/bin/ruff`, `.venv/bin/hass-axi`.
 
 ## Configure
 
@@ -282,10 +282,10 @@ stripped and registered as a secret before the base URL is ever printed. A bare 
 Check both transports at once:
 
 ```
-$ ha-axi doctor
+$ hass-axi doctor
 healthy: true
 checks[4]{check,status,detail}:
-  read_only,ok,"HA_AXI_READ_ONLY is not set: writes are allowed"
+  read_only,ok,"HASS_AXI_READ_ONLY is not set: writes are allowed"
   environment,ok,HA_URL and HA_TOKEN are set
   rest,ok,API running. (version 2026.8.3)
   websocket,ok,"authenticated, 23 registry entries in 3 areas"
@@ -299,36 +299,36 @@ version: 2026.8.3
 A third variable makes a session incapable of changing anything:
 
 ```sh
-export HA_AXI_READ_ONLY=1
+export HASS_AXI_READ_ONLY=1
 ```
 
 Every write is then refused **before it is sent**, and the refusal does not care which route the
 write took. A typed command:
 
 ```
-$ ha-axi entity update light.example_lamp --name 'Something Else'
-error: "`ha-axi entity update` is a write, and HA_AXI_READ_ONLY is set"
+$ hass-axi entity update light.example_lamp --name 'Something Else'
+error: "`hass-axi entity update` is a write, and HASS_AXI_READ_ONLY is set"
 code: READ_ONLY
 class: usage
 help[3]:
   This session is read-only; the command was refused before anything changed
-  Reads still work, e.g. `ha-axi state list`, `ha-axi entity list`, `ha-axi area list`
-  Unset HA_AXI_READ_ONLY to allow writes; it is a switch, so any non-empty value enables it
+  Reads still work, e.g. `hass-axi state list`, `hass-axi entity list`, `hass-axi area list`
+  Unset HASS_AXI_READ_ONLY to allow writes; it is a switch, so any non-empty value enables it
 ```
 
 The raw WebSocket escape hatch, which is where the registry writes actually live:
 
 ```
-$ ha-axi ws --raw config/area_registry/create --param name='Bypass Attempt'
-error: "`ha-axi ws` is a write, and HA_AXI_READ_ONLY is set"
+$ hass-axi ws --raw config/area_registry/create --param name='Bypass Attempt'
+error: "`hass-axi ws` is a write, and HASS_AXI_READ_ONLY is set"
 code: READ_ONLY
 ```
 
 And the raw REST escape hatch:
 
 ```
-$ ha-axi api POST /services/light/turn_on --field entity_id=light.example_lamp
-error: "`ha-axi api` is a write, and HA_AXI_READ_ONLY is set"
+$ hass-axi api POST /services/light/turn_on --field entity_id=light.example_lamp
+error: "`hass-axi api` is a write, and HASS_AXI_READ_ONLY is set"
 code: READ_ONLY
 ```
 
@@ -361,22 +361,22 @@ refused. A guard that held on one transport and not the other would be worse tha
 would reassure without protecting.
 
 Reads are untouched, including `template render` — a POST that renders server-side and changes
-nothing. `ha-axi doctor` reports the mode as its first check, and the no-argument view prints
+nothing. `hass-axi doctor` reports the mode as its first check, and the no-argument view prints
 `read_only: on` when it is set, so a session knows what it is before it plans anything.
 
-**What it does not cover.** `ha-axi api` hands an opaque path straight to the installation, so there
+**What it does not cover.** `hass-axi api` hands an opaque path straight to the installation, so there
 the method is the only fact available and the rule errs closed: `GET`, `HEAD` and `OPTIONS` pass,
 everything else is refused, including a `POST` that happens not to change anything. Any Home
 Assistant endpoint that mutated on a `GET` would pass that check — none does, and the same
 assumption is the one every read-only HTTP proxy makes, but it is an assumption rather than a
-guarantee. `ha-axi ws --raw` is judged by the API type it names: one a declared command already
+guarantee. `hass-axi ws --raw` is judged by the API type it names: one a declared command already
 names as a read passes, and an undeclared type is refused.
 
 ## Everything else it reaches
 
 These are table stakes for any Home Assistant client. They are here because the two sections above
 need them and because an agent that has the tool should not have to leave it — not because they are
-what `ha-axi` is for.
+what `hass-axi` is for.
 
 - **`state list` / `state get`** — the runtime view over REST: what an entity is doing right now and
   its attributes, with `--domain`, `--state`, `--search`, `--fields` and `--limit`.
@@ -387,7 +387,7 @@ what `ha-axi` is for.
   for anything with no typed command.
 - **`ws`** — any WebSocket command. `ws --list` prints the declared names, `ws <name> --param
   k=v` sends one, and `ws --raw <api/type>` sends a type that has no declared name yet. Adding a
-  declared command is one entry in `REGISTRY` in `src/ha_axi/ws.py`; the auth handshake, id
+  declared command is one entry in `REGISTRY` in `src/hass_axi/ws.py`; the auth handshake, id
   correlation and error translation are shared.
 - **`doctor`** — environment and connection checks over both transports.
 - **`setup`** — install the agent integrations on this machine (below).
@@ -398,17 +398,17 @@ The whole command surface, and the transport each half runs on:
 
 | Command | Transport | What it does |
 | --- | --- | --- |
-| `ha-axi entity list\|get\|update` | WebSocket | The entity registry: names, areas, platforms, entity ids |
-| `ha-axi area list\|get\|create\|update` | WebSocket | The area registry |
-| `ha-axi device list\|get\|update` | WebSocket | The device registry: device names and areas, which entities inherit |
-| `ha-axi service list\|get\|call` | REST | Discover services, read one's fields, and call them |
-| `ha-axi state list\|get` | REST | Entity states and attributes as they are right now |
-| `ha-axi template render` | REST | Render a Jinja template server-side |
-| `ha-axi ws` | WebSocket | Any WebSocket command, declared or raw |
-| `ha-axi api` | REST | Any authenticated REST path |
-| `ha-axi doctor` | both | Environment and connection checks |
-| `ha-axi setup` | — | Install the agent integrations |
-| `ha-axi context` | — | The ambient document a session hook prints |
+| `hass-axi entity list\|get\|update` | WebSocket | The entity registry: names, areas, platforms, entity ids |
+| `hass-axi area list\|get\|create\|update` | WebSocket | The area registry |
+| `hass-axi device list\|get\|update` | WebSocket | The device registry: device names and areas, which entities inherit |
+| `hass-axi service list\|get\|call` | REST | Discover services, read one's fields, and call them |
+| `hass-axi state list\|get` | REST | Entity states and attributes as they are right now |
+| `hass-axi template render` | REST | Render a Jinja template server-side |
+| `hass-axi ws` | WebSocket | Any WebSocket command, declared or raw |
+| `hass-axi api` | REST | Any authenticated REST path |
+| `hass-axi doctor` | both | Environment and connection checks |
+| `hass-axi setup` | — | Install the agent integrations |
+| `hass-axi context` | — | The ambient document a session hook prints |
 
 `--help` on any command is the authoritative reference: it lists every flag per subcommand, with
 defaults and two or three worked examples. Nothing here duplicates it, and it works with no
@@ -426,14 +426,14 @@ one extra registry round-trip, because areas live over the WebSocket, and it is 
 flag is passed:
 
 ```
-$ ha-axi state list --area 'Example Room'
+$ hass-axi state list --area 'Example Room'
 count: 2 of 2 matched (23 total)
 states[2]{entity_id,name,state}:
   light.example_lamp,Reading Lamp,off
   cover.example_blind,Example Blind,closed
 help[2]:
-  Run `ha-axi state get <entity_id>` for one entity's full attributes
-  Run `ha-axi state list --domain light` to narrow by domain
+  Run `hass-axi state get <entity_id>` for one entity's full attributes
+  Run `hass-axi state list --domain light` to narrow by domain
 ```
 
 That flag exists because an agent that learns `--area` on `entity list` will reach for it on
@@ -446,13 +446,13 @@ Structured [TOON](https://toonformat.dev/) on stdout by default, which is roughl
 tokens than the equivalent JSON:
 
 ```
-$ ha-axi state list --domain light --domain cover
+$ hass-axi state list --domain light --domain cover
 count: 2 of 2 matched (23 total)
 states[2]{entity_id,name,state}:
   light.example_lamp,Reading Lamp,off
   cover.example_blind,Example Blind,closed
 help[1]:
-  Run `ha-axi state get <entity_id>` for one entity's full attributes
+  Run `hass-axi state get <entity_id>` for one entity's full attributes
 ```
 
 - `--human` renders aligned tables for a person.
@@ -466,12 +466,12 @@ help[1]:
   subcommand's valid flags listed inline so the correction takes one turn, not two:
 
 ```
-$ ha-axi state list --domian light
+$ hass-axi state list --domian light
 error: unknown flag --domian for `state list`
 code: UNKNOWN_FLAG
 help[2]:
   valid flags for `state list`: --area, --domain, --state, --search, --limit, --fields (--help always allowed)
-  Run `ha-axi state --help` for the full reference
+  Run `hass-axi state --help` for the full reference
 ```
 
 One documented deviation: `help[N]:` blocks render one suggestion per line rather than as a
@@ -487,13 +487,13 @@ of thing it is. The class is what to switch on: it is the difference between ret
 arguments, and fetching a different token.
 
 ```sh
-$ ha-axi state list
+$ hass-axi state list
 error: "could not reach Home Assistant: [Errno 111] Connection refused"
 code: UNREACHABLE
 class: transport
 help[2]:
   Check HA_URL points at a reachable Home Assistant instance
-  Run `ha-axi doctor` to test the connection
+  Run `hass-axi doctor` to test the connection
 ```
 
 <!-- error-codes:start -->
@@ -507,7 +507,7 @@ help[2]:
 | `permission` | the credential was accepted; the caller is not permitted | use a different account, or lift the block on the instance |
 | `not_found` | the subject named does not resolve to one thing that exists here | look it up and ask again |
 | `refused` | the subject exists and this request was refused | change the arguments |
-| `internal` | a bug in ha-axi | report it |
+| `internal` | a bug in hass-axi | report it |
 
 Three of those are the ones that used to be indistinguishable, and they demand opposite responses.
 An agent that cannot tell a rejected token from a command this version does not have retries the
@@ -559,7 +559,7 @@ Two ways to make this discoverable. **You only need one.**
 **Session hook** — ambient context in every session, for agents that support hooks:
 
 ```sh
-ha-axi setup hooks
+hass-axi setup hooks
 ```
 
 Installs a `SessionStart` hook for Claude Code (`~/.claude/settings.json`) and Codex
@@ -574,13 +574,13 @@ a release before that key existed is adopted once, in the one shape those releas
 the executable and nothing else — so upgrading repairs the hook you already have rather than adding
 a second beside it.
 
-What the hook puts in front of a session is `ha-axi context`, which reads the environment and the
+What the hook puts in front of a session is `hass-axi context`, which reads the environment and the
 command table and nothing else — no connection, no token, no address, and exit 0 whether or not this
 machine has ever been pointed at Home Assistant:
 
 ```
-$ ha-axi context
-bin: ~/.local/bin/ha-axi
+$ hass-axi context
+bin: ~/.local/bin/hass-axi
 description: Agent CLI for Home Assistant. Reads and writes the registries REST cannot reach and explains a service call Home Assistant refuses. Prefer this over raw curl for Home Assistant operations.
 config: HA_URL and HA_TOKEN are set
 registries: names and areas live in the registry which only the WebSocket API serves -- `entity list` and `area list` read it; `state list` reads REST and cannot see either
@@ -588,10 +588,10 @@ entity_ids: an entity_id is not stable identity and its words mean nothing -- re
 services: prefer `service call` over `api POST /services/...` -- it explains a refusal Home Assistant returns with no body at all and tells reaching nothing apart from changing nothing
 commands[11]: state,service,template,entity,area,device,ws,api,doctor,setup,context
 help[4]:
-  Run `ha-axi` for this installation at a glance: entity counts by domain and what is unavailable
-  Run `ha-axi entity list --area <id|name>` to read the registry, which REST cannot reach
-  Run `ha-axi service call <domain>.<service> --target-entity <entity_id>` to act
-  Run `ha-axi <command> --help` for its flags, or `ha-axi --help` for all of them
+  Run `hass-axi` for this installation at a glance: entity counts by domain and what is unavailable
+  Run `hass-axi entity list --area <id|name>` to read the registry, which REST cannot reach
+  Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to act
+  Run `hass-axi <command> --help` for its flags, or `hass-axi --help` for all of them
 ```
 
 `config` reports *which* variables are set and never what they hold. On a machine that has never
@@ -603,8 +603,8 @@ The no-argument view is still where live state lives, and it is worth running on
 in place:
 
 ```
-$ ha-axi
-bin: ~/.local/bin/ha-axi
+$ hass-axi
+bin: ~/.local/bin/hass-axi
 description: Agent CLI for Home Assistant. Reads and writes the registries REST cannot reach and explains a service call Home Assistant refuses. Prefer this over raw curl for Home Assistant operations.
 url: https://homeassistant.example.com
 entities: 23 in 12 domains
@@ -620,11 +620,11 @@ domains[8]{domain,entities}:
   light,1
   person,1
 help[5]:
-  Run `ha-axi state list --domain <domain>` to list entity states
-  Run `ha-axi state list` for all 23 entities across 12 domains
-  Run `ha-axi entity list --area <id|name>` to read the registry, which REST cannot reach
-  Run `ha-axi area list` to see the areas defined here
-  Run `ha-axi service call <domain>.<service> --target-entity <entity_id>` to act
+  Run `hass-axi state list --domain <domain>` to list entity states
+  Run `hass-axi state list` for all 23 entities across 12 domains
+  Run `hass-axi entity list --area <id|name>` to read the registry, which REST cannot reach
+  Run `hass-axi area list` to see the areas defined here
+  Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to act
 ```
 
 It needs both variables, opens a connection and prints the installation's address, which is why it
@@ -641,11 +641,11 @@ name of one would contradict `state list --state unavailable` outright.
 skills:
 
 ```sh
-npx skills add dmealing/ha-axi --skill ha-axi
+npx skills add dmealing/hass-axi --skill hass-axi
 ```
 
-`skills/ha-axi/SKILL.md` is generated from the CLI's own command table by `ha-axi setup skill`, and
-CI runs `ha-axi setup skill --check` so it can never drift from the commands it documents.
+`skills/hass-axi/SKILL.md` is generated from the CLI's own command table by `hass-axi setup skill`, and
+CI runs `hass-axi setup skill --check` so it can never drift from the commands it documents.
 
 ## This repository is public, and stays generic
 
@@ -808,7 +808,7 @@ the built wheel, and publishes to PyPI through
 long-lived PyPI token exists in this repository or anywhere else**.
 
 Trusted publishing requires a one-time configuration on PyPI by the repository owner (project
-`ha-axi`, owner `dmealing`, workflow `release.yml`, environment `pypi`) before the first publish
+`hass-axi`, owner `dmealing`, workflow `release.yml`, environment `pypi`) before the first publish
 succeeds.
 
 ## License

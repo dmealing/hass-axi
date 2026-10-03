@@ -1,6 +1,6 @@
-"""`ha-axi context` -- the ambient document a SessionStart hook puts in front of an agent.
+"""`hass-axi context` -- the ambient document a SessionStart hook puts in front of an agent.
 
-This is what `ha-axi setup hooks` installs, and everything about it follows from
+This is what `hass-axi setup hooks` installs, and everything about it follows from
 *when* it runs: at the start of every session, on every machine that has the
 package, before anybody has decided to use the tool.
 
@@ -25,11 +25,11 @@ base URL. Three consequences, any one of which is enough:
 So the hook runs this instead. It reads the environment and the command table
 and nothing else: no connection, no token, no address, and exit 0 whether or not
 this machine has ever been pointed at a Home Assistant installation. The
-taxonomy is untouched -- `ha-axi` with no configuration still reports
+taxonomy is untouched -- `hass-axi` with no configuration still reports
 `NOT_CONFIGURED` and still exits 1, because a caller who asked for live state and
 cannot have it *has* met a fault. This command asks a different question, so it
 gets a different answer rather than a softened one. See
-:mod:`ha_axi.hooks` and :mod:`ha_axi.commands.home`.
+:mod:`hass_axi.hooks` and :mod:`hass_axi.commands.home`.
 """
 
 from __future__ import annotations
@@ -37,14 +37,13 @@ from __future__ import annotations
 from ..argspec import Command, Sub
 from ..config import describe_environment, missing_env_vars, setup_help
 from ..output import HelpBlock
-from ..readonly import ENV_VAR as READ_ONLY_VAR
-from ..readonly import READ, enabled
+from ..readonly import READ, active_var, enabled
 from .home import DESCRIPTION, executable_path
 
 COMMAND = Command(
     name="context",
     summary="Print the ambient context a session hook puts in front of an agent",
-    usage="usage: ha-axi context",
+    usage="usage: hass-axi context",
     default_sub="context",
     subs=(
         Sub(
@@ -54,13 +53,13 @@ COMMAND = Command(
         ),
     ),
     notes=(
-        "this is the document `ha-axi setup hooks` installs a SessionStart hook to print",
+        "this is the document `hass-axi setup hooks` installs a SessionStart hook to print",
         "it reads the environment and the command table only: no connection, no token, no "
         "installation address, and it exits 0 whether or not this machine has Home Assistant",
-        "for live state -- how many entities there are and what is unavailable -- run `ha-axi` "
+        "for live state -- how many entities there are and what is unavailable -- run `hass-axi` "
         "with no arguments instead",
     ),
-    examples=("ha-axi context",),
+    examples=("hass-axi context",),
 )
 
 #: What this tool is *for*, in one line each. Written without a colon, a comma
@@ -116,7 +115,7 @@ def run(ctx, sub: str, parsed):
 def _config(environ, missing: list) -> str:
     """Which variables are set -- never what they hold.
 
-    Named from :func:`ha_axi.config.describe_environment` rather than from the
+    Named from :func:`hass_axi.config.describe_environment` rather than from the
     primary spellings, so an installation configured through one of the accepted
     aliases is told the name of the variable it actually set.
 
@@ -134,17 +133,19 @@ def _help(environ, missing: list) -> list:
     if missing:
         # Leading with the home view would be advice to run something that
         # cannot work yet. What this reader needs is the two exports.
-        return [*setup_help(), "Run `ha-axi --help` for the whole command reference"]
+        return [*setup_help(), "Run `hass-axi --help` for the whole command reference"]
     lines = [
-        "Run `ha-axi` for this installation at a glance: entity counts by domain and what is "
+        "Run `hass-axi` for this installation at a glance: entity counts by domain and what is "
         "unavailable",
-        "Run `ha-axi entity list --area <id|name>` to read the registry, which REST cannot reach",
+        "Run `hass-axi entity list --area <id|name>` to read the registry, which REST cannot reach",
     ]
     if enabled(environ):
-        lines.append(f"This session is read-only; unset {READ_ONLY_VAR} to allow writes")
+        lines.append(f"This session is read-only; unset {active_var(environ)} to allow writes")
     else:
         lines.append(
-            "Run `ha-axi service call <domain>.<service> --target-entity <entity_id>` to act"
+            "Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to act"
         )
-    lines.append("Run `ha-axi <command> --help` for its flags, or `ha-axi --help` for all of them")
+    lines.append(
+        "Run `hass-axi <command> --help` for its flags, or `hass-axi --help` for all of them"
+    )
     return lines

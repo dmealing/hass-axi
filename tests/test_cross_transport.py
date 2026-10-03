@@ -69,7 +69,7 @@ def test_state_list_rejects_an_unknown_area_the_way_entity_list_does(run_cli, in
     # could reveal that no such area exists.
     assert code == 1
     assert "no area with id or name 'Nowhere'" in out
-    assert "ha-axi area list" in out
+    assert "hass-axi area list" in out
 
 
 def test_state_list_without_area_never_opens_a_websocket(run_cli, installation_env, ws_server):

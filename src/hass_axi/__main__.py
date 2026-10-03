@@ -1,4 +1,4 @@
-"""Allow ``python -m ha_axi`` to behave exactly like the installed console script."""
+"""Allow ``python -m hass_axi`` to behave exactly like the installed console script."""
 
 from __future__ import annotations
 

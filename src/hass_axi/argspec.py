@@ -79,9 +79,9 @@ class Sub:
     """One subcommand: its positional arguments, its flag set and its access.
 
     ``access`` is the read-only classification, one of the values in
-    :data:`ha_axi.readonly.CLASSIFICATIONS`. It defaults to ``None`` -- an
+    :data:`hass_axi.readonly.CLASSIFICATIONS`. It defaults to ``None`` -- an
     absence rather than a value -- because that is what makes forgetting
-    visible: :func:`ha_axi.readonly.verdict` reads ``None`` as a write and
+    visible: :func:`hass_axi.readonly.verdict` reads ``None`` as a write and
     refuses it, and the completeness sweep in ``tests/test_read_only.py`` fails
     on it rather than letting an unclassified command through.
     """
@@ -174,7 +174,7 @@ def parse(sub: Sub, argv: list, *, command: Command) -> Parsed:
                 else:
                     raise UsageError(
                         "--timeout needs a value",
-                        help_lines=["Run `ha-axi --timeout 60 <command>`"],
+                        help_lines=["Run `hass-axi --timeout 60 <command>`"],
                         code="BAD_TIMEOUT",
                     )
             else:
@@ -218,13 +218,13 @@ def parse(sub: Sub, argv: list, *, command: Command) -> Parsed:
 def invocation(command: Command, sub: Sub) -> str:
     """How to spell one subcommand back at the caller.
 
-    Public because the read-only gate in :mod:`ha_axi.cli` names the command it
+    Public because the read-only gate in :mod:`hass_axi.cli` names the command it
     refused, and a refusal that spelled it differently from every other error
     would read as a different command.
     """
     if sub.name == command.default_sub and len(command.subs) == 1:
-        return f"ha-axi {command.name}"
-    return f"ha-axi {command.name} {sub.name}"
+        return f"hass-axi {command.name}"
+    return f"hass-axi {command.name} {sub.name}"
 
 
 def _check_positionals(sub: Sub, command: Command, values: list) -> None:
@@ -259,7 +259,7 @@ def _unknown_flag(name: str, sub: Sub, command: Command):
         f"unknown flag {name} for `{command.name} {sub.name}`",
         help_lines=[
             f"valid flags for `{command.name} {sub.name}`: {listing} (--help always allowed)",
-            f"Run `ha-axi {command.name} --help` for the full reference",
+            f"Run `hass-axi {command.name} --help` for the full reference",
         ],
         code="UNKNOWN_FLAG",
     )
@@ -270,7 +270,7 @@ def _unknown_flag(name: str, sub: Sub, command: Command):
 
 def render_command_help(command: Command) -> str:
     """Render one command's concise, complete reference."""
-    lines = [command.usage or f"usage: ha-axi {command.name} <subcommand> [flags]"]
+    lines = [command.usage or f"usage: hass-axi {command.name} <subcommand> [flags]"]
     lines.append(f"description: {command.summary}")
 
     if command.subs and not (len(command.subs) == 1 and command.subs[0].name == command.name):

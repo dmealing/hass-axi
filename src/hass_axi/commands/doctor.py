@@ -1,4 +1,4 @@
-"""`ha-axi doctor` -- prove the environment and both transports work."""
+"""`hass-axi doctor` -- prove the environment and both transports work."""
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ from ._common import plural
 COMMAND = Command(
     name="doctor",
     summary="Check the environment, the REST API and the WebSocket API",
-    usage="usage: ha-axi doctor",
+    usage="usage: hass-axi doctor",
     default_sub="doctor",
     subs=(Sub(name="doctor", summary="Run every connection check", access=READ),),
     notes=("exits non-zero when any check fails, so it works as a CI or hook gate",),
-    examples=("ha-axi doctor",),
+    examples=("hass-axi doctor",),
 )
 
 

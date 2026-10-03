@@ -219,7 +219,38 @@ def set_debug(enabled: bool) -> None:
 
 
 def debug_enabled() -> bool:
-    return _debug_enabled or bool(os.environ.get("HA_AXI_DEBUG"))
+    if _debug_enabled or os.environ.get("HASS_AXI_DEBUG"):
+        return True
+    if os.environ.get("HA_AXI_DEBUG"):
+        deprecated_variable("HA_AXI_DEBUG", "HASS_AXI_DEBUG")
+        return True
+    return False
+
+
+#: Deprecation notices already printed by this process, so a variable read on
+#: every request is announced once rather than once per request.
+_announced: set = set()
+
+
+def deprecated_variable(old: str, new: str) -> None:
+    """Announce, once per process and on stderr, that ``old`` is a retired name.
+
+    The variables this tool reads were renamed with it, from ``HA_AXI_*`` to
+    ``HASS_AXI_*``. The old names keep working -- an installation must not stop
+    behaving the way its operator configured it because a package was renamed
+    -- and stderr is where the notice goes because stdout is the document an
+    agent parses, which a deprecation is not part of.
+    """
+    if old in _announced:
+        return
+    _announced.add(old)
+    sys.stderr.write(redact(f"hass-axi: {old} is deprecated; rename it to {new}") + "\n")
+    sys.stderr.flush()
+
+
+def reset_notices() -> None:
+    """Forget which notices were printed. Used by tests to isolate cases."""
+    _announced.clear()
 
 
 def debug(message: str) -> None:
@@ -229,7 +260,7 @@ def debug(message: str) -> None:
     because agents ignore it -- it still reaches terminals, logs and CI output.
     """
     if debug_enabled():
-        sys.stderr.write(redact(f"ha-axi: {message}") + "\n")
+        sys.stderr.write(redact(f"hass-axi: {message}") + "\n")
         sys.stderr.flush()
 
 

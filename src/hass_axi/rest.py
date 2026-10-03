@@ -1,7 +1,7 @@
 """Home Assistant REST API client, built on the standard library.
 
 Covers the read-and-act half of the API: entity states, service calls and
-template rendering. The registries are not reachable here -- see :mod:`ha_axi.ws`.
+template rendering. The registries are not reachable here -- see :mod:`hass_axi.ws`.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ _JSON = "application/json"
 
 
 #: The methods HTTP itself defines as safe. On a declared command the read-only
-#: classification is deliberate and a verb is never consulted, but `ha-axi api`
+#: classification is deliberate and a verb is never consulted, but `hass-axi api`
 #: hands an opaque path straight to the installation and the method is the only
 #: fact there is -- so this errs closed: safe methods pass, everything else is a
 #: write, including a POST that happens not to change anything.
@@ -48,7 +48,7 @@ READ_ONLY_POSTS = frozenset({"/api/template"})
 def access_for_request(method: str, path: str) -> str:
     """The read-only classification of one REST request.
 
-    Named to match :func:`ha_axi.ws.access_for_type`: one function per
+    Named to match :func:`hass_axi.ws.access_for_type`: one function per
     transport, answering the same question about the thing that transport is
     about to send. ``path`` is expected in the form :func:`api_path` returns.
     """
@@ -93,7 +93,7 @@ class _SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
                 f"{target.scheme}://{target.netloc}: it would send the access token there",
                 help_lines=[
                     "Point HA_URL directly at Home Assistant rather than at a proxy that redirects",
-                    "Run `ha-axi doctor` to see which transport is failing",
+                    "Run `hass-axi doctor` to see which transport is failing",
                 ],
                 code="REDIRECT_REFUSED",
             )
@@ -162,7 +162,7 @@ class RestClient:
                 f"the connection to Home Assistant dropped mid-response: {exc}",
                 help_lines=[
                     "Retry the command; a dropped connection is often a one-off",
-                    "Run `ha-axi doctor` to test the connection if it keeps happening",
+                    "Run `hass-axi doctor` to test the connection if it keeps happening",
                 ],
                 code="CONNECTION_DROPPED",
             ) from None
@@ -253,20 +253,20 @@ class RestClient:
                 return NotFound(
                     f"Home Assistant answered 404 for {path}: {detail}",
                     help_lines=[
-                        "Run `ha-axi state list --search <text>` to find an entity by name",
-                        "Run `ha-axi --help` to see the available commands",
+                        "Run `hass-axi state list --search <text>` to find an entity by name",
+                        "Run `hass-axi --help` to see the available commands",
                     ],
                     code="NOT_FOUND",
                 )
             return NotFound(
                 f"no such API path: {path}",
-                help_lines=["Run `ha-axi --help` to see the available commands"],
+                help_lines=["Run `hass-axi --help` to see the available commands"],
                 code="NOT_FOUND",
             )
         if exc.code == 405:
             return ApiError(
                 f"{method} is not allowed on {path}",
-                help_lines=["Run `ha-axi api --help` for the supported methods"],
+                help_lines=["Run `hass-axi api --help` for the supported methods"],
                 code="METHOD_NOT_ALLOWED",
             )
         if exc.code in UNAVAILABLE_STATUSES:
@@ -275,7 +275,7 @@ class RestClient:
                 + (f": {detail}" if detail else ""),
                 help_lines=[
                     "Retry the command; an instance answers this way while it restarts",
-                    "Run `ha-axi doctor` if it keeps answering this way",
+                    "Run `hass-axi doctor` if it keeps answering this way",
                 ],
                 code="UNAVAILABLE",
             )
@@ -315,14 +315,14 @@ class RestClient:
         if isinstance(reason, (TimeoutError, socket.timeout)):
             return ConnectionFailed(
                 f"timed out after {self.config.timeout:g}s waiting for Home Assistant",
-                help_lines=["Raise the limit with `ha-axi --timeout 60 <command>`"],
+                help_lines=["Raise the limit with `hass-axi --timeout 60 <command>`"],
                 code="TIMEOUT",
             )
         return ConnectionFailed(
             f"could not reach Home Assistant: {reason}",
             help_lines=[
                 "Check HA_URL points at a reachable Home Assistant instance",
-                "Run `ha-axi doctor` to test the connection",
+                "Run `hass-axi doctor` to test the connection",
             ],
             code="UNREACHABLE",
         )
@@ -346,8 +346,8 @@ class RestClient:
             raise NotFound(
                 f"no entity with id {entity_id}",
                 help_lines=[
-                    f"Run `ha-axi state list --search {entity_id.split('.')[-1]}` to find it",
-                    "Run `ha-axi state list --domain <domain>` to browse one domain",
+                    f"Run `hass-axi state list --search {entity_id.split('.')[-1]}` to find it",
+                    "Run `hass-axi state list --domain <domain>` to browse one domain",
                 ],
                 code="NO_SUCH_ENTITY",
             ) from None

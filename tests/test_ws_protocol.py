@@ -10,9 +10,9 @@ from __future__ import annotations
 import pytest
 
 from conftest import FAKE_TOKEN
-from ha_axi.config import load
-from ha_axi.errors import AuthFailed, ConnectionFailed
-from ha_axi.ws import MAX_FRAME_BYTES, WsClient
+from hass_axi.config import load
+from hass_axi.errors import AuthFailed, ConnectionFailed
+from hass_axi.ws import MAX_FRAME_BYTES, WsClient
 
 
 def client_for(ws_server):

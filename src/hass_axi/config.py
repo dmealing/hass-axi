@@ -16,6 +16,7 @@ from urllib.parse import urlsplit, urlunsplit
 from .errors import ConfigError
 from .output import register_secret
 from .readonly import ENV_VAR as READ_ONLY_VAR
+from .readonly import active_var as read_only_var
 from .readonly import enabled as read_only_enabled
 
 #: Primary variable names, with the ``hass-cli`` names accepted as fallbacks so
@@ -28,7 +29,7 @@ DEFAULT_TIMEOUT = 30.0
 _SETUP_HELP = [
     "Set HA_URL to your Home Assistant base URL, e.g. export HA_URL=https://homeassistant.example.com",
     "Set HA_TOKEN to a long-lived access token from your Home Assistant profile page, under Security",
-    "Run `ha-axi doctor` to verify the connection once both are set",
+    "Run `hass-axi doctor` to verify the connection once both are set",
 ]
 
 
@@ -194,5 +195,6 @@ def describe_environment(environ=None) -> dict:
         "token_var": token_var or "",
         "token_set": bool(token),
         "read_only": read_only_enabled(environ),
-        "read_only_var": READ_ONLY_VAR,
+        # The variable that is actually set, so `doctor` names the one to unset.
+        "read_only_var": read_only_var(environ) or READ_ONLY_VAR,
     }

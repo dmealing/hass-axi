@@ -7,7 +7,7 @@ registry where each entry names itself, a state that is never `unknown`, a
 service that documents itself, an entity that is never disabled. All four are the
 majority case upstream, and all four were reachable by hand.
 
-So the assertions here are about the fixture set, not about `ha-axi`. A fixture
+So the assertions here are about the fixture set, not about `hass-axi`. A fixture
 edit that quietly removes one of these shapes fails here, where the reason is
 written down, rather than three releases later on somebody's installation.
 """
@@ -29,7 +29,7 @@ from conftest import (
     extended_entry,
     slugify,
 )
-from ha_axi.ws import REGISTRY
+from hass_axi.ws import REGISTRY
 
 
 def _states_by_id() -> dict:
@@ -159,7 +159,7 @@ def test_every_state_carries_the_keys_home_assistant_sends():
 def test_every_registry_entry_carries_the_keys_home_assistant_publishes():
     """`as_partial_dict` sends 21 keys, and the double sent 11.
 
-    Nothing in `ha-axi` reads most of them. That is exactly why they belong here:
+    Nothing in `hass-axi` reads most of them. That is exactly why they belong here:
     a client that starts to should find out against the double.
     """
     expected = {
@@ -291,8 +291,8 @@ def test_every_websocket_command_the_cli_ships_is_modelled(name, ws_server, ws_e
     its declared parameters is the cheapest possible proof that the double knows
     what the CLI can ask for.
     """
-    from ha_axi.config import load
-    from ha_axi.ws import WsClient
+    from hass_axi.config import load
+    from hass_axi.ws import WsClient
 
     sample = {
         "entity_id": "light.example_lamp",
@@ -409,9 +409,9 @@ def test_an_unknown_websocket_command_is_refused_without_naming_itself(ws_server
     double that echoed it back would let a client read a command name out of a
     message that has never carried one.
     """
-    from ha_axi.config import load
-    from ha_axi.errors import NotFound
-    from ha_axi.ws import WsClient
+    from hass_axi.config import load
+    from hass_axi.errors import NotFound
+    from hass_axi.ws import WsClient
 
     with WsClient(load(ws_env)) as client, pytest.raises(NotFound) as raised:
         client.send_command("config/nothing_registry/list")

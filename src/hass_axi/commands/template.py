@@ -1,4 +1,4 @@
-"""`ha-axi template` -- render a Jinja template against live state."""
+"""`hass-axi template` -- render a Jinja template against live state."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from ._common import PREVIEW_CHARS
 COMMAND = Command(
     name="template",
     summary="Render a Home Assistant Jinja template server-side",
-    usage="usage: ha-axi template render [flags]",
+    usage="usage: hass-axi template render [flags]",
     default_sub="render",
     subs=(
         Sub(
@@ -35,10 +35,10 @@ COMMAND = Command(
         "templates run on the Home Assistant instance, so they see every entity it knows about",
     ),
     examples=(
-        "ha-axi template render --template '{{ states(\"light.example_lamp\") }}'",
-        "ha-axi template render --template '{{ states.light | count }}'",
-        "ha-axi template render --template-file report.j2",
-        "echo '{{ now() }}' | ha-axi template render --template-file -",
+        "hass-axi template render --template '{{ states(\"light.example_lamp\") }}'",
+        "hass-axi template render --template '{{ states.light | count }}'",
+        "hass-axi template render --template-file report.j2",
+        "echo '{{ now() }}' | hass-axi template render --template-file -",
     ),
 )
 
@@ -67,7 +67,7 @@ def _source(parsed) -> str:
     if inline and path:
         raise UsageError(
             "--template and --template-file are mutually exclusive",
-            help_lines=["Run `ha-axi template render --template '{{ now() }}'`"],
+            help_lines=["Run `hass-axi template render --template '{{ now() }}'`"],
             code="CONFLICTING_FLAGS",
         )
     if inline:
@@ -86,8 +86,8 @@ def _source(parsed) -> str:
     raise UsageError(
         "--template or --template-file is required",
         help_lines=[
-            "Run `ha-axi template render --template '{{ states(\"light.example_lamp\") }}'`",
-            "Run `ha-axi template render --template-file <path>` to read one from disk",
+            "Run `hass-axi template render --template '{{ states(\"light.example_lamp\") }}'`",
+            "Run `hass-axi template render --template-file <path>` to read one from disk",
         ],
         code="MISSING_TEMPLATE",
     )

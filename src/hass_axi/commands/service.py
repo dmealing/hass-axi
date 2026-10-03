@@ -1,4 +1,4 @@
-"""`ha-axi service` -- discover and call Home Assistant services.
+"""`hass-axi service` -- discover and call Home Assistant services.
 
 This is the command that reaches every service the installation has, which is
 why it is also the one that has to explain itself when a call is refused. Home
@@ -40,7 +40,7 @@ DESCRIPTION_CHARS = 120
 COMMAND = Command(
     name="service",
     summary="List Home Assistant services, read one's fields, and call them",
-    usage="usage: ha-axi service <subcommand> [flags]",
+    usage="usage: hass-axi service <subcommand> [flags]",
     subs=(
         Sub(
             name="list",
@@ -92,12 +92,12 @@ COMMAND = Command(
         " Home Assistant drops an entity that lacks it without saying so",
     ),
     examples=(
-        "ha-axi service list",
-        "ha-axi service list --domain light",
-        "ha-axi service get light.turn_on",
-        "ha-axi service call light.turn_on --target-entity light.example_lamp",
-        "ha-axi service call light.turn_on --target-area example_room --data brightness=180",
-        "ha-axi service call climate.set_temperature --target-entity climate.example_thermostat --data-json '{\"temperature\": 21}'",
+        "hass-axi service list",
+        "hass-axi service list --domain light",
+        "hass-axi service get light.turn_on",
+        "hass-axi service call light.turn_on --target-entity light.example_lamp",
+        "hass-axi service call light.turn_on --target-area example_room --data brightness=180",
+        "hass-axi service call climate.set_temperature --target-entity climate.example_thermostat --data-json '{\"temperature\": 21}'",
     ),
 )
 
@@ -116,8 +116,8 @@ def _split_name(raw: str) -> tuple:
         raise UsageError(
             f"expected <domain>.<service>, got {raw!r}",
             help_lines=[
-                "Run `ha-axi service call light.turn_on --target-entity <entity_id>`",
-                "Run `ha-axi service list` to see the available domains",
+                "Run `hass-axi service call light.turn_on --target-entity <entity_id>`",
+                "Run `hass-axi service list` to see the available domains",
             ],
             code="BAD_SERVICE",
         )
@@ -147,9 +147,9 @@ def _list(ctx, parsed):
             "domains": rows,
             "help": HelpBlock(
                 [
-                    "Run `ha-axi service list --domain <domain>` to see one domain's services",
-                    "Run `ha-axi service get <domain>.<service>` to see one service's fields",
-                    "Run `ha-axi service call <domain>.<service> --target-entity <entity_id>` to call one",
+                    "Run `hass-axi service list --domain <domain>` to see one domain's services",
+                    "Run `hass-axi service get <domain>.<service>` to see one service's fields",
+                    "Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to call one",
                 ]
             ),
         }
@@ -176,8 +176,8 @@ def _list(ctx, parsed):
         "services": rows,
         "help": HelpBlock(
             [
-                f"Run `ha-axi service get {rows[0]['service']}` to see its fields",
-                f"Run `ha-axi service call {rows[0]['service']} --target-entity <entity_id>` to call one",
+                f"Run `hass-axi service get {rows[0]['service']}` to see its fields",
+                f"Run `hass-axi service call {rows[0]['service']} --target-entity <entity_id>` to call one",
             ]
         ),
     }
@@ -202,7 +202,7 @@ def _get(ctx, parsed):
             description, note = truncate(
                 description,
                 DESCRIPTION_CHARS,
-                f"Run `ha-axi service get {domain}.{service} --full` for complete descriptions",
+                f"Run `hass-axi service get {domain}.{service} --full` for complete descriptions",
             )
             hint = hint or note
         rows.append(
@@ -232,7 +232,7 @@ def _get(ctx, parsed):
     doc["fields"] = project(rows, fields) if rows else f"0 fields declared on {domain}.{service}"
 
     required = model.required_field_names(spec)
-    example = f"ha-axi service call {domain}.{service} --target-entity <entity_id>"
+    example = f"hass-axi service call {domain}.{service} --target-entity <entity_id>"
     if required:
         example += "".join(f" --data {name}=<value>" for name in required)
     if response == model.RESPONSE_REQUIRED:
@@ -244,11 +244,11 @@ def _get(ctx, parsed):
         )
     elif response == model.RESPONSE_OPTIONAL:
         help_lines.append(
-            f"Add --response to `ha-axi service call {domain}.{service}` for its payload"
+            f"Add --response to `hass-axi service call {domain}.{service}` for its payload"
         )
     if model.feature_masks(spec, domain):
         help_lines.append(
-            "Run `ha-axi state get <entity_id>` and compare its supported_features attribute"
+            "Run `hass-axi state get <entity_id>` and compare its supported_features attribute"
         )
     if hint:
         help_lines.append(hint)
@@ -684,17 +684,17 @@ def _target_help(domain: str, service: str, parsed) -> list:
     devices = parsed.get("target_device") or []
     if areas:
         lines.append(
-            f"Run `ha-axi state list --area {areas[0]} --domain {domain}` to see what is there"
+            f"Run `hass-axi state list --area {areas[0]} --domain {domain}` to see what is there"
         )
-        lines.append("Run `ha-axi area list` to see each area's id and how much it holds")
+        lines.append("Run `hass-axi area list` to see each area's id and how much it holds")
     if devices:
         # `--device`, not `--search`: a device id is opaque and was never in the
         # search haystack, so the line this replaces named a command that
         # answered `0 registry entries found` every single time it was run.
-        lines.append(f"Run `ha-axi entity list --device {devices[0]}` to see a device's entities")
+        lines.append(f"Run `hass-axi entity list --device {devices[0]}` to see a device's entities")
     if not areas and not devices:
-        lines.append("Run `ha-axi state get <entity_id>` to see an entity's current state")
-    lines.append(f"Run `ha-axi service get {domain}.{service}` to see what this service targets")
+        lines.append("Run `hass-axi state get <entity_id>` to see an entity's current state")
+    lines.append(f"Run `hass-axi service get {domain}.{service}` to see what this service targets")
     return lines
 
 
@@ -757,7 +757,7 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
             f"{'fields' if len(unknown) > 1 else 'field'} {', '.join(sorted(unknown))}",
             help_lines=[
                 f"fields for {domain}.{service}: {listing}",
-                f"Run `ha-axi service get {domain}.{service}` for their types and which are required",
+                f"Run `hass-axi service get {domain}.{service}` for their types and which are required",
             ],
             code="UNKNOWN_SERVICE_FIELD",
         )
@@ -769,9 +769,9 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
             f"{domain}.{service} requires "
             f"{'fields' if len(missing) > 1 else 'field'} {', '.join(missing)}",
             help_lines=[
-                f"Run `ha-axi service call {domain}.{service}"
+                f"Run `hass-axi service call {domain}.{service}"
                 f" --target-entity <entity_id>{supplied}`",
-                f"Run `ha-axi service get {domain}.{service}` to see every field it takes",
+                f"Run `hass-axi service get {domain}.{service}` to see every field it takes",
             ],
             code="MISSING_SERVICE_FIELD",
         )
@@ -788,8 +788,8 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
                 f"{', '.join(str(mask) for mask in masks)}, which is not what "
                 f"{reported}",
                 help_lines=[
-                    f"Run `ha-axi service get {domain}.{service}` to see what it targets",
-                    "Run `ha-axi state get <entity_id>` to read an entity's supported_features",
+                    f"Run `hass-axi service get {domain}.{service}` to see what it targets",
+                    "Run `hass-axi state get <entity_id>` to read an entity's supported_features",
                 ],
                 code="UNSUPPORTED_CAPABILITY",
             )
@@ -891,8 +891,8 @@ def _response_mismatch(domain: str, service: str, wants_response: bool):
         return ApiError(
             f"{domain}.{service} does not return a response, so --response cannot be used",
             help_lines=[
-                f"Run `ha-axi service call {domain}.{service} --target-entity <entity_id>`",
-                f"Run `ha-axi service get {domain}.{service}` to see its response mode",
+                f"Run `hass-axi service call {domain}.{service} --target-entity <entity_id>`",
+                f"Run `hass-axi service get {domain}.{service}` to see its response mode",
             ],
             code="RESPONSE_NOT_SUPPORTED",
         )
@@ -900,8 +900,8 @@ def _response_mismatch(domain: str, service: str, wants_response: bool):
         f"{domain}.{service} answers with a response payload or not at all, "
         "so it must be called with --response",
         help_lines=[
-            f"Run `ha-axi service call {domain}.{service} --response`",
-            f"Run `ha-axi service get {domain}.{service}` to see the fields it takes",
+            f"Run `hass-axi service call {domain}.{service} --response`",
+            f"Run `hass-axi service get {domain}.{service}` to see the fields it takes",
         ],
         code="RESPONSE_REQUIRED",
     )
@@ -914,7 +914,7 @@ def _no_such_domain(published, domain: str):
     if close:
         help_lines.append(f"did you mean: {', '.join(close)}")
     help_lines.append(f"domains registered here: {', '.join(known[:12])}")
-    help_lines.append("Run `ha-axi service list` to see every domain")
+    help_lines.append("Run `hass-axi service list` to see every domain")
     return NotFound(
         f"no service domain named {domain!r} in this installation",
         help_lines=help_lines,
@@ -929,10 +929,10 @@ def _no_such_service(published, domain: str, service: str):
     if close:
         help_lines.append(f"did you mean: {', '.join(f'{domain}.{name}' for name in close)}")
     help_lines.append(
-        f"Run `ha-axi service list --domain {domain}` to see all "
+        f"Run `hass-axi service list --domain {domain}` to see all "
         f"{plural(len(names), 'service')} in {domain}"
     )
-    help_lines.append(f"Run `ha-axi service get {domain}.<service>` to see one service's fields")
+    help_lines.append(f"Run `hass-axi service get {domain}.<service>` to see one service's fields")
     return NotFound(
         f"no service {domain}.{service} in this installation",
         help_lines=help_lines,
@@ -942,8 +942,8 @@ def _no_such_service(published, domain: str, service: str):
 
 def _generic_help(domain: str, service: str) -> list:
     return [
-        f"Run `ha-axi service get {domain}.{service}` to see the fields it takes",
-        f"Run `ha-axi service list --domain {domain}` to see the domain's services",
+        f"Run `hass-axi service get {domain}.{service}` to see the fields it takes",
+        f"Run `hass-axi service list --domain {domain}` to see the domain's services",
     ]
 
 

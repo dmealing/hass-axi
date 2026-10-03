@@ -3,7 +3,7 @@
 The skill is the lower-overhead discovery path: it loads on demand instead of
 on every session, and works in agents without hook support. Generating it from
 the same command table the CLI dispatches on keeps the two from drifting, and
-`ha-axi setup skill --check` fails when the committed copy is stale.
+`hass-axi setup skill --check` fails when the committed copy is stale.
 """
 
 from __future__ import annotations
@@ -13,11 +13,11 @@ from pathlib import Path
 from .commands.home import DESCRIPTION
 from .readonly import ENV_VAR as READ_ONLY_VAR
 
-SKILL_NAME = "ha-axi"
+SKILL_NAME = "hass-axi"
 SKILL_RELATIVE_PATH = Path("skills") / SKILL_NAME / "SKILL.md"
 
 FRONTMATTER_DESCRIPTION = (
-    "Operate a Home Assistant installation through the ha-axi CLI - read and update the "
+    "Operate a Home Assistant installation through the hass-axi CLI - read and update the "
     "entity, area and device registries that only the WebSocket API exposes, and call "
     "services with a capability pre-check and an explained refusal. It also reads entity "
     "states and renders templates. Use whenever a task touches home automation: renaming "
@@ -60,7 +60,7 @@ def render(commands) -> str:
         ),
         "",
         "Create the token on the Home Assistant profile page, under Security.",
-        "Run `ha-axi doctor` to confirm both transports work; it exits non-zero when they do not.",
+        "Run `hass-axi doctor` to confirm both transports work; it exits non-zero when they do not.",
         "",
         "## Read-only sessions",
         "",
@@ -73,12 +73,12 @@ def render(commands) -> str:
         "Every write is then refused before it is sent, over REST and over the WebSocket alike,",
         "with `code: READ_ONLY` and exit 2. The commands stay visible in `--help` and in the",
         "command table, so a plan that needs one can be recognised as impossible rather than",
-        "mysterious. `ha-axi doctor` reports the mode, and the no-argument view shows",
+        "mysterious. `hass-axi doctor` reports the mode, and the no-argument view shows",
         "`read_only: on` when it is set.",
         "",
         "## Running without a global install",
         "",
-        _fence(["uvx ha-axi state list --domain light", "pipx run ha-axi area list"]),
+        _fence(["uvx hass-axi state list --domain light", "pipx run hass-axi area list"]),
         "",
         "## Output",
         "",
@@ -93,7 +93,7 @@ def render(commands) -> str:
     for command in commands:
         if command.name == "home":
             continue
-        sections.append(f"### `ha-axi {command.name}`")
+        sections.append(f"### `hass-axi {command.name}`")
         sections.append("")
         sections.append(command.summary + ".")
         sections.append("")
@@ -110,9 +110,9 @@ def render(commands) -> str:
             "## Rules of thumb",
             "",
             "- `entity_id` is not stable identity. Find entities by area or by search, and read",
-            "  the registry (`ha-axi entity list`) rather than assuming an id means what it says.",
+            "  the registry (`hass-axi entity list`) rather than assuming an id means what it says.",
             "- States come from REST; names, areas and platforms come from the WebSocket registry.",
-            "  `ha-axi state` and `ha-axi entity` are different views of the same installation.",
+            "  `hass-axi state` and `hass-axi entity` are different views of the same installation.",
             "- An entity with no area of its own inherits its device's area.",
             "- Every command supports `--help`, which is the authoritative reference for its flags.",
             "",

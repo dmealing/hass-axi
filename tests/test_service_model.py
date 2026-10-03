@@ -51,7 +51,7 @@ def test_a_refused_service_call_names_the_services_that_do_exist(run_cli, rest_e
     assert code == 1
     assert "help[" in out, "a refused service call must never be a dead end"
     assert "light.turn_on" in out
-    assert "ha-axi service list --domain light" in out
+    assert "hass-axi service list --domain light" in out
 
 
 def test_a_refused_call_on_an_unknown_domain_lists_the_domains(run_cli, rest_env):
@@ -59,7 +59,7 @@ def test_a_refused_call_on_an_unknown_domain_lists_the_domains(run_cli, rest_env
     assert code == 1
     assert "no service domain named 'lightt'" in out
     assert "light" in out
-    assert "ha-axi service list" in out
+    assert "hass-axi service list" in out
 
 
 def test_a_field_the_service_does_not_declare_is_named_back(run_cli, rest_env):
@@ -75,14 +75,14 @@ def test_a_field_the_service_does_not_declare_is_named_back(run_cli, rest_env):
     assert code == 1
     assert "brightnes" in out
     assert "brightness" in out
-    assert "ha-axi service get light.turn_on" in out
+    assert "hass-axi service get light.turn_on" in out
 
 
 def test_a_missing_required_field_is_named_rather_than_guessed_at(run_cli, rest_env):
     code, out = run_cli(["service", "call", "calendar.get_events", "--response"], rest_env)
     assert code == 1
     assert "start_date_time" in out
-    assert "ha-axi service get calendar.get_events" in out
+    assert "hass-axi service get calendar.get_events" in out
 
 
 def test_the_enrichment_survives_a_model_that_cannot_be_read(run_cli, rest_env, rest_server):
@@ -96,7 +96,7 @@ def test_the_enrichment_survives_a_model_that_cannot_be_read(run_cli, rest_env, 
     assert code == 1
     assert "HTTP 400" in out
     assert "help[" in out
-    assert "ha-axi service list" in out
+    assert "hass-axi service list" in out
 
 
 # ------------------------------------ defect 2: the leaked upstream vocabulary
@@ -121,7 +121,7 @@ def test_a_response_only_service_asks_for_the_flag_not_the_query_parameter(run_c
     assert code == 1
     assert "return_response" not in out, "Home Assistant's own vocabulary must not leak"
     assert "--response" in out
-    assert "ha-axi service call calendar.list_events --response" in out
+    assert "hass-axi service call calendar.list_events --response" in out
 
 
 def test_asking_for_a_response_a_service_cannot_give_says_to_drop_the_flag(run_cli, rest_env):
@@ -161,7 +161,7 @@ def test_an_area_that_does_not_exist_is_reported_rather_than_accepted(run_cli, i
     )
     assert code == 1
     assert "no area with id or name 'nowhere'" in out
-    assert "ha-axi area list" in out
+    assert "hass-axi area list" in out
 
 
 def test_an_area_name_passed_where_an_id_belongs_is_diagnosed(run_cli, installation_env):
@@ -229,7 +229,7 @@ def test_service_get_renders_one_service_field_table_live(run_cli, rest_env):
     assert "name: Turn on" in out
     assert "fields[3]{field,required,type,description}:" in out
     assert "brightness,false,number," in out
-    assert "ha-axi service call light.turn_on" in out
+    assert "hass-axi service call light.turn_on" in out
 
 
 def test_service_get_flattens_a_section_the_way_a_call_does(run_cli, rest_env):
@@ -268,7 +268,7 @@ def test_service_get_rejects_an_unknown_service_with_the_near_misses(run_cli, re
     code, out = run_cli(["service", "get", "light.turn_onn"], rest_env)
     assert code == 1
     assert "light.turn_on" in out
-    assert "ha-axi service list --domain light" in out
+    assert "hass-axi service list --domain light" in out
 
 
 def test_service_get_rejects_a_malformed_name_as_a_usage_error(run_cli, rest_env):
@@ -310,7 +310,7 @@ def test_a_capability_the_target_cannot_have_is_refused_before_dispatch(
     assert code == 1
     assert "media_player.example_speaker" in out
     assert "supported_features" in out
-    assert "ha-axi service get media_player.media_next_track" in out
+    assert "hass-axi service get media_player.media_next_track" in out
     assert "/api/services/media_player/media_next_track" not in [
         r["path"] for r in rest_server.requests
     ], "a call the installation cannot serve must not be sent"
@@ -413,7 +413,7 @@ def test_a_name_too_far_off_gets_a_listing_rather_than_a_wrong_guess(run_cli, re
     code, out = run_cli(["service", "call", "light.zzzzzz"], rest_env)
     assert code == 1
     assert "did you mean" not in out
-    assert "ha-axi service list --domain light" in out
+    assert "hass-axi service list --domain light" in out
 
 
 def test_a_response_call_that_reached_nothing_gets_the_same_answer_as_one_that_did_not(
@@ -603,7 +603,7 @@ def test_a_device_target_that_reached_nothing_suggests_a_command_that_works(
         installation_env,
     )
     assert code == 1
-    assert "Run `ha-axi entity list --device device_three` to see a device's entities" in out
+    assert "Run `hass-axi entity list --device device_three` to see a device's entities" in out
 
     # And that line is runnable, which is the whole claim being made.
     listed_code, listed = run_cli(["entity", "list", "--device", "device_three"], installation_env)

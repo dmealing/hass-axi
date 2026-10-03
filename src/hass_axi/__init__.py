@@ -1,4 +1,4 @@
-"""ha-axi: an Agent eXperience Interface for Home Assistant."""
+"""hass-axi: an Agent eXperience Interface for Home Assistant."""
 
 from __future__ import annotations
 

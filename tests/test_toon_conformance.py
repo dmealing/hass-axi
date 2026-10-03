@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from ha_axi.toon import encode
+from hass_axi.toon import encode
 
 FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "toon-spec"
 ENCODE_ROOT = FIXTURE_ROOT / "encode"

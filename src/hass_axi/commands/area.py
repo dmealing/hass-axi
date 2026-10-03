@@ -1,4 +1,4 @@
-"""`ha-axi area` -- the area registry, which is WebSocket-only."""
+"""`hass-axi area` -- the area registry, which is WebSocket-only."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from ._common import (
 COMMAND = Command(
     name="area",
     summary="Read and update the area registry over the WebSocket API",
-    usage="usage: ha-axi area <subcommand> [flags]",
+    usage="usage: hass-axi area <subcommand> [flags]",
     subs=(
         Sub(name="list", summary="List areas with their entity counts", access=READ),
         Sub(
@@ -50,14 +50,14 @@ COMMAND = Command(
     ),
     notes=(
         "areas accept an area_id or a name anywhere <id|name> appears",
-        "deleting an area is deliberately not exposed here; use `ha-axi ws area.delete` if you mean it",
+        "deleting an area is deliberately not exposed here; use `hass-axi ws area.delete` if you mean it",
     ),
     examples=(
-        "ha-axi area list",
-        "ha-axi area get example_room",
-        "ha-axi area create --name 'Example Room'",
-        "ha-axi area update example_room --name 'Example Study'",
-        "ha-axi area update 'Example Room' --icon mdi:sofa",
+        "hass-axi area list",
+        "hass-axi area get example_room",
+        "hass-axi area create --name 'Example Room'",
+        "hass-axi area update example_room --name 'Example Study'",
+        "hass-axi area update 'Example Room' --icon mdi:sofa",
     ),
 )
 
@@ -102,7 +102,7 @@ def _list(ctx, parsed):
     if not areas:
         return {
             "areas": "0 areas defined in this installation",
-            "help": HelpBlock(["Run `ha-axi area create --name '<name>'` to add one"]),
+            "help": HelpBlock(["Run `hass-axi area create --name '<name>'` to add one"]),
         }
 
     counts, unassigned = _entity_counts(entities, devices, areas)
@@ -129,9 +129,9 @@ def _list(ctx, parsed):
         "areas": rows,
         "help": HelpBlock(
             [
-                "Run `ha-axi entity list --area <id|name>` to see what one area holds",
-                "Run `ha-axi area update <id|name> --name '<name>'` to rename one",
-                "Run `ha-axi entity list --area none` to find entities with no area",
+                "Run `hass-axi entity list --area <id|name>` to see what one area holds",
+                "Run `hass-axi area update <id|name> --name '<name>'` to rename one",
+                "Run `hass-axi entity list --area none` to find entities with no area",
             ]
         ),
     }
@@ -157,7 +157,7 @@ def _get(ctx, parsed):
             "devices": sum(1 for d in devices if d.get("area_id") == area_id),
             "aliases": list(area.get("aliases") or []),
         },
-        "help": HelpBlock([f"Run `ha-axi entity list --area {area_id}` to list its entities"]),
+        "help": HelpBlock([f"Run `hass-axi entity list --area {area_id}` to list its entities"]),
     }
 
 
@@ -166,7 +166,7 @@ def _create(ctx, parsed):
     if not name:
         raise UsageError(
             "--name is required",
-            help_lines=["Run `ha-axi area create --name 'Example Room'`"],
+            help_lines=["Run `hass-axi area create --name 'Example Room'`"],
             code="MISSING_NAME",
         )
     params = {"name": name}
@@ -197,7 +197,7 @@ def _create(ctx, parsed):
         "created": True,
         "help": HelpBlock(
             [
-                f"Run `ha-axi entity update <entity_id> --area {result.get('area_id', '')}` to fill it"
+                f"Run `hass-axi entity update <entity_id> --area {result.get('area_id', '')}` to fill it"
             ]
         ),
     }
@@ -209,7 +209,7 @@ def _update(ctx, parsed):
         parsed,
         ("--icon", "--clear-icon"),
         ("--floor", "--clear-floor"),
-        invocation=f"ha-axi area update {needle}",
+        invocation=f"hass-axi area update {needle}",
     )
 
     changes: dict = {}
@@ -228,8 +228,8 @@ def _update(ctx, parsed):
         raise UsageError(
             "nothing to update",
             help_lines=[
-                f"Run `ha-axi area update {needle} --name '<name>'` to rename it",
-                f"Run `ha-axi area update {needle} --icon mdi:sofa` to set its icon",
+                f"Run `hass-axi area update {needle} --name '<name>'` to rename it",
+                f"Run `hass-axi area update {needle} --icon mdi:sofa` to set its icon",
             ],
             code="NO_CHANGES",
         )

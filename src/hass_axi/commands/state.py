@@ -1,7 +1,7 @@
-"""`ha-axi state` -- entity states over the REST API.
+"""`hass-axi state` -- entity states over the REST API.
 
 State is the runtime view: what an entity is doing right now. The registry view
--- names, areas, platforms -- lives under `ha-axi entity`, which speaks the
+-- names, areas, platforms -- lives under `hass-axi entity`, which speaks the
 WebSocket API instead.
 """
 
@@ -31,7 +31,7 @@ DEFAULT_LIST_FIELDS = ["entity_id", "name", "state"]
 COMMAND = Command(
     name="state",
     summary="Read entity states from the Home Assistant REST API",
-    usage="usage: ha-axi state <subcommand> [flags]",
+    usage="usage: hass-axi state <subcommand> [flags]",
     subs=(
         Sub(
             name="list",
@@ -55,16 +55,16 @@ COMMAND = Command(
         ),
     ),
     notes=(
-        "state is the runtime view; run `ha-axi entity list` for registry names and areas",
+        "state is the runtime view; run `hass-axi entity list` for registry names and areas",
         "--area reads the WebSocket registry, where areas live; it costs one extra round-trip",
     ),
     examples=(
-        "ha-axi state list --domain light",
-        "ha-axi state list --area 'Example Room' --domain light",
-        "ha-axi state list --search lamp --limit 20",
-        "ha-axi state list --domain sensor --state unavailable",
-        "ha-axi state get light.example_lamp",
-        "ha-axi state get media_player.example_speaker --full",
+        "hass-axi state list --domain light",
+        "hass-axi state list --area 'Example Room' --domain light",
+        "hass-axi state list --search lamp --limit 20",
+        "hass-axi state list --domain sensor --state unavailable",
+        "hass-axi state get light.example_lamp",
+        "hass-axi state get media_player.example_speaker --full",
     ),
 )
 
@@ -128,19 +128,19 @@ def _list(ctx, parsed):
             "total": f"{total} entities in this installation",
             "help": HelpBlock(
                 [
-                    "Run `ha-axi state list` with no filters to see every entity",
-                    "Run `ha-axi entity list` to read the registry, which includes disabled entities",
+                    "Run `hass-axi state list` with no filters to see every entity",
+                    "Run `hass-axi entity list` to read the registry, which includes disabled entities",
                 ]
             ),
         }
 
     count = count_line(len(shown), matched, total, filtered=bool(scope))
 
-    help_lines = ["Run `ha-axi state get <entity_id>` for one entity's full attributes"]
+    help_lines = ["Run `hass-axi state get <entity_id>` for one entity's full attributes"]
     if len(shown) < matched:
-        help_lines.append(f"Run `ha-axi state list --limit {matched}` to see all {matched}")
+        help_lines.append(f"Run `hass-axi state list --limit {matched}` to see all {matched}")
     if not domains:
-        help_lines.append("Run `ha-axi state list --domain light` to narrow by domain")
+        help_lines.append("Run `hass-axi state list --domain light` to narrow by domain")
 
     return {
         "count": count,
@@ -185,7 +185,7 @@ def _get(ctx, parsed):
                 attributes[key], hint = truncate(
                     value,
                     PREVIEW_CHARS,
-                    f"Run `ha-axi state get {entity_id} --full` to see complete attributes",
+                    f"Run `hass-axi state get {entity_id} --full` to see complete attributes",
                 )
 
     doc = {

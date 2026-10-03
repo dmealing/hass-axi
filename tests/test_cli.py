@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from ha_axi import __version__
-from ha_axi.cli import COMMAND_ORDER, command_specs
+from hass_axi import __version__
+from hass_axi.cli import COMMAND_ORDER, command_specs
 
 
 def test_no_arguments_shows_live_state_not_a_manual(run_cli, rest_env):
@@ -30,7 +30,7 @@ def test_an_unconfigured_home_view_explains_how_to_configure_and_exits_non_zero(
     assert code == 1
     assert "HA_URL and HA_TOKEN not set" in out
     assert "export" not in out.lower() or "HA_URL" in out
-    assert "Run `ha-axi doctor`" in out
+    assert "Run `hass-axi doctor`" in out
 
 
 def test_a_partially_configured_home_view_names_only_what_is_missing(run_cli):
@@ -53,7 +53,7 @@ def test_root_help_lists_every_command(run_cli):
 def test_every_command_has_usable_help(run_cli, name):
     code, out = run_cli([name, "--help"], {})
     assert code == 0
-    assert out.startswith("usage: ha-axi")
+    assert out.startswith("usage: hass-axi")
     assert "examples:" in out
     assert command_specs()[name].summary in out
 
@@ -222,8 +222,8 @@ def test_a_healthy_doctor_carries_no_exit_code_key(installation_env):
     The end-to-end run lives in tests/test_cross_transport.py; this asserts the
     document shape the exit code is derived from.
     """
-    from ha_axi.cli import Context
-    from ha_axi.commands import doctor
+    from hass_axi.cli import Context
+    from hass_axi.commands import doctor
 
     doc = doctor.run(Context(installation_env), "doctor", None)
     assert doc["healthy"] is True
@@ -250,7 +250,7 @@ def test_help_still_works_as_a_flag_in_every_position(run_cli):
     for argv in (["entity", "--help"], ["entity", "list", "--help"], ["--help", "entity"]):
         code, out = run_cli(argv, {})
         assert code == 0, argv
-        assert out.startswith("usage: ha-axi"), argv
+        assert out.startswith("usage: hass-axi"), argv
 
 
 def test_a_usage_error_honours_json_after_the_subcommand(run_cli):
@@ -306,8 +306,8 @@ def test_ambiguous_and_unknown_lookups_share_one_exit_code(run_cli, ws_env, ws_s
 
 def test_an_unknown_ws_command_is_a_usage_error_from_either_entry_point(run_cli, ws_env):
     """The command table is static, so both paths report a malformed invocation."""
-    from ha_axi.errors import UsageError
-    from ha_axi.ws import WsClient
+    from hass_axi.errors import UsageError
+    from hass_axi.ws import WsClient
 
     code, out = run_cli(["ws", "nope"], ws_env)
     assert code == 2

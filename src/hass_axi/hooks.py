@@ -1,10 +1,10 @@
 """Session-lifecycle integration for the agents that support it.
 
-Ported from the shared AXI session-hook contract so ha-axi installs the same way
+Ported from the shared AXI session-hook contract so hass-axi installs the same way
 its sibling CLIs do: a SessionStart hook for Claude Code and Codex, and a managed
 ambient-context plugin for OpenCode.
 
-Installation happens only from `ha-axi setup hooks`, never as a side effect of an
+Installation happens only from `hass-axi setup hooks`, never as a side effect of an
 ordinary command.
 
 **What the hook runs is :data:`CONTEXT_COMMAND` and not the bare executable.**
@@ -15,8 +15,8 @@ machine that has the package and no installation. That is the correct answer for
 somebody who asked for live state, and the wrong thing to put at the start of
 every session: it fails for exactly the reader ambient context exists to help,
 and a harness is entitled to drop a non-zero hook's output. So the hook runs
-`ha-axi context`, which reads the environment and the command table and nothing
-else. See :mod:`ha_axi.commands.context`, which is where that argument is made
+`hass-axi context`, which reads the environment and the command table and nothing
+else. See :mod:`hass_axi.commands.context`, which is where that argument is made
 at length; the error taxonomy is untouched, because only the hook path changed.
 """
 
@@ -31,8 +31,14 @@ import sys
 import tempfile
 from pathlib import Path
 
-MARKER = "ha-axi"
-BINARY_NAMES = ("ha-axi",)
+MARKER = "hass-axi"
+BINARY_NAMES = ("hass-axi",)
+
+#: What this tool was called before the rename, and what every hook, marker and
+#: plugin it installed up to 0.7.x carries. Read only to adopt those entries;
+#: nothing is ever written under these names again.
+LEGACY_MARKER = "ha-axi"
+LEGACY_BINARY_NAMES = ("ha-axi",)
 
 #: The key that marks a JSON hook entry as one this installer wrote, read back by
 #: exact equality on its value. Deliberately not a substring of the command: a
@@ -47,7 +53,7 @@ MANAGED_KEY = "managed_by"
 CONTEXT_COMMAND = "context"
 
 DEFAULT_TIMEOUT_SECONDS = 10
-OPENCODE_MANAGED_PREFIX = "ha-axi managed opencode plugin:"
+OPENCODE_MANAGED_PREFIX = "hass-axi managed opencode plugin:"
 
 
 def write_atomic(path: Path, text: str) -> None:
@@ -145,28 +151,56 @@ def _is_unmarked_own_entry(hook) -> bool:
     marker key the sole test of ownership because no release of it had ever
     written a hook, so an unmarked entry there is necessarily a user's. Here
     every install up to 0.5.1 wrote an unmarked entry, so the same rule would
-    append a second one beside it on the next `ha-axi setup hooks` -- manufacturing
-    exactly the duplicate :func:`compute_hook_update` now collapses, on every
-    machine that had already followed the README.
+    append a second one beside it on the next `hass-axi setup hooks` --
+    manufacturing exactly the duplicate :func:`compute_hook_update` now
+    collapses, on every machine that had already followed the README.
 
     So an unmarked entry is adopted, but only in the exact shape those releases
-    could produce: the command is the executable and nothing else, which is what
-    those releases recorded and what :func:`current_executable` still returns. A
-    hook written from now on carries the argument as well, and is matched by its
-    marker rather than by its shape. A wrapper is more than either -- ``env
-    HA_URL=... ha-axi``, ``bash -c ...``, ``~/bin/ha-axi-wrapper.sh`` -- and
-    keeps its own basename or its own extra tokens either way, so none of them
-    answers to this. Adoption is one-way and happens once: the entry gains the
-    marker on that install and is matched by it forever after.
+    could produce: the command is the executable and nothing else. Those
+    releases were published as ``ha-axi``, so that is the basename this matches.
+    A wrapper is more than the executable -- ``env HA_URL=... ha-axi``,
+    ``bash -c ...``, ``~/bin/ha-axi-wrapper.sh`` -- and keeps its own basename
+    or its own extra tokens either way, so none of them answers to this.
+    Adoption is one-way and happens once: the entry gains the marker on that
+    install and is matched by it forever after.
     """
     if not isinstance(hook, dict) or MANAGED_KEY in hook:
         return False
     command = str(hook.get("command", "")).strip()
-    return bool(command) and Path(command).name in BINARY_NAMES
+    return bool(command) and Path(command).name in LEGACY_BINARY_NAMES
+
+
+def _is_renamed_own_entry(hook) -> bool:
+    """An entry this tool wrote while it was still called ``ha-axi``.
+
+    Releases from 0.5.1 to 0.7.x marked their entry ``managed_by: ha-axi`` and
+    ran ``ha-axi context``. After the rename that executable no longer exists,
+    so the entry is adopted and rewritten rather than left to fail at every
+    session start beside a new one.
+
+    **The marker alone is not enough, and that is the reason this predicate
+    reads the command too.** A different, unrelated tool is also published as
+    ``ha-axi`` -- the collision this rename exists to end -- and its installer
+    marks its own entries with the same string. Its hook runs a different
+    subcommand, so an entry is only ours if its command is exactly what this
+    tool wrote: one executable whose basename is ``ha-axi``, followed by
+    :data:`CONTEXT_COMMAND` and nothing else. Anything more is left alone.
+    """
+    if not isinstance(hook, dict) or hook.get(MANAGED_KEY) != LEGACY_MARKER:
+        return False
+    try:
+        tokens = shlex.split(str(hook.get("command", "")))
+    except ValueError:
+        return False
+    return (
+        len(tokens) == 2
+        and Path(tokens[0]).name in LEGACY_BINARY_NAMES
+        and tokens[1] == CONTEXT_COMMAND
+    )
 
 
 def _is_managed(hook) -> bool:
-    return _is_marked(hook) or _is_unmarked_own_entry(hook)
+    return _is_marked(hook) or _is_unmarked_own_entry(hook) or _is_renamed_own_entry(hook)
 
 
 def compute_hook_update(settings: dict, command: str, timeout: int) -> tuple:
@@ -319,7 +353,7 @@ def opencode_plugin_source(executable: str, timeout: int) -> str:
     """
     header = f"{OPENCODE_MANAGED_PREFIX} {MARKER}"
     return f"""// {header}
-// Generated by `ha-axi setup hooks`. Remove the managed marker above before editing.
+// Generated by `hass-axi setup hooks`. Remove the managed marker above before editing.
 import {{ spawn }} from "node:child_process";
 
 const executable = {json.dumps(executable)};
@@ -365,7 +399,7 @@ function runContext(cwd) {{
   }});
 }}
 
-export const HaAxiAmbientContextPlugin = async ({{ directory }}) => {{
+export const HassAxiAmbientContextPlugin = async ({{ directory }}) => {{
   const sessionCache = new Map();
   return {{
     "experimental.chat.system.transform": async (input, output) => {{
@@ -418,7 +452,41 @@ def install(
             report,
         )
     )
+    retired = _retire_legacy_opencode(
+        home / ".config" / "opencode" / "plugins" / f"axi-{LEGACY_MARKER}.js", report
+    )
+    if retired is not None:
+        report["targets"].append(retired)
     return report
+
+
+#: The first line of the OpenCode plugin this tool wrote while it was called
+#: ``ha-axi``. Matched as a whole line: the unrelated tool also published as
+#: ``ha-axi`` writes a plugin to the same path whose header begins with the same
+#: words and continues differently, and that file is not ours to delete.
+LEGACY_OPENCODE_HEADER = f"// {LEGACY_MARKER} managed opencode plugin: {LEGACY_MARKER}"
+
+
+def _retire_legacy_opencode(path: Path, report: dict) -> dict | None:
+    """Delete the plugin the pre-rename releases installed, if it is ours.
+
+    It spawns ``ha-axi context``, which no longer exists once the package is
+    renamed, so left in place it would inject an error at every OpenCode
+    session beside the new plugin's context. Returns a target row only when
+    there was something to retire, so a machine that never had one reports
+    exactly the targets it always did.
+    """
+    try:
+        if not path.is_file():
+            return None
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if not lines or lines[0].strip() != LEGACY_OPENCODE_HEADER:
+            return None
+        path.unlink()
+        return {"target": "opencode-legacy", "status": "removed"}
+    except OSError as exc:
+        report["errors"].append(f"{path}: {exc}")
+        return {"target": "opencode-legacy", "status": "failed"}
 
 
 def _install_json_hook(label: str, path: Path, command: str, timeout: int, report: dict) -> dict:

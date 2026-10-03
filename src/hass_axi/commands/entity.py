@@ -1,4 +1,4 @@
-"""`ha-axi entity` -- the entity registry, which is WebSocket-only.
+"""`hass-axi entity` -- the entity registry, which is WebSocket-only.
 
 The registry is where an entity's stable identity lives: its user-set name, the
 area it belongs to, the integration that supplied it. None of that is reachable
@@ -49,7 +49,7 @@ DEFAULT_LIST_FIELDS = ["entity_id", "name", "area"]
 COMMAND = Command(
     name="entity",
     summary="Read and update the entity registry over the WebSocket API",
-    usage="usage: ha-axi entity <subcommand> [flags]",
+    usage="usage: hass-axi entity <subcommand> [flags]",
     subs=(
         Sub(
             name="list",
@@ -93,12 +93,12 @@ COMMAND = Command(
         "entity_ids are not stable identity: filter by --area or --search, not by guessing ids",
     ),
     examples=(
-        "ha-axi entity list --area 'Example Room'",
-        "ha-axi entity list --domain light --fields entity_id,name,area,platform",
-        "ha-axi entity list --area none --limit 500",
-        "ha-axi entity list --device <device_id>",
-        "ha-axi entity get light.example_lamp",
-        "ha-axi entity update light.example_lamp --name 'Reading Lamp' --area example_room",
+        "hass-axi entity list --area 'Example Room'",
+        "hass-axi entity list --domain light --fields entity_id,name,area,platform",
+        "hass-axi entity list --area none --limit 500",
+        "hass-axi entity list --device <device_id>",
+        "hass-axi entity get light.example_lamp",
+        "hass-axi entity update light.example_lamp --name 'Reading Lamp' --area example_room",
     ),
 )
 
@@ -188,8 +188,8 @@ def _list(ctx, parsed):
             "total": f"{total} entries in the entity registry",
             "help": HelpBlock(
                 [
-                    "Run `ha-axi entity list` with no filters to see every entry",
-                    "Run `ha-axi area list` to see the areas that exist",
+                    "Run `hass-axi entity list` with no filters to see every entry",
+                    "Run `hass-axi area list` to see the areas that exist",
                 ]
             ),
         }
@@ -199,11 +199,11 @@ def _list(ctx, parsed):
     shown = rows[:limit]
 
     count = count_line(len(shown), matched, total, filtered=bool(scope))
-    help_lines = ["Run `ha-axi entity get <entity_id>` for one entry in full"]
+    help_lines = ["Run `hass-axi entity get <entity_id>` for one entry in full"]
     if len(shown) < matched:
-        help_lines.append(f"Run `ha-axi entity list --limit {matched}` to see all {matched}")
+        help_lines.append(f"Run `hass-axi entity list --limit {matched}` to see all {matched}")
     help_lines.append(
-        'Run `ha-axi entity update <entity_id> --name "<name>" --area <id|name>` to change one'
+        'Run `hass-axi entity update <entity_id> --name "<name>" --area <id|name>` to change one'
     )
 
     return {"count": count, "entities": project(shown, fields), "help": HelpBlock(help_lines)}
@@ -216,8 +216,8 @@ def _find(entities: list, entity_id: str) -> dict:
     raise NotFound(
         f"no registry entry for {entity_id}",
         help_lines=[
-            f"Run `ha-axi entity list --search {entity_id.split('.')[-1]}` to find it",
-            "Run `ha-axi state get <entity_id>` if the entity exists but is not registered",
+            f"Run `hass-axi entity list --search {entity_id.split('.')[-1]}` to find it",
+            "Run `hass-axi state get <entity_id>` if the entity exists but is not registered",
         ],
         code="NO_SUCH_ENTITY",
     )
@@ -276,7 +276,7 @@ def _update(ctx, parsed):
         ("--name", "--clear-name"),
         ("--icon", "--clear-icon"),
         ("--area", "--clear-area"),
-        invocation=f"ha-axi entity update {entity_id}",
+        invocation=f"hass-axi entity update {entity_id}",
     )
 
     changes: dict = {}
@@ -298,8 +298,8 @@ def _update(ctx, parsed):
         raise UsageError(
             "nothing to update",
             help_lines=[
-                f'Run `ha-axi entity update {entity_id} --name "<name>"` to set the name',
-                f"Run `ha-axi entity update {entity_id} --area <id|name>` to move it",
+                f'Run `hass-axi entity update {entity_id} --name "<name>"` to set the name',
+                f"Run `hass-axi entity update {entity_id} --area <id|name>` to move it",
             ],
             code="NO_CHANGES",
         )

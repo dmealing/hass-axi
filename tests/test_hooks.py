@@ -15,7 +15,7 @@ that has the package, before anybody has decided to use the tool -- so the
 no-argument home view cannot be it: that view needs a credential, opens a
 connection, prints the installation's address, and exits **1** when nothing is
 configured, which is the state of exactly the machine ambient context exists to
-help. The claims that make `ha-axi context` safe there are asserted rather than
+help. The claims that make `hass-axi context` safe there are asserted rather than
 described in a docstring:
 
 - it reaches Home Assistant **zero times**, asserted on the doubles' request log
@@ -35,9 +35,9 @@ import sys
 
 import pytest
 
-from ha_axi import cli, hooks
+from hass_axi import cli, hooks
 
-EXECUTABLE = "ha-axi"
+EXECUTABLE = "hass-axi"
 
 #: What a JSON hook entry records: the executable *and* the argument.
 HOOK_LINE = f"{EXECUTABLE} {hooks.CONTEXT_COMMAND}"
@@ -79,11 +79,11 @@ def test_install_creates_hooks_for_every_default_target(tmp_path):
         "type": "command",
         "command": HOOK_LINE,
         "timeout": hooks.DEFAULT_TIMEOUT_SECONDS,
-        "managed_by": "ha-axi",
+        "managed_by": "hass-axi",
     }
     assert (tmp_path / ".codex" / "hooks.json").exists()
     assert "hooks = true" in (tmp_path / ".codex" / "config.toml").read_text(encoding="utf-8")
-    assert (tmp_path / ".config" / "opencode" / "plugins" / "axi-ha-axi.js").exists()
+    assert (tmp_path / ".config" / "opencode" / "plugins" / "axi-hass-axi.js").exists()
 
 
 def test_repeat_installs_with_the_same_path_are_no_ops(tmp_path):
@@ -93,10 +93,10 @@ def test_repeat_installs_with_the_same_path_are_no_ops(tmp_path):
 
 
 def test_a_changed_executable_path_is_repaired_not_duplicated(tmp_path):
-    hooks.install(tmp_path, command="/old/bin/ha-axi")
-    hooks.install(tmp_path, command="/new/bin/ha-axi")
+    hooks.install(tmp_path, command="/old/bin/hass-axi")
+    hooks.install(tmp_path, command="/new/bin/hass-axi")
     assert commands_in(read(tmp_path / ".claude" / "settings.json")) == [
-        f"/new/bin/ha-axi {hooks.CONTEXT_COMMAND}"
+        f"/new/bin/hass-axi {hooks.CONTEXT_COMMAND}"
     ]
 
 
@@ -188,9 +188,9 @@ def test_a_second_stale_managed_entry_gives_way_not_reported_current(tmp_path):
         "type": "command",
         "command": HOOK_LINE,
         "timeout": hooks.DEFAULT_TIMEOUT_SECONDS,
-        "managed_by": "ha-axi",
+        "managed_by": "hass-axi",
     }
-    stale = {**managed, "command": f"/old/bin/ha-axi {hooks.CONTEXT_COMMAND}"}
+    stale = {**managed, "command": f"/old/bin/hass-axi {hooks.CONTEXT_COMMAND}"}
     settings = write_settings(
         tmp_path, {"hooks": {"SessionStart": [{"matcher": "", "hooks": [managed, stale]}]}}
     )
@@ -207,7 +207,7 @@ def test_a_stale_entry_in_a_later_group_is_repaired_too(tmp_path):
         "type": "command",
         "command": HOOK_LINE,
         "timeout": hooks.DEFAULT_TIMEOUT_SECONDS,
-        "managed_by": "ha-axi",
+        "managed_by": "hass-axi",
     }
     settings = write_settings(
         tmp_path,
@@ -218,7 +218,7 @@ def test_a_stale_entry_in_a_later_group_is_repaired_too(tmp_path):
                     {
                         "matcher": "startup",
                         "hooks": [
-                            {**managed, "command": f"/old/bin/ha-axi {hooks.CONTEXT_COMMAND}"}
+                            {**managed, "command": f"/old/bin/hass-axi {hooks.CONTEXT_COMMAND}"}
                         ],
                     },
                 ]
@@ -259,7 +259,7 @@ def test_a_legacy_lowercase_hook_entry_is_cleaned_up(tmp_path):
         {
             "hooks": {
                 "session_start": [
-                    {"type": "command", "command": EXECUTABLE},
+                    {"type": "command", "command": "ha-axi"},
                     {"type": "command", "command": wrapper},
                 ]
             }
@@ -271,8 +271,71 @@ def test_a_legacy_lowercase_hook_entry_is_cleaned_up(tmp_path):
     assert commands_in(data) == [HOOK_LINE]
 
 
+def _session_start(*entries):
+    return {"hooks": {"SessionStart": [{"matcher": "", "hooks": list(entries)}]}}
+
+
+def test_a_hook_written_under_the_old_name_is_adopted_and_repointed(tmp_path):
+    """0.5.1 to 0.7.x marked their entry `ha-axi` and ran `ha-axi context`.
+
+    That executable is gone after the rename, so the entry is rewritten in
+    place -- not left to fail at every session start beside a new one.
+    """
+    legacy = {
+        "type": "command",
+        "command": f"/old/bin/ha-axi {hooks.CONTEXT_COMMAND}",
+        "timeout": 10,
+        "managed_by": "ha-axi",
+    }
+    settings = write_settings(tmp_path, _session_start(legacy))
+    hooks.install(tmp_path, command=EXECUTABLE)
+    data = read(settings)
+    assert commands_in(data) == [HOOK_LINE]
+    assert data["hooks"]["SessionStart"][0]["hooks"][0][hooks.MANAGED_KEY] == hooks.MARKER
+
+
+def test_the_other_tool_published_as_ha_axi_keeps_its_hook(tmp_path):
+    """An unrelated `ha-axi` marks its entries with the same string.
+
+    Its hook runs a different subcommand, so the marker alone must not be read
+    as ownership: claiming it would delete another tool's hook from the user's
+    own settings and report the target `installed`.
+    """
+    other = {
+        "type": "command",
+        "command": "ha-axi ping --ambient",
+        "timeout": 10,
+        "managed_by": "ha-axi",
+    }
+    settings = write_settings(tmp_path, _session_start(other))
+    hooks.install(tmp_path, command=EXECUTABLE)
+    assert commands_in(read(settings)) == ["ha-axi ping --ambient", HOOK_LINE]
+
+
+def test_the_old_opencode_plugin_is_retired_when_it_is_ours(tmp_path):
+    plugins = tmp_path / ".config" / "opencode" / "plugins"
+    plugins.mkdir(parents=True)
+    old = plugins / "axi-ha-axi.js"
+    old.write_text("// ha-axi managed opencode plugin: ha-axi\nconst x = 1;\n", encoding="utf-8")
+    report = hooks.install(tmp_path, command=EXECUTABLE)
+    assert not old.exists()
+    assert {"target": "opencode-legacy", "status": "removed"} in report["targets"]
+    assert (plugins / "axi-hass-axi.js").exists()
+
+
+def test_the_other_tools_opencode_plugin_at_the_old_path_is_left_alone(tmp_path):
+    plugins = tmp_path / ".config" / "opencode" / "plugins"
+    plugins.mkdir(parents=True)
+    theirs = plugins / "axi-ha-axi.js"
+    body = "// ha-axi managed opencode plugin: some other generator\n"
+    theirs.write_text(body, encoding="utf-8")
+    report = hooks.install(tmp_path, command=EXECUTABLE)
+    assert theirs.read_text(encoding="utf-8") == body
+    assert all(t["target"] != "opencode-legacy" for t in report["targets"])
+
+
 def test_an_unmanaged_opencode_plugin_is_never_overwritten(tmp_path):
-    plugin = tmp_path / ".config" / "opencode" / "plugins" / "axi-ha-axi.js"
+    plugin = tmp_path / ".config" / "opencode" / "plugins" / "axi-hass-axi.js"
     plugin.parent.mkdir(parents=True)
     plugin.write_text("// hand written\n", encoding="utf-8")
     report = hooks.install(tmp_path, command=EXECUTABLE)
@@ -281,7 +344,7 @@ def test_an_unmanaged_opencode_plugin_is_never_overwritten(tmp_path):
 
 
 def test_setup_hooks_reports_failures_with_a_non_zero_exit(run_cli, tmp_path):
-    plugin = tmp_path / ".config" / "opencode" / "plugins" / "axi-ha-axi.js"
+    plugin = tmp_path / ".config" / "opencode" / "plugins" / "axi-hass-axi.js"
     plugin.parent.mkdir(parents=True)
     plugin.write_text("// hand written\n", encoding="utf-8")
     code, out = run_cli(["setup", "hooks", "--home", str(tmp_path)], {})
@@ -384,14 +447,14 @@ def test_an_array_of_features_tables_is_refused_rather_than_corrupted(tmp_path):
 
 
 def test_portable_command_prefers_a_path_entry_resolving_to_this_executable(tmp_path):
-    binary = tmp_path / "ha-axi"
+    binary = tmp_path / "hass-axi"
     binary.write_text("#!/bin/sh\n", encoding="utf-8")
     binary.chmod(0o755)
-    assert hooks.portable_command(str(binary), [str(tmp_path)]) == "ha-axi"
+    assert hooks.portable_command(str(binary), [str(tmp_path)]) == "hass-axi"
 
 
 def test_portable_command_falls_back_to_the_absolute_path(tmp_path):
-    binary = tmp_path / "ha-axi"
+    binary = tmp_path / "hass-axi"
     binary.write_text("#!/bin/sh\n", encoding="utf-8")
     assert hooks.portable_command(str(binary), []) == str(binary)
 
@@ -406,8 +469,8 @@ def test_the_opencode_plugin_carries_a_managed_marker_and_the_context_argument()
 
 def test_a_path_with_a_space_survives_being_joined_with_the_argument():
     """A bare executable was one token and needed no quoting; a command line is not."""
-    line = hooks.hook_command("/opt/an example/bin/ha-axi")
-    assert shlex.split(line) == ["/opt/an example/bin/ha-axi", hooks.CONTEXT_COMMAND]
+    line = hooks.hook_command("/opt/an example/bin/hass-axi")
+    assert shlex.split(line) == ["/opt/an example/bin/hass-axi", hooks.CONTEXT_COMMAND]
 
 
 def test_the_installed_hook_runs_the_context_command_not_the_home_view(tmp_path):
@@ -473,7 +536,7 @@ def test_the_context_command_names_which_variables_are_set_and_never_their_value
 
 def test_the_context_command_reports_a_closed_read_only_gate(run_cli, rest_env):
     """An agent that cannot see a closed gate plans writes it will never be allowed to make."""
-    from ha_axi.readonly import ENV_VAR
+    from hass_axi.readonly import ENV_VAR
 
     assert "read_only" not in run_cli(["context"], rest_env)[1]
     code, out = run_cli(["context"], {**rest_env, ENV_VAR: "1"})

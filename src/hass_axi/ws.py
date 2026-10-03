@@ -41,7 +41,7 @@ class WsCommand:
     """One WebSocket command, declared once and reused by every caller.
 
     ``access`` is the read-only classification, and it defaults to ``None`` for
-    the same reason :class:`ha_axi.argspec.Sub` does: an unclassified command
+    the same reason :class:`hass_axi.argspec.Sub` does: an unclassified command
     is refused rather than sent, and the sweep in ``tests/test_read_only.py``
     fails on the absence. ``DYNAMIC`` has no meaning here -- the type is fixed
     by the declaration, so no argument is left to decide anything.
@@ -71,7 +71,7 @@ def _cmd(name, type_, summary, required=(), optional=(), access=None) -> WsComma
 
 
 #: The command table. Every registry operation the CLI exposes routes through
-#: here, and so does `ha-axi ws <name>`, which is what makes the surface
+#: here, and so does `hass-axi ws <name>`, which is what makes the surface
 #: extensible without touching the transport.
 #:
 #: Every entry classifies itself for the read-only gate. The classification is
@@ -159,7 +159,7 @@ REGISTRY: dict = {
 #: Two mappings are the point of the exercise:
 #:
 #: - ``unknown_command`` is a **not_found**, and it gets a code of its own.
-#:   Uppercased it became ``UNKNOWN_COMMAND``, which is what `ha-axi` already
+#:   Uppercased it became ``UNKNOWN_COMMAND``, which is what `hass-axi` already
 #:   calls a command *this CLI* does not have -- one string for "read `--help`"
 #:   and for "this Home Assistant version has no such command", which are
 #:   opposite next moves.
@@ -240,7 +240,7 @@ def _connect_error(exc: Exception) -> AxiError:
     if isinstance(exc, (TimeoutError, socket.timeout)):
         return ConnectionFailed(
             f"timed out opening a WebSocket to Home Assistant: {exc}",
-            help_lines=["Raise the limit with `ha-axi --timeout 60 <command>`"],
+            help_lines=["Raise the limit with `hass-axi --timeout 60 <command>`"],
             code="TIMEOUT",
         )
     status = _handshake_status(exc)
@@ -268,7 +268,7 @@ def _connect_error(exc: Exception) -> AxiError:
             "there is no WebSocket API at this URL (HTTP 404)",
             help_lines=[
                 "Confirm HA_URL points at the Home Assistant root, not at /api",
-                "Run `ha-axi doctor` to see whether the REST API answers at the same URL",
+                "Run `hass-axi doctor` to see whether the REST API answers at the same URL",
             ],
             code="NO_WEBSOCKET_API",
         )
@@ -277,7 +277,7 @@ def _connect_error(exc: Exception) -> AxiError:
             f"Home Assistant is not serving the WebSocket API right now (HTTP {status})",
             help_lines=[
                 "Retry the command; an instance answers this way while it restarts",
-                "Run `ha-axi doctor` if it keeps answering this way",
+                "Run `hass-axi doctor` if it keeps answering this way",
             ],
             code="UNAVAILABLE",
         )
@@ -295,7 +295,7 @@ def _connect_error(exc: Exception) -> AxiError:
             f"could not open a WebSocket to Home Assistant: {exc}",
             help_lines=[
                 "Check HA_URL points at a reachable Home Assistant instance",
-                "Run `ha-axi doctor` to test both the REST and WebSocket connections",
+                "Run `hass-axi doctor` to test both the REST and WebSocket connections",
             ],
             code="UNREACHABLE",
         )
@@ -363,7 +363,7 @@ class WsClient:
         except ImportError:  # pragma: no cover - dependency is declared in pyproject
             raise ConnectionFailed(
                 "the websockets package is required for registry commands",
-                help_lines=["Install it with `pip install 'ha-axi'` or `pip install websockets`"],
+                help_lines=["Install it with `pip install 'hass-axi'` or `pip install websockets`"],
                 code="MISSING_DEPENDENCY",
             ) from None
 
@@ -508,12 +508,12 @@ class WsClient:
         command = REGISTRY.get(name)
         if command is None:
             # Exit 2: the command table is static, so this is a malformed
-            # invocation, matching how `ha-axi ws <name>` rejects the same thing.
+            # invocation, matching how `hass-axi ws <name>` rejects the same thing.
             raise UsageError(
                 f"unknown websocket command: {name}",
                 help_lines=[
                     f"declared commands: {', '.join(sorted(REGISTRY))}",
-                    "Run `ha-axi ws --list` to see each command's parameters",
+                    "Run `hass-axi ws --list` to see each command's parameters",
                 ],
                 code="NO_SUCH_COMMAND",
             )
@@ -547,9 +547,9 @@ class WsClient:
             return NotFound(
                 f"this Home Assistant has no WebSocket command `{type_}`",
                 help_lines=[
-                    "Run `ha-axi ws --list` to see the commands this CLI declares",
+                    "Run `hass-axi ws --list` to see the commands this CLI declares",
                     "A command removed or not yet added upstream answers this way; "
-                    "check the instance version with `ha-axi doctor`",
+                    "check the instance version with `hass-axi doctor`",
                 ],
                 code="NO_SUCH_WS_COMMAND",
             )
@@ -558,7 +558,7 @@ class WsClient:
         if code == "INVALID_FORMAT":
             return ApiError(
                 f"{type_} rejected the arguments: {message}",
-                help_lines=["Run `ha-axi ws --list` to see each command's parameters"],
+                help_lines=["Run `hass-axi ws --list` to see each command's parameters"],
                 code="INVALID_FORMAT",
             )
         if code == "TIMEOUT":
@@ -571,8 +571,8 @@ class WsClient:
             return ApiError(
                 f"{type_} reused a message id: {message}",
                 help_lines=[
-                    "This is a bug in ha-axi; the connection cannot be reused after it",
-                    "Report it at https://github.com/dmealing/ha-axi/issues",
+                    "This is a bug in hass-axi; the connection cannot be reused after it",
+                    "Report it at https://github.com/dmealing/hass-axi/issues",
                 ],
                 code="ID_REUSE",
             )

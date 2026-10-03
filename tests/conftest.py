@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from ha_axi import output
+from hass_axi import output
 
 #: An obviously-synthetic token. It is not a JWT and grants nothing.
 FAKE_TOKEN = "example-test-token-not-a-real-credential"
@@ -591,7 +591,7 @@ DEVICE_REGISTRY = [
 # code with `axi_toolkit.ha.services`, the reader the client uses: a double that
 # took its reading of the model from the client could only ever prove the client
 # agrees with itself. That the reader now ships in a shared package rather than
-# in `ha_axi` changes nothing here -- it is still the client's reading, and the
+# in `hass_axi` changes nothing here -- it is still the client's reading, and the
 # point of the second opinion is that it is arrived at independently.
 
 
@@ -665,7 +665,7 @@ def displayed_name(entry) -> str:
     """The name Home Assistant displays for a registry entry.
 
     A second opinion, written from `helpers/entity_registry` rather than taken
-    from `ha_axi.commands._common`: a double that read the rule off the client
+    from `hass_axi.commands._common`: a double that read the rule off the client
     could only ever prove the client agrees with itself, and this is the rule the
     client got wrong. `_async_get_full_entity_name` is called with
     `parts=(DEVICE, ENTITY)` and `use_legacy_naming=True`, so a `name` somebody
@@ -728,7 +728,7 @@ RESULTING_STATE = {"turn_on": "on", "turn_off": "off"}
 
 #: Every key each modelled WebSocket command accepts, beyond `id` and `type`.
 #:
-#: Declared here rather than imported from ``ha_axi.ws.REGISTRY`` on purpose: a
+#: Declared here rather than imported from ``hass_axi.ws.REGISTRY`` on purpose: a
 #: double that takes its schema from the client can only ever prove the client
 #: agrees with itself. Home Assistant validates each command against a
 #: voluptuous schema that defaults to ``PREVENT_EXTRA``, so an undeclared key
@@ -789,7 +789,7 @@ def extended_entry(entry: dict) -> dict:
     `RegistryEntry.extended_dict` is `as_partial_dict` plus five keys, so the two
     reads of the same entity are not the same shape -- and an entity with no
     aliases comes back as `[None]`, not `[]`, because the empty alias is
-    serialised rather than dropped. Nothing in `ha-axi` reads any of this today;
+    serialised rather than dropped. Nothing in `hass-axi` reads any of this today;
     it is here so that a client which starts to has something honest to read.
     """
     return {
@@ -1077,7 +1077,7 @@ class FakeRestServer:
                             # `entity_service_call` raises `ServiceNotSupported`,
                             # a `HomeAssistantError`, which reaches the wire as a
                             # bodyless 500. The status is deliberately not the
-                            # point and neither is the body: ha-axi re-derives
+                            # point and neither is the body: hass-axi re-derives
                             # every refusal from the model, and this is what makes
                             # that the only thing it *can* do.
                             return self._server_error()
@@ -1488,8 +1488,10 @@ class FakeInstallation:
 @pytest.fixture(autouse=True)
 def _clean_secrets():
     output.reset_secrets()
+    output.reset_notices()
     yield
     output.reset_secrets()
+    output.reset_notices()
 
 
 @pytest.fixture
@@ -1536,7 +1538,7 @@ def installation_env(installation):
 @pytest.fixture
 def run_cli(capsys):
     """Invoke the CLI exactly as a shell would and return (exit code, stdout)."""
-    from ha_axi.cli import main
+    from hass_axi.cli import main
 
     def invoke(argv, environ=None):
         capsys.readouterr()
