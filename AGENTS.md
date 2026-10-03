@@ -1264,12 +1264,13 @@ A change that makes one of those fail is a regression in the guard, not a discov
   last release tag. It deliberately does **not** `needs:` the release-please job — it has to fail on
   its own account, including on a run where release-please itself errored. It exists because a hook
   cannot see a message typed into GitHub's squash-merge box.
-- `scripts/ci-local.sh --only commits` runs the same audit on every gate run, and `ci.yml` calls it
-  nightly, so an allowance that has outlived its cause surfaces without waiting for a merge; `ci.yml`
-  also installs `node` in the `test` job so the agreement between the engines is enforced rather
-  than skipped, which a local run does only where `node` is on `PATH`. With Actions disabled the
-  nightly runs nowhere, and that matters more than it looks now that the audit reads pull request
-  bodies: a body edited a week after the merge changes what
+- `scripts/ci-local.sh --only commits` runs the same audit on every gate run — without a GitHub
+  token the git-side half still runs and only the pull request bodies go unread, which its SKIP
+  line says — and `ci.yml` calls it nightly, so an allowance that has outlived its cause surfaces
+  without waiting for a merge; `ci.yml` also installs `node` in the `test` job so the agreement
+  between the engines is enforced rather than skipped, which a local run does only where `node` is
+  on `PATH`. With Actions disabled the nightly runs nowhere, and that matters more than it looks
+  now that the audit reads pull request bodies: a body edited a week after the merge changes what
   the next release contains, with nothing else having run in between.
 - `.github/workflows/hygiene.yml` gained a step, which is the one exception to "keep this workflow
   to the one cheap job". It is not coverage for its own sake: it checks the pull request body, which

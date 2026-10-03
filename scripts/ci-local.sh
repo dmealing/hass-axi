@@ -10,8 +10,8 @@
 # Sections, in the order a bare run executes them:
 #
 #   leakcheck  scripts/leakcheck.py --demo, then the scan of every tracked file
-#   commits    scripts/commitcheck.py --demo, then --since-release
-#              --pull-requests require (needs a GitHub token; see below)
+#   commits    scripts/commitcheck.py --demo, then --since-release with
+#              --pull-requests require, or auto with no GitHub token (see below)
 #   lint       ruff check . && ruff format --check .
 #   test       pytest, once, on the interpreter that built .venv
 #   skill      hass-axi setup skill --check
@@ -33,8 +33,10 @@
 # THE TOKEN. `commits` reads pull request bodies from GitHub, because a body can
 # replace a commit message outright (AGENTS.md, "Releasing"). The token comes
 # from GITHUB_TOKEN, then GH_TOKEN, then `gh auth token`. When none can be
-# obtained, the --since-release audit prints a SKIP line and the section passes
-# on its --demo alone. That is a narrower check, and the SKIP line says so.
+# obtained the --since-release audit still runs, over every git-side message,
+# under --pull-requests auto: only the pull-request-body half is skipped, the
+# SKIP line says so, and commitcheck prints its own NOT-consulted note beside
+# the verdict.
 #
 # NOT COVERED. hygiene.yml's pull request title and body leak scan
 # (`leakcheck.py --pull-request N`) has no local home: the text it scans exists
@@ -89,11 +91,12 @@ sec_commits() {
   python3 scripts/commitcheck.py --demo
   # Ask commitcheck's own resolver whether a token exists, so the order it
   # tries them in is written once.
-  if ! python3 -c 'import sys; sys.path.insert(0, "scripts"); import commitcheck; sys.exit(not commitcheck.github_token())'; then
-    echo "SKIP: commitcheck --since-release: no GitHub token (GITHUB_TOKEN, GH_TOKEN, gh auth token)"
-    return 0
+  if python3 -c 'import sys; sys.path.insert(0, "scripts"); import commitcheck; sys.exit(not commitcheck.github_token())'; then
+    python3 scripts/commitcheck.py --since-release --pull-requests require
+  else
+    echo "SKIP: pull request bodies not consulted: no GitHub token (GITHUB_TOKEN, GH_TOKEN, gh auth token)"
+    python3 scripts/commitcheck.py --since-release --pull-requests auto
   fi
-  python3 scripts/commitcheck.py --since-release --pull-requests require
 }
 
 sec_lint() {
