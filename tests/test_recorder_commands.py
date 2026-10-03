@@ -394,21 +394,6 @@ def test_missing_buckets_between_two_are_counted_but_the_trailing_edge_is_not(
     ]
 
 
-def test_buckets_are_printed_on_request(run_cli, ws_env):
-    code, doc = as_json(
-        run_cli, ["statistics", "get", "sensor.example_temperature", "--buckets"], ws_env
-    )
-    assert code == 0
-    series = doc["statistics"][0]["series"]
-    assert len(series) == 24
-    assert series[0] == {
-        "start": "2026-01-01T00:00:00+00:00",
-        "mean": 20.0,
-        "min": 19.5,
-        "max": 20.5,
-    }
-
-
 def test_a_circular_statistic_is_averaged_as_an_angle(run_cli, ws_env, ws_server):
     ws_server.statistics_meta.append(
         {

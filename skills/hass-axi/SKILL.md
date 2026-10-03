@@ -116,7 +116,7 @@ Read recorder statistics: a total for meters, an average with min and max otherw
 ```sh
 hass-axi statistics list --kind sum
 hass-axi statistics get sensor.example_legacy_meter --start 7d
-hass-axi statistics get sensor.example_temperature --start 24h --buckets
+hass-axi statistics get sensor.example_temperature --start 24h
 ```
 
 - a sum statistic (an energy or water meter) reports its total over the window; a mean statistic (power, temperature) reports its average with min and max

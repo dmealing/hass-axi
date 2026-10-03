@@ -80,7 +80,6 @@ COMMAND = Command(
                 ),
                 Flag("--end", "<age|time>", note="default now"),
                 Flag("--period", "<5minute|hour|day|week|month>", note="default by window"),
-                Flag("--buckets", boolean=True, note="also print every bucket"),
             ),
         ),
     ),
@@ -97,7 +96,7 @@ COMMAND = Command(
     examples=(
         "hass-axi statistics list --kind sum",
         "hass-axi statistics get sensor.example_legacy_meter --start 7d",
-        "hass-axi statistics get sensor.example_temperature --start 24h --buckets",
+        "hass-axi statistics get sensor.example_temperature --start 24h",
     ),
 )
 
@@ -265,7 +264,6 @@ def _get(ctx, parsed):
             buckets.get(sid) or [],
             start,
             period,
-            parsed.get("buckets"),
         )
         for sid in requested
     ]
@@ -274,8 +272,6 @@ def _get(ctx, parsed):
         "statistics": rows,
     }
     help_lines = []
-    if not parsed.get("buckets") and any(row["buckets"] for row in rows):
-        help_lines.append("Run again with `--buckets` to see every bucket")
     if any(row.get("caveats") for row in rows):
         help_lines.append(
             "Caveats describe the buckets; the numbers above are not adjusted for them"
@@ -292,7 +288,7 @@ def _round(value: float) -> float:
     return round(value, 3)
 
 
-def summarize(meta: dict, rows: list, start, period: str, with_buckets: bool = False) -> dict:
+def summarize(meta: dict, rows: list, start, period: str) -> dict:
     """One statistic's summary over its buckets, with what the buckets show about themselves."""
     kind = kind_of(meta)
     unit = unit_of(meta)
@@ -336,15 +332,6 @@ def summarize(meta: dict, rows: list, start, period: str, with_buckets: bool = F
         caveats.append(gap)
     if caveats:
         summary["caveats"] = caveats
-    if with_buckets:
-        keys = ["change", "state"] if kind == "sum" else ["mean", "min", "max"]
-        summary["series"] = [
-            {
-                "start": _window.iso(_window.parse_timestamp(r.get("start"))),
-                **{k: _number(r.get(k)) for k in keys},
-            }
-            for r in rows
-        ]
     return summary
 
 
