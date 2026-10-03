@@ -17,16 +17,16 @@ Two conventions in this file are deliberate, and both are borrowed from
 ``tests/test_read_only.py`` for the reasons written down there.
 
 **The codes and the class names are written out as literals**, not imported
-from :mod:`ha_axi.errors`. They are the contract an agent switches on; a test
+from :mod:`hass_axi.errors`. They are the contract an agent switches on; a test
 that imported them would agree with a rename that broke every caller, the same
 way a double that imports the client's own table can only prove the client
 agrees with itself.
 
 **Everything that needs the new module members imports them inside the test
-body.** At the commit before this change :data:`ha_axi.errors.CODES` does not
+body.** At the commit before this change :data:`hass_axi.errors.CODES` does not
 exist, so a module-level import would collapse the whole file into one
 collection error and hide how much of it the change is actually responsible
-for. :mod:`ha_axi.cli` predates the change and is imported normally, so the
+for. :mod:`hass_axi.cli` predates the change and is imported normally, so the
 parametrised sweeps still enumerate the real command table at collection time.
 """
 
@@ -43,13 +43,13 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 from conftest import FAKE_TOKEN
-from ha_axi import cli
+from hass_axi import cli
 
-SOURCE_ROOT = pathlib.Path(__file__).resolve().parent.parent / "src" / "ha_axi"
+SOURCE_ROOT = pathlib.Path(__file__).resolve().parent.parent / "src" / "hass_axi"
 README = pathlib.Path(__file__).resolve().parent.parent / "README.md"
 
 #: The error types whose construction must name a code. Written out rather than
-#: discovered by walking `ha_axi.errors`, so a new subclass has to be added here
+#: discovered by walking `hass_axi.errors`, so a new subclass has to be added here
 #: on purpose and cannot slip past the sweep by being new.
 ERROR_TYPES = frozenset(
     {
@@ -78,7 +78,7 @@ INTERNAL = "internal"
 
 def errors():
     """The module under test, imported late -- see this file's docstring."""
-    from ha_axi import errors as module
+    from hass_axi import errors as module
 
     return module
 
@@ -180,7 +180,7 @@ def test_the_websocket_translation_table_only_names_declared_codes():
     written at the raise site, so it is the one place a code could re-enter the
     source without the constructor sweep seeing it.
     """
-    from ha_axi import ws
+    from hass_axi import ws
 
     declared = set(errors().CODES)
     assert set(ws.WS_ERROR_CODES.values()) <= declared
@@ -425,8 +425,8 @@ def test_a_timeout_is_one_fault_however_the_exchange_ran_out_of_time():
     """
     import urllib.error
 
-    from ha_axi.config import load
-    from ha_axi.rest import RestClient
+    from hass_axi.config import load
+    from hass_axi.rest import RestClient
 
     client = RestClient(load({"HA_URL": "https://homeassistant.example.com", "HA_TOKEN": "x" * 40}))
     wrapped = client._url_error(urllib.error.URLError(TimeoutError("timed out")))
@@ -516,6 +516,12 @@ INVOCATIONS = {
     ("state", "get"): ["state", "get", "light.example_ceiling"],
     ("template", "render"): ["template", "render", "--template", "{{ 1 + 1 }}"],
     ("ws", "ws"): ["ws", "entity.list"],
+    ("ping", "ping"): ["ping"],
+    ("sensor", "list"): ["sensor", "list"],
+    ("history", "get"): ["history", "get", "light.example_lamp"],
+    ("logbook", "get"): ["logbook", "get"],
+    ("statistics", "list"): ["statistics", "list"],
+    ("statistics", "get"): ["statistics", "get", "sensor.example_legacy_meter"],
 }
 
 #: The subcommands that never reach Home Assistant. Named rather than inferred,
@@ -696,7 +702,7 @@ def test_a_read_only_refusal_is_a_usage_class_and_keeps_its_own_code(run_cli, ws
     """
     code, out = run_cli(
         ["entity", "update", "light.example_ceiling", "--name", "Renamed"],
-        {**ws_env, "HA_AXI_READ_ONLY": "1"},
+        {**ws_env, "HASS_AXI_READ_ONLY": "1"},
     )
     assert code == 2
     assert "code: READ_ONLY" in out
@@ -711,7 +717,7 @@ def test_a_missing_configuration_is_a_config_class(run_cli):
 
 
 def test_an_unexpected_exception_is_an_internal_class(run_cli, rest_env, monkeypatch):
-    from ha_axi.commands import state as state_command
+    from hass_axi.commands import state as state_command
 
     def explode(*args, **kwargs):
         raise RuntimeError("synthetic")

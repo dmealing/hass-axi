@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from conftest import synthetic_jwt
-from ha_axi import output
-from ha_axi.output import MODE_HUMAN, MODE_JSON, HelpBlock, redact, register_secret, render
+from hass_axi import output
+from hass_axi.output import MODE_HUMAN, MODE_JSON, HelpBlock, redact, register_secret, render
 
 # Built at run time; see conftest.synthetic_jwt for why no literal appears here.
 FAKE_JWT = synthetic_jwt()

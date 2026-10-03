@@ -99,11 +99,11 @@ jobs:
   # calls the tools by path out of it. That is not ceremony. This runner runs as
   # the maintainer's own user, so `~/.local/lib/python3.X/site-packages` and
   # `~/.local/bin` are on the interpreter's path and ahead of it on `PATH` — a
-  # bare `pytest`, `ruff` or `ha-axi` resolves to whatever the maintainer happens
+  # bare `pytest`, `ruff` or `hass-axi` resolves to whatever the maintainer happens
   # to have installed, against `/usr/bin/python3.X` rather than the interpreter
   # this job set up. First run of this workflow proved it in both directions:
   # py3.9 and py3.12 passed (no user site exists for those versions) while py3.10
-  # and py3.11 died with `ModuleNotFoundError: No module named 'ha_axi'`, and the
+  # and py3.11 died with `ModuleNotFoundError: No module named 'hass_axi'`, and the
   # lint and skill jobs went green having run the maintainer's own binaries
   # against the maintainer's own checkout. A venv excludes the user site by
   # construction, so a job sees only what it just installed.
@@ -170,8 +170,8 @@ jobs:
       - run: .venv/bin/python -m pip install --upgrade pip
       - run: .venv/bin/pip install -e ".[dev]"
       # The committed skill is generated from the CLI's own command table — from
-      # THIS checkout's, which is why it is the venv's `ha-axi` and not `PATH`'s.
-      - run: .venv/bin/ha-axi setup skill --check
+      # THIS checkout's, which is why it is the venv's `hass-axi` and not `PATH`'s.
+      - run: .venv/bin/hass-axi setup skill --check
 
   # Nothing watches a workflow that runs on main and overnight, so a failure has
   # to come and find someone.
@@ -188,6 +188,6 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
-          notify-send -u critical "ci FAILED: ha-axi" \
+          notify-send -u critical "ci FAILED: hass-axi" \
             "$(printf '%s' "$HEAD_MSG" | head -n1)
           $RUN_URL" || echo "notify-send unavailable; GitHub email still fires"

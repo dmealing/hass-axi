@@ -118,7 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/ha-axi
+      url: https://pypi.org/p/hass-axi
     permissions:
       # The only credential involved: a short-lived OIDC token minted for this
       # run. No long-lived PyPI token exists in this repository or anywhere else.
@@ -137,7 +137,7 @@ jobs:
         run: |
           python -m venv /tmp/verify
           /tmp/verify/bin/pip install --quiet dist/*.whl
-          /tmp/verify/bin/ha-axi --version
-          /tmp/verify/bin/ha-axi state --help > /dev/null
+          /tmp/verify/bin/hass-axi --version
+          /tmp/verify/bin/hass-axi state --help > /dev/null
 
       - uses: pypa/gh-action-pypi-publish@release/v1

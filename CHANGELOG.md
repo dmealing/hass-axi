@@ -1,5 +1,9 @@
 # Changelog
 
+This project was published as `ha-axi` up to and including 0.7.1, and as `hass-axi` from the
+release after it. The entries below 0.7.1 describe `ha-axi`; their links point at the repository's
+old name, which GitHub redirects.
+
 ## [0.7.1](https://github.com/dmealing/ha-axi/compare/v0.7.0...v0.7.1) (2026-08-29)
 
 

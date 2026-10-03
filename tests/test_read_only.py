@@ -1,9 +1,9 @@
-"""The read-only gate: ``HA_AXI_READ_ONLY``, fail-closed, on both transports.
+"""The read-only gate: ``HASS_AXI_READ_ONLY``, fail-closed, on both transports.
 
 Two conventions in this file are deliberate.
 
 **The variable name and the error code are written out as literals here**, not
-imported from :mod:`ha_axi.readonly`. They are the contract an operator types
+imported from :mod:`hass_axi.readonly`. They are the contract an operator types
 into a shell and an agent reads out of a document; a test that imported them
 would agree with a rename that broke every caller, the same way a double that
 imports the client's own table can only prove the client agrees with itself.
@@ -13,7 +13,7 @@ commit before this gate existed the module is absent, so a module-level import
 would collapse the whole file into one collection error. Function-local imports
 make each test fail on its own account there, which is what lets the change be
 reported as "N tests fail before, all pass after" rather than "the file does not
-load". :mod:`ha_axi.cli` and :mod:`ha_axi.ws` predate the change and are
+load". :mod:`hass_axi.cli` and :mod:`hass_axi.ws` predate the change and are
 imported normally, so the parametrised sweeps below still enumerate the real
 command tables at collection time.
 """
@@ -24,11 +24,11 @@ import types
 
 import pytest
 
-from ha_axi import cli, ws
-from ha_axi.argspec import Command, Sub
+from hass_axi import cli, ws
+from hass_axi.argspec import Command, Sub
 
 #: The switch, spelled as an operator spells it.
-ENV_VAR = "HA_AXI_READ_ONLY"
+ENV_VAR = "HASS_AXI_READ_ONLY"
 
 #: The code a refusal carries, distinct from UNAUTHORIZED and from any
 #: transport failure so an agent can tell "forbidden here" from "rejected
@@ -48,7 +48,7 @@ WS_COMMANDS = sorted(ws.REGISTRY)
 
 def readonly():
     """The module under test, imported late -- see this file's docstring."""
-    from ha_axi import readonly as module
+    from hass_axi import readonly as module
 
     return module
 
@@ -312,8 +312,8 @@ def test_the_rest_client_refuses_a_write_with_no_dispatch_gate_in_front_of_it(re
     not its author read any of this.
     """
     from conftest import FAKE_TOKEN
-    from ha_axi.config import load
-    from ha_axi.rest import RestClient
+    from hass_axi.config import load
+    from hass_axi.rest import RestClient
 
     config = load({"HA_URL": rest_server.url, "HA_TOKEN": FAKE_TOKEN, ENV_VAR: "1"})
     client = RestClient(config)
@@ -325,8 +325,8 @@ def test_the_rest_client_refuses_a_write_with_no_dispatch_gate_in_front_of_it(re
 
 def test_the_websocket_client_refuses_a_write_with_no_dispatch_gate_in_front_of_it(ws_server):
     from conftest import FAKE_TOKEN
-    from ha_axi.config import load
-    from ha_axi.ws import WsClient
+    from hass_axi.config import load
+    from hass_axi.ws import WsClient
 
     config = load(
         {"HA_URL": f"http://127.0.0.1:{ws_server.port}", "HA_TOKEN": FAKE_TOKEN, ENV_VAR: "1"}
@@ -341,8 +341,8 @@ def test_the_websocket_client_refuses_a_write_with_no_dispatch_gate_in_front_of_
 def test_the_websocket_client_refuses_before_it_opens_a_connection(ws_server):
     """No socket, no handshake, no credential on the wire for a refused write."""
     from conftest import FAKE_TOKEN
-    from ha_axi.config import load
-    from ha_axi.ws import WsClient
+    from hass_axi.config import load
+    from hass_axi.ws import WsClient
 
     config = load(
         {"HA_URL": f"http://127.0.0.1:{ws_server.port}", "HA_TOKEN": FAKE_TOKEN, ENV_VAR: "1"}
@@ -406,6 +406,9 @@ READ_INVOCATIONS = [
     ["service", "get", "light.turn_on"],
     ["template", "render", "--template", "{{ 1 + 1 }}"],
     ["api", "/config"],
+    ["ping"],
+    ["history", "get", "light.example_lamp"],
+    ["logbook", "get"],
 ]
 
 
@@ -429,7 +432,16 @@ WS_READ_INVOCATIONS = [
     ["device", "list"],
     ["device", "get", "device_two"],
     ["ws", "entity.list"],
+    ["statistics", "list"],
+    ["statistics", "get", "sensor.example_legacy_meter"],
+    ["ws", "--raw", "recorder/list_statistic_ids"],
 ]
+
+
+def test_sensor_discovery_still_works_under_read_only(run_cli, installation_env):
+    """It reads both transports, so it needs the installation rather than one double."""
+    code, _ = run_cli(["sensor", "list"], enabled(installation_env))
+    assert code == 0
 
 
 @pytest.mark.parametrize("argv", WS_READ_INVOCATIONS, ids=lambda a: " ".join(a[:2]))
@@ -503,7 +515,7 @@ def test_root_help_documents_the_variable(run_cli):
 def test_any_non_empty_value_enables_the_gate(run_cli, ws_env, ws_server, value):
     """It is a switch, not a boolean.
 
-    `HA_AXI_READ_ONLY=false` enabling read-only is the safe way to be wrong:
+    `HASS_AXI_READ_ONLY=false` enabling read-only is the safe way to be wrong:
     the alternative is a spelling this tool fails to recognise leaving the
     house writable while an operator believes it is not.
     """
@@ -532,7 +544,7 @@ def test_the_refusal_names_the_command_the_variable_and_a_way_forward(run_cli, w
         ["entity", "update", "light.example_ceiling", "--name", "Reading Lamp"], enabled(ws_env)
     )
     assert code == 2
-    assert "ha-axi entity update" in out
+    assert "hass-axi entity update" in out
     assert ENV_VAR in out
     assert "help[" in out
 
@@ -576,3 +588,45 @@ def test_setup_skill_check_is_a_read(run_cli, rest_env):
     code, out = run_cli(["setup", "skill", "--check"], enabled(rest_env))
     assert code == 0
     assert "status: current" in out
+
+
+# --------------------------------------------- the name before the rename
+
+
+LEGACY_VAR = "HA_AXI_READ_ONLY"
+
+
+def test_the_pre_rename_variable_still_enables_the_gate(run_cli, ws_env, ws_server, capsys):
+    """An upgrade must never be the thing that switched the guard off.
+
+    Before the rename the switch was spelled `HA_AXI_READ_ONLY`. A session that
+    still sets it is still read-only, and is told once on stderr to move to the
+    new name -- stdout stays the document an agent parses.
+    """
+    capsys.readouterr()
+    from hass_axi.cli import main
+
+    code = main(
+        ["entity", "update", "light.example_ceiling", "--name", "Renamed"],
+        environ={**ws_env, LEGACY_VAR: "1"},
+    )
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "code: READ_ONLY" in captured.out
+    assert f"{LEGACY_VAR} is deprecated; rename it to {ENV_VAR}" in captured.err
+    assert captured.err.count("deprecated") == 1
+    assert not any(c.get("type") == "config/entity_registry/update" for c in ws_server.received)
+
+
+def test_doctor_names_the_variable_that_is_actually_set(run_cli, installation_env):
+    code, out = run_cli(["doctor"], {**installation_env, LEGACY_VAR: "1"})
+    assert code == 0
+    assert f"{LEGACY_VAR} is set: every write is refused" in out
+
+
+def test_the_new_name_wins_silently_when_both_are_set(ws_env, capsys):
+    from hass_axi.readonly import active_var
+
+    capsys.readouterr()
+    assert active_var({**ws_env, ENV_VAR: "1", LEGACY_VAR: "1"}) == ENV_VAR
+    assert capsys.readouterr().err == ""

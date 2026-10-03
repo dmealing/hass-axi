@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from conftest import FAKE_TOKEN
-from ha_axi import config, output
-from ha_axi.errors import ConfigError
+from hass_axi import config, output
+from hass_axi.errors import ConfigError
 
 
 def test_loads_from_the_primary_variables():
@@ -131,6 +131,6 @@ def test_describe_environment_never_reveals_the_token():
         "token_var": "HA_TOKEN",
         "token_set": True,
         "read_only": False,
-        "read_only_var": "HA_AXI_READ_ONLY",
+        "read_only_var": "HASS_AXI_READ_ONLY",
     }
     assert FAKE_TOKEN not in repr(described)

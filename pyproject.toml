@@ -3,7 +3,7 @@ requires = ["hatchling>=1.21"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ha-axi"
+name = "hass-axi"
 version = "0.7.1"
 description = "Agent eXperience Interface (AXI) CLI for Home Assistant: entity, area and device registry administration over the WebSocket API, and service calls that explain their refusals"
 readme = "README.md"
@@ -31,14 +31,14 @@ dev = [
 ]
 
 [project.scripts]
-ha-axi = "ha_axi.cli:main"
+hass-axi = "hass_axi.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/dmealing/ha-axi"
-Source = "https://github.com/dmealing/ha-axi"
+Homepage = "https://github.com/dmealing/hass-axi"
+Source = "https://github.com/dmealing/hass-axi"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ha_axi"]
+packages = ["src/hass_axi"]
 
 [tool.ruff]
 line-length = 100
@@ -55,4 +55,4 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-filterwarnings = ["error::DeprecationWarning:ha_axi.*"]
+filterwarnings = ["error::DeprecationWarning:hass_axi.*"]

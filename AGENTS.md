@@ -3,9 +3,30 @@
 This file is the project's committed home for project-intrinsic agent knowledge: build, test,
 release, architecture, and sharp-edge notes that should travel with the code.
 
+## The name: `hass-axi`, formerly `ha-axi`
+
+This tool was published as `ha-axi` up to 0.7.1. An unrelated TypeScript Home Assistant CLI is also
+published as `ha-axi`, holds that slot in the community AXI catalog, and installs a binary of the
+same name — so this one was renamed: distribution and console script `hass-axi`, package
+`hass_axi`, variables `HASS_AXI_*`. `HA_URL`/`HA_TOKEN` and their `HASS_*` aliases did not change.
+Three things outlive the rename, and each is deliberate:
+
+- **The old variables still work.** `readonly.LEGACY_ENV_VAR` (`HA_AXI_READ_ONLY`) still switches a
+  session read-only and `HA_AXI_DEBUG` still enables diagnostics; each prints one deprecation notice
+  per process on stderr (`output.deprecated_variable`). The read-only one must never be dropped
+  quietly: an upgrade that turned the guard off is the one outcome that variable cannot have.
+- **`setup hooks` adopts what the old name installed** — see "The session-hook installer".
+- **`legacy/ha-axi/` is the final `ha-axi` release**: a package with no code of its own that
+  depends on `hass-axi` and whose `ha-axi` command forwards to it with a stderr notice. It is built
+  and published by hand, once, after `hass-axi` is on PyPI; no workflow builds it, and
+  `tests/test_legacy_shim.py` is the only thing that runs it before somebody's upgrade does.
+
+Historical prose below that names `ha-axi` (a release number, a defect) describes the tool under its
+old name and is left as it was.
+
 ## The hard constraint: this repository is public and must stay generic
 
-`ha-axi` talks to home automation installations. The failure that matters is not a bug — it is a
+`hass-axi` talks to home automation installations. The failure that matters is not a bug — it is a
 commit that describes, or grants access to, someone's house. Before writing **anything** into this
 repo, including tests, fixtures, docs, examples and commit messages:
 
@@ -120,7 +141,7 @@ that are neither JWT-shaped nor bearer-prefixed, and anything inside a binary.
   valid ones inlined; `RENAMED` maps plausible wrong guesses to the real flag.
 - `commands/` — one module per noun, each exposing `COMMAND` and `run(ctx, sub, parsed)`, and
   `access(sub, parsed)` as well if any of its subcommands is `DYNAMIC`. Every `Sub` declares
-  `access`; one that does not is refused under `HA_AXI_READ_ONLY` and fails the completeness sweep.
+  `access`; one that does not is refused under `HASS_AXI_READ_ONLY` and fails the completeness sweep.
   Adding a noun is one new file plus two lines in `cli.py` (`COMMAND_ORDER` and `_MODULES`); root
   help, `SKILL.md` and the parametrised test sweeps all derive from those. A `pkgutil` scan would save
   the two lines, cost static analysis, and still need an explicit order — it has been costed and
@@ -137,9 +158,16 @@ that are neither JWT-shaped nor bearer-prefixed, and anything inside a binary.
   every code this tool can print, each mapped to its class. It imports nothing at all, so every
   other module can depend on it. See "The error taxonomy" below; the short version is that the class
   is derived from the code and never declared beside it, and that a code is always a literal.
-- `readonly.py` — the `HA_AXI_READ_ONLY` gate: the classification vocabulary, the switch reader,
+- `readonly.py` — the `HASS_AXI_READ_ONLY` gate: the classification vocabulary, the switch reader,
   the refusal, and the one `guard()` all three enforcement points call. It imports nothing but
-  `errors`, so `config`, `rest`, `ws` and `cli` can all depend on it without a cycle.
+  `errors` and `output` (for the deprecation notice of the pre-rename variable), so `config`,
+  `rest`, `ws` and `cli` can all depend on it without a cycle.
+- `commands/_window.py` — the `--start`/`--end` rules the three recorder reads share: an age (`24h`)
+  or an ISO instant, no offset means UTC, and the end is always sent. `_window.now()` is the one
+  clock, so tests pin it with `monkeypatch` rather than racing the wall clock.
+- `commands/sensor.py`, `history.py`, `logbook.py`, `statistics.py`, `ping.py` — the reads that
+  close the gap with the other `ha-axi` and add the sensor and energy reads; see "The recorder
+  reads" below.
 
 ### The service model is a dependency now
 
@@ -188,7 +216,14 @@ this dependency, not something to absorb quietly.
 - **URL userinfo is stripped in `normalize_base_url` and registered as a secret.** The no-argument
   home view prints the base URL, so userinfo must not survive into it.
 - **A bare host defaults to `https://`**, never `http://`.
-- **`HA_AXI_READ_ONLY` holds at three points, and the two transports are the load-bearing ones.**
+- **`HA_URL` may hold several comma-separated candidates, and each is normalised alone** — so
+  userinfo on the second is stripped and registered exactly as on the first. `config.select_reachable`
+  picks one in `cli.Context.config()`, once, so both transports use the same candidate for the run.
+  It moves on only on a transport failure (no TCP connection, or no TLS handshake for `https`),
+  never on an HTTP answer: a 401 from the first candidate is the installation answering, and the
+  next candidate is the same installation. One candidate is never probed. When none answers the
+  first is kept, so the request that follows reports the fault in the ordinary taxonomy.
+- **`HASS_AXI_READ_ONLY` holds at three points, and the two transports are the load-bearing ones.**
   See "The read-only gate" below. Do not move enforcement into command bodies, do not add a
   fourth classification, and do not make the switch parse its value.
 - Tests for all of this live in `tests/test_credentials.py`, which asserts `capsys` **stderr** is
@@ -291,14 +326,14 @@ this dependency, not something to absorb quietly.
   `_common.py` is the one site of the `name_by_user or name` precedence — `device_name_map` is built
   on it, so entity name composition and every device row read the same rule.
 - **A `default_sub` must not swallow a mistyped subcommand name.** `device` is the only command with
-  a default sub *and* others, which is the shape where the hazard exists: `ha-axi device updat X`
+  a default sub *and* others, which is the shape where the hazard exists: `hass-axi device updat X`
   used to fall through to `list` and report `unexpected argument 'updat' for \`device list\``, naming
   a subcommand nobody typed and sending the reader after an argument mistake instead of a spelling
   one. `cli._pick_sub` hands the default sub a bare leading token only when the default sub declares
   a positional to hold it (`ws <command>`, `api <path>`) or when the command has no other sub;
-  otherwise it is `UNKNOWN_SUBCOMMAND`. `ha-axi device` and `ha-axi device --fields …` are untouched.
-- **Adding a WebSocket command** is one entry in `REGISTRY` in `src/ha_axi/ws.py`. It becomes
-  reachable through `ha-axi ws <name>` immediately; a typed subcommand is optional on top.
+  otherwise it is `UNKNOWN_SUBCOMMAND`. `hass-axi device` and `hass-axi device --fields …` are untouched.
+- **Adding a WebSocket command** is one entry in `REGISTRY` in `src/hass_axi/ws.py`. It becomes
+  reachable through `hass-axi ws <name>` immediately; a typed subcommand is optional on top.
 - **`--json` is the global output mode.** Command flags carrying JSON payloads are named
   `--data-json` and `--params-json` so no precedence rule is needed. The output mode is decided by
   a pre-scan of the whole argv before parsing, so a usage error still honours it.
@@ -417,12 +452,12 @@ run on one interpreter proves nothing here: the four legs resolve two different 
 
 **The nightly and `filterwarnings` are the early-warning system, and they earned their keep.** The
 nightly `schedule` in `ci.yml` re-runs the matrix against freshly resolved dependencies on an
-unchanged commit, and `filterwarnings = ["error::DeprecationWarning:ha_axi.*"]` in `pyproject.toml`
+unchanged commit, and `filterwarnings = ["error::DeprecationWarning:hass_axi.*"]` in `pyproject.toml`
 promotes a deprecation raised *through this package* into a failure. Together they converted a
 future hard break into a red build on the day upstream published, on a commit that had not changed —
 which is the signature to look for: **green then red on the same SHA is an external release, not a
 regression.** Do not relax that filter to quiet a third-party deprecation; it is scoped to
-`ha_axi.*` precisely so it stays sensitive without being fragile. Note also what it does *not* mean:
+`hass_axi.*` precisely so it stays sensitive without being fragile. Note also what it does *not* mean:
 a `DeprecationWarning` is ignored by Python's default filters, so the released CLI kept working for
 ordinary users while the suite was red. The suite failing is the point — it is the notice, not the
 outage.
@@ -463,7 +498,7 @@ all-capitals token inside those markers that is not a code — the check reads t
 | `permission` | the credential was accepted; the caller is not permitted | the account, or a block on the instance |
 | `not_found` | the subject does not resolve to one thing that exists here | what you asked for |
 | `refused` | the subject exists and this request was refused | the arguments |
-| `internal` | a bug in ha-axi | nothing; report it |
+| `internal` | a bug in hass-axi | nothing; report it |
 
 `fault_class` fails closed to `unclassified`, which is deliberately **not** a member of `CLASSES`:
 it is the absence of an answer, it is unreachable while the sweep passes, and it exists so that a
@@ -563,7 +598,7 @@ shapes, so a fixture edit that tidies one away fails where the reason is written
 
 ## The read-only gate
 
-`HA_AXI_READ_ONLY` makes a session incapable of changing anything. The design is written down here
+`HASS_AXI_READ_ONLY` makes a session incapable of changing anything. The design is written down here
 because a guard that covers most of the write paths is **worse than no guard** — it converts an
 understood risk into a false assurance about the paths it missed, and the operator who sets it is
 the one who finds out. The comparable upstream CLI ships a read-only flag covering part of its
@@ -575,7 +610,7 @@ operator wanted a safe session. `readonly.enabled` treats any value that is set 
 `0` and `false` included, and blank as unset, matching how `config._first_env` reads everything
 else. Do not teach it to parse the value: one unrecognised spelling or one case that was not folded
 is a guard that is off while an operator believes it is on, and being wrong in that direction is
-the only outcome that is not survivable. Being wrong in the other direction — `HA_AXI_READ_ONLY=false`
+the only outcome that is not survivable. Being wrong in the other direction — `HASS_AXI_READ_ONLY=false`
 refusing a write — is loud, immediate and fixed by unsetting the variable.
 
 **Every subcommand and every WebSocket command carries an explicit classification, and the default
@@ -610,7 +645,7 @@ is a claim a module makes about itself, and `test_a_command_classified_read_stil
 pins that a module claiming `READ` and posting anyway is still refused. A guard on one transport
 only is the partial guard above, so both refuse of their own accord.
 
-**Where a verb *is* read, and why that is not a contradiction.** `ha-axi api` hands an opaque path
+**Where a verb *is* read, and why that is not a contradiction.** `hass-axi api` hands an opaque path
 straight to the installation, so the method is the only fact the caller supplied.
 `rest.access_for_request` errs closed on it: `SAFE_METHODS` pass, everything else is a write —
 including a POST that happens not to change anything. `READ_ONLY_POSTS` names the single exception,
@@ -657,9 +692,9 @@ file the user has to repair by hand — and all three rules below were paid for 
 shipped in 0.5.1 and was found in the sibling AXI CLI, which had been given this design to port.
 
 **Ownership is a key this installer writes, never a substring of the command.** An entry it wrote
-carries `managed_by: ha-axi`, and `_managed_hook` is the single construction site so what is written
-and what is claimed cannot drift. Matching `"ha-axi" in command` claimed hooks this tool never wrote
-— a user's `env HA_URL=… ha-axi`, another interpreter, a shell wrapper — and silently rewrote them
+carries `managed_by: hass-axi`, and `_managed_hook` is the single construction site so what is written
+and what is claimed cannot drift. Matching `"hass-axi" in command` claimed hooks this tool never wrote
+— a user's `env HA_URL=… hass-axi`, another interpreter, a shell wrapper — and silently rewrote them
 out of the user's own global settings while reporting the target `installed`. The marker also has to
 travel *with* an entry rather than be re-derived, because a path repair changes the command string
 by definition: ownership decided from the command cannot survive the operation the installer exists
@@ -676,7 +711,18 @@ whole output and nothing else. Every wrapper shape fails it — a prefix or anot
 leaves extra tokens in the string, and a wrapper script has its own basename. Adoption is one-way
 and happens
 once; the entry gains the marker on that install and is matched by it forever after. Delete this
-rule only when no installation predating the marker can plausibly remain.
+rule only when no installation predating the marker can plausibly remain. The basename it matches is
+`LEGACY_BINARY_NAMES` — `ha-axi`, the only name those releases were published under.
+
+**The rename added a second adoption rule, and a marker is not enough for it.** Releases 0.5.1 to
+0.7.x marked their entry `managed_by: ha-axi` and ran `ha-axi context`, an executable that is gone
+once the package is renamed. `_is_renamed_own_entry` adopts it and rewrites it. But the unrelated
+tool published as `ha-axi` writes `managed_by`-style markers with **the same string** and runs `ha-axi
+ping --ambient`, so the predicate also requires the command to be exactly what this tool wrote —
+one executable whose basename is `ha-axi`, then `context`, nothing more. The OpenCode plugin is
+retired the same way: `axi-ha-axi.js` is deleted only when its first line is this tool's old header
+in full, because the other tool writes a plugin to the same path whose header starts with the same
+words. `tests/test_hooks.py` holds both halves: ours adopted, theirs untouched.
 
 **The scan covers every group and every entry, and collapses the extras.** It used to `return` at
 the first managed entry, so an already-correct first entry ended it and a second one pointing at a
@@ -696,7 +742,7 @@ edit at all — a key beside an array of tables lands inside one element and ena
 refusal and `_install_codex_features` reports `skipped` with the file byte-identical. A target that
 only looks installed is the failure this whole section is about.
 
-**The hook runs `ha-axi context`, never the bare executable, and the reason is an exit code.** The
+**The hook runs `hass-axi context`, never the bare executable, and the reason is an exit code.** The
 no-argument home view is live state: it needs a credential, opens a connection, prints the
 installation's address, and reports `NOT_CONFIGURED` with exit **1** when nothing is set. That is
 the right answer to "show me this installation" and the wrong thing to run at session start, because
@@ -705,7 +751,7 @@ has never been pointed at Home Assistant — and a harness is entitled to drop a
 output rather than put it in front of the agent. It also pays a round-trip and prints an address on
 every session, into a channel that is logged and transcribed.
 
-**The taxonomy did not move, and that is the whole shape of the fix.** `ha-axi` with nothing
+**The taxonomy did not move, and that is the whole shape of the fix.** `hass-axi` with nothing
 configured still reports `NOT_CONFIGURED` and still exits 1, because a caller who asked for live
 state and cannot have it *has* met a `config` fault. `context` asks a different question — describe
 this installation without connecting to it — so it gets a different answer rather than a softened
@@ -728,7 +774,7 @@ reason to. A fact that needs a connection belongs in the home view and nowhere n
 
 ## The command contract
 
-`ha-axi` reaches every service through `service call` and every WebSocket type through `ws --raw`.
+`hass-axi` reaches every service through `service call` and every WebSocket type through `ws --raw`.
 Coverage is already complete, so a typed command is never justified by reach. What the typed
 commands add is judgement, and judgement is the one thing a generator cannot emit — measured:
 Home Assistant's model is complete enough to generate every flag (99% of 1,939 declared fields
@@ -780,10 +826,17 @@ own change with its own argument.
 not inferable; see "The read-only gate" above.
 
 **Demotion, and the standing cap.** If a typed command's body reduces to flag-mapping plus a
-request, delete it — the measure is the diff, not the intention. Eleven nouns fit in a root help
-block an agent reads in one glance; a twelfth has to argue that it earns its line. `context` earned
-its own by being the thing a hook can safely run, which no existing noun was — see "The session-hook
-installer". `--data key=value`
+request, delete it — the measure is the diff, not the intention. Eleven nouns once fit in a root
+help block an agent reads in one glance, and every one after has had to argue that it earns its
+line. `context` earned its own by being the thing a hook can safely run, which no existing noun was
+— see "The session-hook installer". The five added with the rename (`sensor`, `history`, `logbook`,
+`statistics`, `ping`) close named gaps against the other `ha-axi`, and each argues by the promotion
+rule rather than by reach: `sensor` crosses transports on every run (1); `statistics` reads the
+recorder's metadata to choose what to ask for and reports a derived summary with caveats (5);
+`history` and `logbook` answer with derived summaries — time in each state, one folded `cause` —
+rather than the raw rows (5), and reach a recorder no existing noun reads; `ping` is the one
+authenticated round-trip a liveness gate needs, which `doctor`'s four checks are not. Sixteen is the
+ceiling this argument supports; the next noun has to displace one or fold into one. `--data key=value`
 stays first-class in every case, because it reaches every field of every service forever with no
 metadata to go stale.
 
@@ -793,6 +846,52 @@ that is wrong. Either read the model live at the moment you enforce it — as `s
 `service get` do — or do not enforce it and let the value through to Home Assistant, which owns the
 schema. This is also why the model is never cached: an integration added or removed rewrites it and
 nothing signals when.
+
+## The recorder reads
+
+`sensor`, `history`, `logbook` and `statistics` read what the recorder and the registries hold, and
+every rule below was read out of `components/history`, `components/logbook` and
+`components/recorder` at 2026.8.3 rather than guessed. The doubles in `tests/conftest.py` transcribe
+the same views, and `tests/test_double_fidelity.py` pins the shapes that matter.
+
+- **A history or logbook window with no `end_time` ends one day after its start, not now.**
+  `HistoryPeriodView` and `LogbookView` both default the end to `start + 1 day` (the logbook to
+  `start + period` days). A client that omits it and asks for `--start 7d` gets the first day only,
+  with no error. `_window.window` therefore always produces an end, and `rest.history`/`rest.logbook`
+  always send it. The other `ha-axi` omits it; do not copy that.
+- **History answers in request order, one list per entity, empty where nothing was recorded.**
+  `_sorted_states_to_dict` seeds the result with every requested id before filling it. With
+  `minimal_response` only the first row of each list is a whole state; the rest are `state` and
+  `last_changed`. The first row is the state already held when the window opened, timed at the
+  window's start — so it counts for the time it held and is not a change.
+- **A statistic's kind comes from the recorder's metadata, never from a device class or a name.**
+  `has_sum` means a meter; `mean_type` 1 an arithmetic mean, 2 a circular one (`has_mean` is the
+  pre-`mean_type` spelling and is still read). Asking `recorder/statistics_during_period` for a type
+  a statistic does not keep is not an error — the value comes back `None` — so `statistics get`
+  groups ids by kind and requests `change,state` or `mean,min,max` per group. A statistic with no
+  rows in the window is absent from the answer, not an empty list.
+- **The total is the sum of `change`.** Not `sum[-1] - sum[0]`, which loses the first bucket, and not
+  the live state. Values arrive in the display unit, which the recorder converts to.
+- **Caveats state, and the number is never adjusted.** A negative `change` is a meter that went
+  backwards and the total includes it. A drop in `state` in a bucket whose `change` is not negative
+  is a *reset* — the recorder started a new cycle and carried the sum across it — and a reset about
+  every 24 hours is called out, because it means the entity's live state is a since-reset reading
+  rather than a running total. A drop booked as a negative change is the first case, not a reset.
+  Missing buckets are counted before the first one and between any two, never after the last: the
+  recorder compiles a bucket only once its period ends, so the newest is routinely not there yet.
+  Every check is a rule about the buckets' shape. **No caveat may name an integration**: rules about
+  a particular vendor's sensors belong to whoever runs that installation, not to this public tool.
+- **Diagnostic sensors are set aside by `entity_category`, never by name**, and hidden ones too. A
+  state with no registry entry is kept: absence of registry data is not a reason to exclude.
+- **The home view's staleness is sensors only, by `last_reported`.** A reading is re-reported while
+  its device is alive whether or not the value moved; an automation, a zone or a closed door reports
+  only on change, and counting those would bury a dead sensor under every quiet entity.
+  `state list --stale` is the generic form, any domain, and agrees with the home view's count for
+  `--domain sensor` because both go through `_common.not_reported_for`.
+- **A circular statistic (a bearing) reports a circular mean and no min or max**: across the 0/360
+  wrap both lie. Daily and weekly buckets start at the installation's local midnight while the
+  missing-bucket count aligns in UTC; that is safe only because every count rounds down whole
+  periods, so keep it rounding down.
 
 ## What the README leads with, and why it is not a feature list
 
@@ -814,7 +913,7 @@ least as well line by line, and buried the registry story in paragraph three. **
 feature list to the top**, and do not promote `state`/`template`/`api`/`ws` back into the pitch; the
 capability list further down is where they belong.
 
-**Every `$ ha-axi …` block in the README is real output, and re-running them is part of editing
+**Every `$ hass-axi …` block in the README is real output, and re-running them is part of editing
 them.** An example that does not run is a defect. They are checked by running each block against a
 throwaway Home Assistant in the order a reader meets them, from a known starting state, because the
 blocks mutate the installation: the first one places `light.example_lamp` in `Example Room`, and
@@ -833,7 +932,7 @@ blocks mutate the installation: the first one places `light.example_lamp` in `Ex
 - **One line in the README is not reproducible and is the documentation placeholder instead**: the
   home view's `url:`, which is the reader's own base URL. The `bin:` line above it *is* real —
   `executable_path()` collapses `$HOME`, so running the console script from a throwaway `HOME`
-  whose `.local/bin` holds the shim prints `~/.local/bin/ha-axi` exactly as a `--user` install does.
+  whose `.local/bin` holds the shim prints `~/.local/bin/hass-axi` exactly as a `--user` install does.
   Nothing else is substituted, and nothing else should be.
 
 **A comma in `home.DESCRIPTION` costs a pair of quotes on every session start.** The home view is
@@ -846,9 +945,9 @@ body, neither of which quotes, so the constraint comes from the one reader that 
 
 ```sh
 scripts/dev-setup.sh                     # creates .venv and installs this checkout into it
-.venv/bin/pytest                         # ~1090 tests, a couple of seconds
+.venv/bin/pytest                         # ~1200 tests, a few seconds
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
-.venv/bin/ha-axi setup skill --check     # SKILL.md is generated, never hand-edited
+.venv/bin/hass-axi setup skill --check     # SKILL.md is generated, never hand-edited
 ```
 
 **Never install this checkout into an ambient interpreter, and that is why the setup is a committed
@@ -856,10 +955,10 @@ script rather than a documented command.** This tool is normally installed as an
 user-level tool — `uv tool`, `pipx`, a `--user` install — with a launcher in `~/.local/bin` and its
 own environment behind it. An editable install into whatever interpreter is on `PATH` **replaces
 that launcher** with one bound to the ambient interpreter, and leaves an editable pointer
-(`_editable_impl_ha_axi.pth`, plus a `.dist-info` whose `direct_url.json` records the checkout
+(`_editable_impl_hass_axi.pth`, plus a `.dist-info` whose `direct_url.json` records the checkout
 path) in the user site. Deleting the checkout is the ordinary end of a throwaway clone, and it
 leaves the reader's own installed command dead with `ModuleNotFoundError: No module named
-'ha_axi'` — and nothing announces it. It has already happened: one AXI CLI was left completely
+'hass_axi'` — and nothing announces it. It has already happened: one AXI CLI was left completely
 broken this way and a sibling was silently pinned two releases behind its published version, with
 no symptom until somebody ran them. A contributor's checkout must not be able to break the
 reader's installation of the tool they are contributing to.
@@ -917,7 +1016,7 @@ green suite. Two rules follow, and neither is optional:
 - **Model the refusals, not just the successes.** The REST double rejects a nested `target` because
   Home Assistant's `PREVENT_EXTRA` schema does; the WebSocket double rejects any key outside
   `WS_COMMAND_KEYS` with `invalid_format` for the same reason. That table is deliberately *not*
-  imported from `ha_axi.ws.REGISTRY` — a second opinion that is a copy of the first is not one. A
+  imported from `hass_axi.ws.REGISTRY` — a second opinion that is a copy of the first is not one. A
   new client parameter will be refused here until it is added to the table too; adding it is how
   the parameter gets confirmed rather than assumed.
 - **Answer with resulting state.** `config/entity_registry/update` returns the stored entry — every
@@ -933,7 +1032,7 @@ green suite. Two rules follow, and neither is optional:
   targeted" two testable worlds rather than one string. `SERVICES`, `capability_masks`,
   `target_domains` and `entities_targeted` in `tests/conftest.py` are that second opinion and are
   deliberately not imported from `axi_toolkit.ha.services`, the reader the client uses. That the
-  reader ships in a shared package rather than in `ha_axi` does not soften the rule: it is still
+  reader ships in a shared package rather than in `hass_axi` does not soften the rule: it is still
   the client's reading, and a second opinion is only one if it was arrived at independently.
 - **Not every refusal is a `400`, and two of them carry nothing.** A `HomeAssistantError` is not
   caught anywhere, so aiohttp renders it as a plain-text `500` with a fixed apology and no message:
@@ -960,7 +1059,7 @@ behaviour, the fixtures have not been corrected.
 
 **`tests/test_read_only.py` breaks two of this suite's habits on purpose, and both are in its
 docstring.** The variable name and the error code are written as literals rather than imported from
-`ha_axi.readonly`, for the same reason the doubles transcribe upstream rather than importing the
+`hass_axi.readonly`, for the same reason the doubles transcribe upstream rather than importing the
 client: a test that imported them would agree with a rename that broke every caller. And everything
 touching the new module imports it *inside* the test body, so that at the commit before the gate
 existed each test fails on its own account instead of the file collapsing into one collection
@@ -969,14 +1068,14 @@ than "the file does not load". Keep both if the file is extended.
 
 Two more rules that fall out of that:
 
-- **Every command in `ha_axi.ws.REGISTRY` gets a branch in `_respond`.** Six of the fourteen fell
+- **Every command in `hass_axi.ws.REGISTRY` gets a branch in `_respond`.** Six of the fourteen fell
   through to `unknown_command` and therefore had no coverage at all, five of them while being
   declared in `WS_COMMAND_KEYS`. `test_every_websocket_command_the_cli_ships_is_modelled` is
   parametrised over the registry, so a new command is untestable until the double answers it.
 - **The double's own helpers are transcriptions, not imports.** `displayed_name` and `slugify` in
   `tests/conftest.py` are written from `helpers/entity_registry`, the same way `capability_masks` is
   written from `helpers/service`. `displayed_name` is what makes the state/registry agreement an
-  assertion rather than a coincidence; importing `ha_axi.commands._common.registry_name` there would
+  assertion rather than a coincidence; importing `hass_axi.commands._common.registry_name` there would
   have made the test pass with the bug in place.
 
 Three testing gotchas already paid for:
@@ -994,8 +1093,8 @@ Three testing gotchas already paid for:
   `FakeInstallation.stop()` opens one throwaway connection to knock, then joins. A fixture that
   merely closes the socket leaks a thread per test.
 
-`skills/ha-axi/SKILL.md` is generated from the CLI's command table. Change the commands, then run
-`ha-axi setup skill` and commit the result; CI fails if the two disagree.
+`skills/hass-axi/SKILL.md` is generated from the CLI's command table. Change the commands, then run
+`hass-axi setup skill` and commit the result; CI fails if the two disagree.
 
 Supported Pythons are 3.9 through 3.12. `from __future__ import annotations` is what makes the
 `X | None` annotation syntax safe on 3.9 — keep it at the top of every module.
@@ -1048,10 +1147,10 @@ job, and a token left behind in its `.git/config` would outlive it too.
 **A self-hosted runner runs as a real user, and that user's `~/.local` is on every job's path.**
 `~/.local/lib/python3.X/site-packages` is keyed by X.Y only, so it is picked up by an interpreter
 `actions/setup-python` just unpacked into the tool cache, and `~/.local/bin` sits ahead of that
-interpreter's `bin` on `PATH`. A bare `pytest`, `ruff` or `ha-axi` therefore runs the maintainer's
+interpreter's `bin` on `PATH`. A bare `pytest`, `ruff` or `hass-axi` therefore runs the maintainer's
 copy, under `/usr/bin/python3.X`, against whatever checkout that copy points at. The first run of
 this workflow demonstrated both halves: py3.9 and py3.12 passed because no user site exists for those
-versions, while py3.10 and py3.11 failed with `ModuleNotFoundError: No module named 'ha_axi'`, and
+versions, while py3.10 and py3.11 failed with `ModuleNotFoundError: No module named 'hass_axi'`, and
 the lint and skill jobs went green having exercised the maintainer's binaries rather than the
 commit's. Every job that needs third-party packages therefore does `python -m venv --clear .venv` and
 calls tools as `.venv/bin/<tool>`; a venv sets `ENABLE_USER_SITE = False`, so the leak cannot happen.
@@ -1061,11 +1160,11 @@ names.
 ## Releasing
 
 release-please owns the version. `.release-please-manifest.json` records the **last released**
-version, which is not the same thing as the version in `pyproject.toml` and `src/ha_axi/__init__.py`
+version, which is not the same thing as the version in `pyproject.toml` and `src/hass_axi/__init__.py`
 — those hold the version a release will *write*. During bootstrap, before the first publish, the
 manifest deliberately trailed the source: baseline `0.0.0` with source `0.1.0` meant "nothing
 released yet, the next `feat:` lands 0.1.0". That period is over — PyPI hosts 0.1.0 and 0.2.0, and
-the manifest, `pyproject.toml` and `src/ha_axi/__init__.py` all sit at `0.2.0` — but the rule it
+the manifest, `pyproject.toml` and `src/hass_axi/__init__.py` all sit at `0.2.0` — but the rule it
 taught still holds: never "fix" a mismatch by raising the baseline to match the source; that tells
 release-please the version is already out and it bumps past it, permanently skipping a version
 number PyPI will never let us reuse.
@@ -1084,7 +1183,7 @@ wrong for the one case where a merged change alters what a contributor or a user
 no behaviour to describe. The lever is a `Release-As: <version>` footer, on a commit of its own.
 
 **No version string is touched by hand in that commit: release-please owns every one of them.**
-`pyproject.toml`, `src/ha_axi/__init__.py` and `.release-please-manifest.json` are all written by
+`pyproject.toml`, `src/hass_axi/__init__.py` and `.release-please-manifest.json` are all written by
 the release pull request release-please opens once the footer has forced it, and hand-bumping any of
 them there is how the manifest comes to be raised to a version PyPI has never seen — the mistake the
 paragraph above exists to prevent. The forcing commit is prose plus the footer and nothing else, and
@@ -1267,3 +1366,10 @@ worth the history.
 project, and are byte-identical apart from `KNOWN_UNPARSEABLE`.** Two copies that behave differently
 are worse than one that is wrong — the same rule `toon.py` is held to. A change to the grammar
 transcription, the engines or the audit belongs in both repositories in the same sitting.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.

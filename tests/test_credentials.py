@@ -10,8 +10,8 @@ from __future__ import annotations
 import pytest
 
 from conftest import FAKE_TOKEN
-from ha_axi import output
-from ha_axi.cli import main
+from hass_axi import output
+from hass_axi.cli import main
 
 
 def test_a_cross_origin_redirect_is_refused_rather_than_followed(run_cli, rest_server):
@@ -47,7 +47,7 @@ def test_an_unexpected_exception_becomes_a_structured_error_on_stdout(monkeypatc
     def explode(*_args, **_kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("ha_axi.commands.state.run", explode)
+    monkeypatch.setattr("hass_axi.commands.state.run", explode)
     code = main(
         ["state", "list"], environ={"HA_URL": "https://ha.example.com", "HA_TOKEN": FAKE_TOKEN}
     )
@@ -67,7 +67,7 @@ def test_an_unexpected_exception_never_prints_the_token(monkeypatch, capsys):
     def explode(*_args, **_kwargs):
         raise ValueError(f"Invalid header value b'Bearer {FAKE_TOKEN}'")
 
-    monkeypatch.setattr("ha_axi.commands.state.run", explode)
+    monkeypatch.setattr("hass_axi.commands.state.run", explode)
     code = main(
         ["state", "list"], environ={"HA_URL": "https://ha.example.com", "HA_TOKEN": FAKE_TOKEN}
     )
@@ -83,7 +83,7 @@ def test_debug_tracebacks_on_stderr_are_redacted(monkeypatch, capsys):
     def explode(*_args, **_kwargs):
         raise ValueError(f"Bearer {FAKE_TOKEN}")
 
-    monkeypatch.setattr("ha_axi.commands.state.run", explode)
+    monkeypatch.setattr("hass_axi.commands.state.run", explode)
     code = main(
         ["--debug", "state", "list"],
         environ={"HA_URL": "https://ha.example.com", "HA_TOKEN": FAKE_TOKEN},
@@ -105,7 +105,7 @@ def test_debug_actually_enables_diagnostics(run_cli, rest_env, capsys):
     output.set_debug(False)
     main(["--debug", "state", "list"], environ=dict(rest_env))
     err = capsys.readouterr().err
-    assert "ha-axi:" in err
+    assert "hass-axi:" in err
     assert "GET" in err
 
 

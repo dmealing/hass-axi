@@ -54,7 +54,7 @@ def test_entity_list_rejects_an_unknown_area_with_a_way_forward(run_cli, ws_env)
     code, out = run_cli(["entity", "list", "--area", "Nowhere"], ws_env)
     assert code == 1
     assert "no area with id or name 'Nowhere'" in out
-    assert "ha-axi area list" in out
+    assert "hass-axi area list" in out
 
 
 def test_entity_list_filters_by_domain_and_platform_and_search(run_cli, ws_env):
@@ -441,8 +441,8 @@ def test_a_socket_closed_between_commands_reports_the_transport_not_a_traceback(
 
 
 def test_writing_to_a_closed_connection_is_a_structured_failure(ws_env, ws_server):
-    from ha_axi.cli import Context
-    from ha_axi.errors import ConnectionFailed
+    from hass_axi.cli import Context
+    from hass_axi.errors import ConnectionFailed
 
     ws_server.close_after = 1
     ctx = Context(ws_env)
@@ -505,7 +505,7 @@ devices[4]{device_id,name,area}:
   device_three,Example Hub,""
   device_four,Example Doorway,Example Room
 help[1]:
-  Run `ha-axi entity list --area <id|name>` to see the entities in an area
+  Run `hass-axi entity list --area <id|name>` to see the entities in an area
 """
 
 
@@ -576,7 +576,7 @@ def test_device_get_on_a_missing_device_offers_a_way_to_find_it(run_cli, ws_env)
     assert code == 1
     assert "no device with id or name 'Example Absent'" in out
     assert "NO_SUCH_DEVICE" in out
-    assert 'Run `ha-axi device list --search "Example Absent"` to find it' in out
+    assert 'Run `hass-axi device list --search "Example Absent"` to find it' in out
     assert "Traceback" not in out
 
 
@@ -708,7 +708,7 @@ def test_device_update_rejects_an_unknown_area_with_a_way_forward(run_cli, ws_en
     assert code == 1
     assert "no area with id or name 'Nowhere'" in out
     assert "NO_SUCH_AREA" in out
-    assert "ha-axi area list" in out
+    assert "hass-axi area list" in out
     assert [c for c in ws_server.received if c["type"] == "config/device_registry/update"] == []
 
 
@@ -866,7 +866,7 @@ def test_entity_list_rejects_a_device_id_no_device_has(run_cli, ws_env):
     assert code == 1
     assert "no device with id 'device_nine'" in out
     assert "NO_SUCH_DEVICE" in out
-    assert "Run `ha-axi device list --fields device_id,name` to see each device's id" in out
+    assert "Run `hass-axi device list --fields device_id,name` to see each device's id" in out
 
 
 def test_entity_list_keeps_the_zero_for_a_device_that_supplies_nothing(run_cli, ws_env, ws_server):

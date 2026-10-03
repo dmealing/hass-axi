@@ -7,7 +7,7 @@ registry where each entry names itself, a state that is never `unknown`, a
 service that documents itself, an entity that is never disabled. All four are the
 majority case upstream, and all four were reachable by hand.
 
-So the assertions here are about the fixture set, not about `ha-axi`. A fixture
+So the assertions here are about the fixture set, not about `hass-axi`. A fixture
 edit that quietly removes one of these shapes fails here, where the reason is
 written down, rather than three releases later on somebody's installation.
 """
@@ -29,7 +29,7 @@ from conftest import (
     extended_entry,
     slugify,
 )
-from ha_axi.ws import REGISTRY
+from hass_axi.ws import REGISTRY
 
 
 def _states_by_id() -> dict:
@@ -159,7 +159,7 @@ def test_every_state_carries_the_keys_home_assistant_sends():
 def test_every_registry_entry_carries_the_keys_home_assistant_publishes():
     """`as_partial_dict` sends 21 keys, and the double sent 11.
 
-    Nothing in `ha-axi` reads most of them. That is exactly why they belong here:
+    Nothing in `hass-axi` reads most of them. That is exactly why they belong here:
     a client that starts to should find out against the double.
     """
     expected = {
@@ -291,14 +291,17 @@ def test_every_websocket_command_the_cli_ships_is_modelled(name, ws_server, ws_e
     its declared parameters is the cheapest possible proof that the double knows
     what the CLI can ask for.
     """
-    from ha_axi.config import load
-    from ha_axi.ws import WsClient
+    from hass_axi.config import load
+    from hass_axi.ws import WsClient
 
     sample = {
         "entity_id": "light.example_lamp",
         "area_id": "example_hall",
         "device_id": "device_one",
         "name": "Example Study",
+        "start_time": "2026-01-01T00:00:00+00:00",
+        "statistic_ids": ["sensor.example_legacy_meter"],
+        "period": "hour",
     }
     command = REGISTRY[name]
     params = {key: sample[key] for key in command.required if key in sample}
@@ -409,11 +412,77 @@ def test_an_unknown_websocket_command_is_refused_without_naming_itself(ws_server
     double that echoed it back would let a client read a command name out of a
     message that has never carried one.
     """
-    from ha_axi.config import load
-    from ha_axi.errors import NotFound
-    from ha_axi.ws import WsClient
+    from hass_axi.config import load
+    from hass_axi.errors import NotFound
+    from hass_axi.ws import WsClient
 
     with WsClient(load(ws_env)) as client, pytest.raises(NotFound) as raised:
         client.send_command("config/nothing_registry/list")
     assert raised.value.code == "NO_SUCH_WS_COMMAND"
     assert [c for c in ws_server.received if c["type"] == "config/nothing_registry/list"]
+
+
+# ------------------------------------------------------------- the recorder
+
+
+def _get(server, path):
+    import urllib.error
+    import urllib.request
+
+    from conftest import FAKE_TOKEN
+
+    request = urllib.request.Request(
+        f"{server.url}{path}", headers={"Authorization": f"Bearer {FAKE_TOKEN}"}
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read())
+
+
+def test_a_history_window_with_no_end_ends_a_day_after_it_starts(rest_server):
+    """`HistoryPeriodView` does not end an open window now, and a client that relies on it is wrong."""
+    _, answer = _get(
+        rest_server,
+        "/api/history/period/2025-12-31T00:00:00%2B00:00?filter_entity_id=light.example_lamp",
+    )
+    # The changes at 06:00 and 18:00 on the fixture day are outside that one day.
+    assert [row["state"] for row in answer[0]] == ["on"]
+
+
+def test_history_refuses_a_request_without_its_entity_filter(rest_server):
+    status, answer = _get(rest_server, "/api/history/period/2026-01-01T00:00:00%2B00:00")
+    assert (status, answer) == (400, {"message": "filter_entity_id is missing"})
+
+
+def test_a_minimal_history_carries_attributes_on_its_first_row_only(rest_server):
+    _, answer = _get(
+        rest_server,
+        "/api/history/period/2026-01-01T00:00:00%2B00:00"
+        "?filter_entity_id=light.example_lamp&end_time=2026-01-02T00:00:00%2B00:00"
+        "&minimal_response",
+    )
+    first, *rest = answer[0]
+    assert "attributes" in first and "entity_id" in first
+    assert all(set(row) == {"state", "last_changed"} for row in rest)
+
+
+def test_a_statistic_asked_for_a_type_it_does_not_keep_answers_empty(ws_server, ws_env):
+    from hass_axi.config import load
+    from hass_axi.ws import WsClient
+
+    with WsClient(load(ws_env)) as client:
+        result = client.run(
+            "statistics.during_period",
+            {
+                "start_time": "2026-01-01T00:00:00+00:00",
+                "statistic_ids": ["sensor.example_temperature", "example:grid_import"],
+                "period": "hour",
+                "types": ["change"],
+            },
+        )
+    # A mean statistic has no change: the rows are there and the value is not.
+    assert {row["change"] for row in result["sensor.example_temperature"]} == {None}
+    # A statistic with no rows in the window is absent, not an empty list.
+    assert "example:grid_import" not in result

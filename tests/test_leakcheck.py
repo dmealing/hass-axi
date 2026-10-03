@@ -63,7 +63,7 @@ CLEAN = [
     "curl -H 'Authorization: Bearer <token>'",
     'curl -H "Authorization: Bearer $HA_TOKEN"',
     "a bearer of good news arrives",
-    "relative path src/ha_axi/cli.py",
+    "relative path src/hass_axi/cli.py",
     "version 2026.1.0 released",
     "python 3.9, 3.10, 3.12 supported",
     "line-length = 100",
@@ -181,7 +181,7 @@ def test_a_path_allowance_exempts_only_the_rule_it_names():
 
 
 def test_a_path_allowance_exempts_no_other_file():
-    findings = leakcheck.scan_text("src/ha_axi/toon.py", TWO_SHAPES + "\n")
+    findings = leakcheck.scan_text("src/hass_axi/toon.py", TWO_SHAPES + "\n")
     assert rule_names(findings) == ["home-path", "private-ip"]
 
 
@@ -433,7 +433,7 @@ DRIVER_BODY = f'## Evidence\n\nREPO = "{HOME}/worktrees/run"\nOUT = "{HOME}/evid
 CLEAN_TITLE = "fix(toon): keep decimal form inside the canonical range"
 CLEAN_BODY = (
     "## Intent\n\n"
-    "`src/ha_axi/toon.py` formats through `Decimal(repr(value))` inside the range,\n"
+    "`src/hass_axi/toon.py` formats through `Decimal(repr(value))` inside the range,\n"
     "and `tests/test_toon_conformance.py` covers it.\n\n"
     "```\n"
     "rootdir: /github/workspace\n"

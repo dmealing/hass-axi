@@ -41,7 +41,7 @@ def test_state_list_limit_suggests_how_to_see_the_rest(run_cli, rest_env):
     code, out = run_cli(["state", "list", "--limit", "2"], rest_env)
     assert code == 0
     assert "count: 2 of 11 total" in out
-    assert "Run `ha-axi state list --limit 11` to see all 11" in out
+    assert "Run `hass-axi state list --limit 11` to see all 11" in out
 
 
 def test_state_list_honours_requested_fields(run_cli, rest_env):
@@ -375,7 +375,7 @@ def test_a_method_not_allowed_is_translated(run_cli, rest_env, rest_server):
     code, out = run_cli(["api", "DELETE", "/states"], rest_env)
     assert code == 1
     assert "DELETE is not allowed" in out
-    assert "ha-axi api --help" in out
+    assert "hass-axi api --help" in out
 
 
 def test_an_unmapped_status_reports_the_code_and_the_server_message(run_cli, rest_env, rest_server):
@@ -410,9 +410,9 @@ def test_a_tls_failure_is_named_as_one(rest_env):
     import ssl
     import urllib.error
 
-    from ha_axi.config import load
-    from ha_axi.errors import ConnectionFailed
-    from ha_axi.rest import RestClient
+    from hass_axi.config import load
+    from hass_axi.errors import ConnectionFailed
+    from hass_axi.rest import RestClient
 
     client = RestClient(load(rest_env))
     error = client._url_error(urllib.error.URLError(ssl.SSLError("handshake failure")))
