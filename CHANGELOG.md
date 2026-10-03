@@ -4,6 +4,13 @@ This project was published as `ha-axi` up to and including 0.7.1, and as `hass-a
 release after it. The entries below 0.7.1 describe `ha-axi`; their links point at the repository's
 old name, which GitHub redirects.
 
+## [0.8.0](https://github.com/dmealing/hass-axi/compare/v0.7.1...v0.8.0) (2026-10-03)
+
+
+### Features
+
+* **cli:** rename to hass-axi and add recorder reads and URL fallback ([#34](https://github.com/dmealing/hass-axi/issues/34)) ([821ff74](https://github.com/dmealing/hass-axi/commit/821ff74a126095734806cec2f976a17ad4e6ef47))
+
 ## [0.7.1](https://github.com/dmealing/ha-axi/compare/v0.7.0...v0.7.1) (2026-08-29)
 
 

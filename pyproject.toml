@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hass-axi"
-version = "0.7.1"
+version = "0.8.0"
 description = "Agent eXperience Interface (AXI) CLI for Home Assistant: entity, area and device registry administration over the WebSocket API, and service calls that explain their refusals"
 readme = "README.md"
 license = { text = "MIT" }
