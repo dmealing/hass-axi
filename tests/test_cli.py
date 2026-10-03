@@ -78,7 +78,7 @@ def test_an_unknown_command_lists_the_real_ones(run_cli):
     code, out = run_cli(["nope"], {})
     assert code == 2
     assert "unknown command: nope" in out
-    assert "state, service" in out
+    assert "state, sensor, history" in out
 
 
 def test_a_plausible_alias_gets_a_targeted_hint(run_cli):
@@ -104,7 +104,7 @@ def test_an_unknown_flag_is_rejected_with_the_valid_ones_inline(run_cli):
     code, out = run_cli(["state", "list", "--stat", "closed"], {})
     assert code == 2
     assert "unknown flag --stat for `state list`" in out
-    assert "--domain, --state, --search, --limit, --fields" in out
+    assert "--domain, --state, --search, --stale, --limit, --fields" in out
     assert "--help always allowed" in out
 
 

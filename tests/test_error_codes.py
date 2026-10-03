@@ -516,6 +516,12 @@ INVOCATIONS = {
     ("state", "get"): ["state", "get", "light.example_ceiling"],
     ("template", "render"): ["template", "render", "--template", "{{ 1 + 1 }}"],
     ("ws", "ws"): ["ws", "entity.list"],
+    ("ping", "ping"): ["ping"],
+    ("sensor", "list"): ["sensor", "list"],
+    ("history", "get"): ["history", "get", "light.example_lamp"],
+    ("logbook", "get"): ["logbook", "get"],
+    ("statistics", "list"): ["statistics", "list"],
+    ("statistics", "get"): ["statistics", "get", "sensor.example_legacy_meter"],
 }
 
 #: The subcommands that never reach Home Assistant. Named rather than inferred,

@@ -406,6 +406,9 @@ READ_INVOCATIONS = [
     ["service", "get", "light.turn_on"],
     ["template", "render", "--template", "{{ 1 + 1 }}"],
     ["api", "/config"],
+    ["ping"],
+    ["history", "get", "light.example_lamp"],
+    ["logbook", "get"],
 ]
 
 
@@ -429,7 +432,16 @@ WS_READ_INVOCATIONS = [
     ["device", "list"],
     ["device", "get", "device_two"],
     ["ws", "entity.list"],
+    ["statistics", "list"],
+    ["statistics", "get", "sensor.example_legacy_meter"],
+    ["ws", "--raw", "recorder/list_statistic_ids"],
 ]
+
+
+def test_sensor_discovery_still_works_under_read_only(run_cli, installation_env):
+    """It reads both transports, so it needs the installation rather than one double."""
+    code, _ = run_cli(["sensor", "list"], enabled(installation_env))
+    assert code == 0
 
 
 @pytest.mark.parametrize("argv", WS_READ_INVOCATIONS, ids=lambda a: " ".join(a[:2]))

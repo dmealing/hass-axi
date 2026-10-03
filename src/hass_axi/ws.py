@@ -145,6 +145,28 @@ REGISTRY: dict = {
         _cmd("config.get", "get_config", "Read the instance configuration", access=READ),
         _cmd("service.list", "get_services", "Read every registered service", access=READ),
         _cmd("state.list", "get_states", "Read every entity state", access=READ),
+        _cmd(
+            "statistics.list",
+            "recorder/list_statistic_ids",
+            "List the statistics the recorder keeps",
+            optional=("statistic_type",),
+            access=READ,
+        ),
+        _cmd(
+            "statistics.metadata",
+            "recorder/get_statistics_metadata",
+            "Read the metadata of named statistics",
+            optional=("statistic_ids",),
+            access=READ,
+        ),
+        _cmd(
+            "statistics.during_period",
+            "recorder/statistics_during_period",
+            "Read statistics buckets over a window",
+            required=("start_time", "statistic_ids", "period"),
+            optional=("end_time", "types", "units"),
+            access=READ,
+        ),
     )
 }
 

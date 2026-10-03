@@ -299,6 +299,9 @@ def test_every_websocket_command_the_cli_ships_is_modelled(name, ws_server, ws_e
         "area_id": "example_hall",
         "device_id": "device_one",
         "name": "Example Study",
+        "start_time": "2026-01-01T00:00:00+00:00",
+        "statistic_ids": ["sensor.example_legacy_meter"],
+        "period": "hour",
     }
     command = REGISTRY[name]
     params = {key: sample[key] for key in command.required if key in sample}

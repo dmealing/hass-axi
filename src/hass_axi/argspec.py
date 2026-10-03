@@ -236,7 +236,9 @@ def _check_positionals(sub: Sub, command: Command, values: list) -> None:
             help_lines=[f"Run `{invocation(command, sub)} {' '.join(sub.args)}`"],
             code="MISSING_ARGUMENT",
         )
-    if len(values) > len(sub.args):
+    # A trailing `[name...]` takes any number of further values.
+    variadic = bool(sub.args) and sub.args[-1].endswith("...]")
+    if len(values) > len(sub.args) and not variadic:
         extra = values[len(sub.args)]
         raise UsageError(
             f"unexpected argument {extra!r} for `{command.name} {sub.name}`",

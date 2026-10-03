@@ -8,8 +8,10 @@ WebSocket API instead.
 from __future__ import annotations
 
 from ..argspec import Command, Flag, Sub
+from ..errors import UsageError
 from ..output import HelpBlock, truncate
 from ..readonly import READ
+from . import _window
 from ._common import (
     PREVIEW_CHARS,
     count_line,
@@ -18,6 +20,7 @@ from ._common import (
     effective_area_id,
     filter_by_area,
     friendly_name,
+    last_reported,
     matches_search,
     parse_limit,
     project,
@@ -25,7 +28,16 @@ from ._common import (
 )
 
 DEFAULT_LIMIT = 100
-LIST_FIELDS = ["entity_id", "name", "state", "domain", "last_changed", "last_updated"]
+LIST_FIELDS = [
+    "entity_id",
+    "name",
+    "state",
+    "domain",
+    "last_changed",
+    "last_updated",
+    "last_reported",
+    "age",
+]
 DEFAULT_LIST_FIELDS = ["entity_id", "name", "state"]
 
 COMMAND = Command(
@@ -42,6 +54,7 @@ COMMAND = Command(
                 Flag("--domain", "<name>", repeat=True, note="repeat to widen"),
                 Flag("--state", "<value>", note="exact match"),
                 Flag("--search", "<text>", note="matches entity_id and name"),
+                Flag("--stale", "<age>", note="not reported for at least this long, e.g. 24h"),
                 Flag("--limit", "<n>", default=DEFAULT_LIMIT),
                 Flag("--fields", "<a,b,c>", note=f"from {'|'.join(LIST_FIELDS)}"),
             ),
@@ -63,6 +76,7 @@ COMMAND = Command(
         "hass-axi state list --area 'Example Room' --domain light",
         "hass-axi state list --search lamp --limit 20",
         "hass-axi state list --domain sensor --state unavailable",
+        "hass-axi state list --stale 24h --fields entity_id,name,age",
         "hass-axi state get light.example_lamp",
         "hass-axi state get media_player.example_speaker --full",
     ),
@@ -92,6 +106,8 @@ def _row(state: dict) -> dict:
         "domain": domain_of(state.get("entity_id", "")),
         "last_changed": state.get("last_changed", ""),
         "last_updated": state.get("last_updated", ""),
+        "last_reported": last_reported(state),
+        "age": _window.age_of(last_reported(state), _window.now()),
     }
 
 
@@ -115,6 +131,10 @@ def _list(ctx, parsed):
     if search:
         rows = [row for row in rows if matches_search(search, row["entity_id"], row["name"])]
         scope.append(f"matching {search!r}")
+    stale = parsed.get("stale")
+    if stale:
+        rows = _narrow_to_stale(rows, stale)
+        scope.append(f"not reported in {stale}")
 
     matched = len(rows)
     limit = parse_limit(parsed.get("limit"), default=DEFAULT_LIMIT)
@@ -147,6 +167,31 @@ def _list(ctx, parsed):
         "states": project(shown, fields),
         "help": HelpBlock(help_lines),
     }
+
+
+def _narrow_to_stale(rows: list, raw: str) -> list:
+    """Keep the rows whose integration has reported nothing for ``raw``, oldest first.
+
+    `unavailable` and `unknown` rows are kept out, as the home view keeps them
+    out of its own stale count, so the two always agree on the number.
+    """
+    threshold = _window.parse_age(raw)
+    if threshold is None:
+        raise UsageError(
+            f"--stale needs an age such as 24h, got {raw!r}",
+            help_lines=["Run `hass-axi state list --stale 24h` (ages: s, m, h, d, w)"],
+            code="BAD_TIME",
+        )
+    current = _window.now()
+    kept = []
+    for row in rows:
+        if row["state"] in ("unavailable", "unknown"):
+            continue
+        moment = _window.parse_timestamp(row["last_reported"])
+        if moment is not None and current - moment >= threshold:
+            kept.append((moment, row))
+    kept.sort(key=lambda item: item[0])
+    return [row for _, row in kept]
 
 
 def _narrow_to_area(ctx, rows: list, area_filter, scope: list) -> list:

@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+import socket
+import ssl
+from dataclasses import dataclass, replace
 from urllib.parse import urlsplit, urlunsplit
 
 from .errors import ConfigError
-from .output import register_secret
+from .output import debug, register_secret
 from .readonly import ENV_VAR as READ_ONLY_VAR
 from .readonly import active_var as read_only_var
 from .readonly import enabled as read_only_enabled
@@ -25,6 +27,12 @@ URL_VARS = ("HA_URL", "HASS_SERVER")
 TOKEN_VARS = ("HA_TOKEN", "HASS_TOKEN")
 
 DEFAULT_TIMEOUT = 30.0
+
+#: How long one candidate URL gets to answer before the next is tried. Shorter
+#: than the request timeout on purpose: a candidate that is merely slow to
+#: refuse would otherwise cost the whole timeout before the one that works is
+#: even attempted.
+CANDIDATE_CONNECT_TIMEOUT = 5.0
 
 _SETUP_HELP = [
     "Set HA_URL to your Home Assistant base URL, e.g. export HA_URL=https://homeassistant.example.com",
@@ -54,6 +62,21 @@ class Config:
     token: str
     timeout: float = DEFAULT_TIMEOUT
     read_only: bool = False
+    #: Every base URL the environment named, in the order to try them. One
+    #: entry for the ordinary single-URL configuration; ``base_url`` is the one
+    #: in use, which :func:`select_reachable` moves along this list.
+    candidates: tuple = ()
+
+    @property
+    def fell_back(self) -> bool:
+        """Whether a candidate other than the first is the one in use."""
+        return bool(self.candidates) and self.base_url != self.candidates[0]
+
+    def candidate_note(self) -> str:
+        """``candidate 2 of 3`` when a fallback happened, else ``""``."""
+        if not self.fell_back:
+            return ""
+        return f"candidate {self.candidates.index(self.base_url) + 1} of {len(self.candidates)}"
 
     @property
     def rest_root(self) -> str:
@@ -125,6 +148,76 @@ def normalize_base_url(raw: str) -> str:
     return urlunsplit((parts.scheme, host, path, "", ""))
 
 
+def parse_base_urls(raw: str) -> tuple:
+    """Split ``HA_URL`` into the candidate base URLs it names, in order.
+
+    One URL is the ordinary case. Several, separated by commas, are tried in
+    order -- typically the address on the local network first and a remote one
+    second -- and the first that answers is used for the rest of the run. Each
+    is normalised exactly as a lone URL is, so a userinfo prefix on any of them
+    is stripped and registered as a secret before anything can print it.
+    """
+    urls: list = []
+    for part in raw.split(","):
+        if not part.strip():
+            continue
+        url = normalize_base_url(part)
+        if url not in urls:
+            urls.append(url)
+    if not urls:
+        raise ConfigError(
+            f"{URL_VARS[0]} names no URL: {raw!r}",
+            help_lines=[_SETUP_HELP[0]],
+            code="BAD_URL",
+        )
+    return tuple(urls)
+
+
+def _answers(url: str, timeout: float) -> bool:
+    """Whether a TCP connection -- and, for https, a TLS handshake -- succeeds.
+
+    The handshake is part of the probe because a certificate this machine will
+    not accept is as much a dead end as a refused port: the request that
+    follows would fail with `TLS_ERROR` on that candidate however long it was
+    given. The default context is the one urllib verifies with, so the probe
+    and the request agree about which certificates are acceptable.
+    """
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    try:
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            if parts.scheme == "https":
+                context = ssl.create_default_context()
+                with context.wrap_socket(sock, server_hostname=host):
+                    pass
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def select_reachable(config: Config) -> Config:
+    """Move ``base_url`` to the first candidate that answers at the transport level.
+
+    Fallback is decided by reachability alone and never by what Home Assistant
+    says: a 401, a 404 or a 500 is an answer, and the next candidate is the same
+    installation reached another way, so retrying it there would only repeat the
+    refusal. A single candidate is never probed -- the ordinary configuration
+    pays nothing for this -- and when no candidate answers the first is kept,
+    so the request that follows reports the failure in the usual taxonomy
+    rather than in a vocabulary of its own.
+    """
+    if len(config.candidates) < 2:
+        return config
+    timeout = min(config.timeout, CANDIDATE_CONNECT_TIMEOUT)
+    for url in config.candidates:
+        if _answers(url, timeout):
+            if url != config.base_url:
+                debug(f"falling back to {url}: the candidates before it did not answer")
+            return replace(config, base_url=url)
+    return replace(config, base_url=config.candidates[0])
+
+
 def load(environ=None, *, timeout: float | None = None) -> Config:
     """Resolve a :class:`Config` or raise :class:`ConfigError` naming what is absent."""
     environ = os.environ if environ is None else environ
@@ -157,11 +250,13 @@ def load(environ=None, *, timeout: float | None = None) -> Config:
 
     # Registered at the moment it is read, so no later code path can print it.
     register_secret(token)
+    candidates = parse_base_urls(raw_url)
     return Config(
-        base_url=normalize_base_url(raw_url),
+        base_url=candidates[0],
         token=token,
         timeout=DEFAULT_TIMEOUT if timeout is None else timeout,
         read_only=read_only_enabled(environ),
+        candidates=candidates,
     )
 
 

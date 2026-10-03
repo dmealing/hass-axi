@@ -17,8 +17,9 @@ import socket
 import threading
 import time
 from contextlib import suppress
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import pytest
 
@@ -88,7 +89,12 @@ STATES = [
     {
         "entity_id": "sensor.example_temperature",
         "state": "21.5",
-        "attributes": {"friendly_name": "Example Hub Temperature", "unit_of_measurement": "C"},
+        "attributes": {
+            "friendly_name": "Example Hub Temperature",
+            "unit_of_measurement": "C",
+            "device_class": "temperature",
+            "state_class": "measurement",
+        },
         "last_changed": "2026-01-01T00:00:00+00:00",
         "last_reported": "2026-01-01T00:00:00+00:00",
         "last_updated": "2026-01-01T00:00:00+00:00",
@@ -150,6 +156,8 @@ STATES = [
         "attributes": {
             "friendly_name": "Example Doorway Legacy Meter",
             "unit_of_measurement": "kWh",
+            "device_class": "energy",
+            "state_class": "total_increasing",
         },
         "last_changed": "2026-01-01T00:00:00+00:00",
         "last_reported": "2026-01-01T00:00:00+00:00",
@@ -190,7 +198,12 @@ STATES = [
         # home view count the two together under the name of one of them.
         "entity_id": "sensor.example_reading",
         "state": "unknown",
-        "attributes": {"friendly_name": "Example Hub Reading", "unit_of_measurement": "A"},
+        "attributes": {
+            "friendly_name": "Example Hub Reading",
+            "unit_of_measurement": "A",
+            "device_class": "current",
+            "state_class": "measurement",
+        },
         "last_changed": "2026-01-01T00:00:00+00:00",
         "last_reported": "2026-01-01T00:00:00+00:00",
         "last_updated": "2026-01-01T00:00:00+00:00",
@@ -584,6 +597,189 @@ DEVICE_REGISTRY = [
     },
 ]
 
+# ------------------------------------------------------------- the recorder
+#
+# Everything below is what Home Assistant's recorder answers with, in the shapes
+# read out of `components/history`, `components/logbook` and
+# `components/recorder/websocket_api.py` at 2026.8.3. The window every test of
+# these reads uses is the fixture day: `RECORDER_NOW` is the instant the tests
+# pin as "now", so the default `--start 24h` opens at `RECORDER_DAY`.
+
+RECORDER_DAY = "2026-01-01T00:00:00+00:00"
+RECORDER_NOW = "2026-01-02T00:00:00+00:00"
+_DAY_EPOCH = 1767225600  # RECORDER_DAY as epoch seconds
+HOUR_MS = 3_600_000
+
+
+def _at(hour: float) -> str:
+    """An ISO instant ``hour`` hours into the fixture day (negative is the day before)."""
+    return datetime.fromtimestamp(_DAY_EPOCH + hour * 3600, tz=timezone.utc).isoformat()
+
+
+#: State changes as the recorder stored them: entity -> [(when, state)], oldest
+#: first. The first change of each entity predates the fixture day, so the
+#: state the window opens in has to be carried in from before it -- which is
+#: what `include_start_time_state` does upstream and what a client that read
+#: the first row as a change would get wrong.
+HISTORY = {
+    "light.example_lamp": [(_at(-4), "on"), (_at(6), "off"), (_at(18), "on")],
+    "sensor.example_temperature": [
+        (_at(-1), "20.5"),
+        (_at(3), "19.0"),
+        (_at(9), "unavailable"),
+        (_at(10), "22.5"),
+        (_at(20), "21.5"),
+    ],
+    "binary_sensor.example_doorway": [(_at(-30), "off"), (_at(12), "on"), (_at(12.5), "off")],
+}
+
+#: Logbook rows as `EventProcessor` renders them with `timestamp=False` and
+#: `include_entity_name=True`: `when` is ISO text, a state change carries
+#: `state` and no `message`, an event carries `message`, and the cause arrives
+#: spread across `context_*` keys -- or not at all.
+LOGBOOK = [
+    {
+        "when": _at(6),
+        "name": "Example Morning",
+        "message": "triggered by time",
+        "domain": "automation",
+        "entity_id": "automation.example_morning",
+        "source": "time",
+        "context_id": "01EXAMPLELOGBOOK0000000001",
+    },
+    {
+        "when": _at(6),
+        "state": "off",
+        "entity_id": "light.example_lamp",
+        "name": "Example Lamp",
+        "context_id": "01EXAMPLELOGBOOK0000000001",
+        "context_event_type": "automation_triggered",
+        "context_domain": "automation",
+        "context_name": "Example Morning",
+        "context_entity_id": "automation.example_morning",
+        "context_entity_id_name": "Example Morning",
+        "context_source": "time",
+        "context_message": "triggered by time",
+    },
+    {
+        "when": _at(12),
+        "state": "on",
+        "entity_id": "binary_sensor.example_doorway",
+        "name": "Example Doorway",
+    },
+    {
+        "when": _at(18),
+        "state": "on",
+        "entity_id": "light.example_lamp",
+        "name": "Example Lamp",
+        "context_id": "01EXAMPLELOGBOOK0000000002",
+        "context_user_id": "example-user",
+        "context_event_type": "call_service",
+        "context_domain": "light",
+        "context_service": "turn_on",
+    },
+]
+
+#: `recorder/list_statistic_ids` rows, flattened the way
+#: `_flatten_list_statistic_ids_metadata_result` flattens them. `has_mean` is
+#: still published beside `mean_type`; a meter has a sum and no mean, a reading
+#: a mean and no sum, and an external statistic has a `source` that is not the
+#: recorder and an id that is not an entity's.
+STATISTICS_METADATA = [
+    {
+        "statistic_id": "sensor.example_legacy_meter",
+        "display_unit_of_measurement": "kWh",
+        "has_mean": False,
+        "mean_type": 0,
+        "has_sum": True,
+        "name": None,
+        "source": "recorder",
+        "statistics_unit_of_measurement": "kWh",
+        "unit_class": "energy",
+    },
+    {
+        "statistic_id": "sensor.example_temperature",
+        "display_unit_of_measurement": "C",
+        "has_mean": True,
+        "mean_type": 1,
+        "has_sum": False,
+        "name": None,
+        "source": "recorder",
+        "statistics_unit_of_measurement": "C",
+        "unit_class": "temperature",
+    },
+    {
+        "statistic_id": "example:grid_import",
+        "display_unit_of_measurement": "kWh",
+        "has_mean": False,
+        "mean_type": 0,
+        "has_sum": True,
+        "name": "Example Grid Import",
+        "source": "example",
+        "statistics_unit_of_measurement": "kWh",
+        "unit_class": "energy",
+    },
+]
+
+
+def hourly_rows(values) -> list:
+    """Hourly statistics rows across the fixture day, one per value given.
+
+    Each value is a dict of the types that hour holds; ``start`` and ``end``
+    are epoch milliseconds, which is what `ws_handle_get_statistics_during_period`
+    converts them to before sending.
+    """
+    rows = []
+    for hour, value in enumerate(values):
+        if value is None:
+            continue
+        start = _DAY_EPOCH * 1000 + hour * HOUR_MS
+        rows.append({"start": start, "end": start + HOUR_MS, **value})
+    return rows
+
+
+def meter_rows(changes) -> list:
+    """A meter's hourly rows from its per-hour change, its reading and its running sum."""
+    values, reading, running = [], 100.0, 0.0
+    for change in changes:
+        if change is None:
+            values.append(None)
+            continue
+        reading += change
+        running += change
+        values.append(
+            {
+                "change": change,
+                "state": reading,
+                "sum": running,
+                "mean": None,
+                "min": None,
+                "max": None,
+            }
+        )
+    return hourly_rows(values)
+
+
+def statistics_rows() -> dict:
+    """Every statistic's stored hourly rows, freshly built for each double."""
+    return {
+        "sensor.example_legacy_meter": meter_rows([0.5] * 24),
+        "sensor.example_temperature": hourly_rows(
+            [
+                {
+                    "mean": 20 + (hour % 6) * 0.5,
+                    "min": 19.5 + (hour % 6) * 0.5,
+                    "max": 20.5 + (hour % 6) * 0.5,
+                    "change": None,
+                    "state": None,
+                    "sum": None,
+                }
+                for hour in range(24)
+            ]
+        ),
+    }
+
+
 # ------------------------------------------------- the service model, read back
 #
 # These helpers are what the REST double consults to decide whether to refuse a
@@ -777,6 +973,16 @@ WS_COMMAND_KEYS = {
     "get_config": (),
     "get_services": (),
     "get_states": (),
+    "recorder/list_statistic_ids": ("statistic_type",),
+    "recorder/get_statistics_metadata": ("statistic_ids",),
+    "recorder/statistics_during_period": (
+        "start_time",
+        "end_time",
+        "statistic_ids",
+        "period",
+        "units",
+        "types",
+    ),
 }
 
 #: The fields `config/entity_registry/update` writes onto the stored entry.
@@ -829,6 +1035,8 @@ class FakeRestServer:
             "services": SERVICES,
             "template": "rendered",
             "service_result": None,
+            "history": {k: list(v) for k, v in HISTORY.items()},
+            "logbook": [dict(entry) for entry in LOGBOOK],
         }
         self.status_override = None
         #: The address is banned. `components/http/ban.py` raises a bare
@@ -947,7 +1155,99 @@ class FakeRestServer:
                     return self._call_service(name[0], name[1], body, urlparse(self.path).query)
                 if path == "/api/template" and method == "POST":
                     return self._render_template(body)
+                query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+                if path.startswith("/api/history/period") and method == "GET":
+                    return self._history(path[len("/api/history/period") :], query)
+                if path.startswith("/api/logbook") and method == "GET":
+                    return self._logbook(path[len("/api/logbook") :], query)
                 return self._not_found()
+
+            # -- the recorder, read over REST -------------------------------
+
+            @staticmethod
+            def _instant(text):
+                """`dt_util.parse_datetime`, near enough: ISO 8601 or nothing."""
+                try:
+                    moment = datetime.fromisoformat(unquote(text))
+                except ValueError:
+                    return None
+                return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+            def _history(self, suffix, query):
+                """`HistoryPeriodView.get`, transcribed.
+
+                A window with no `end_time` ends one day after it starts, not
+                now; the entity filter is required; and the answer is one list
+                per requested entity, in the order requested, empty where the
+                recorder holds nothing. With `minimal_response` only the first
+                row is a whole state.
+                """
+                start = datetime.now(timezone.utc) - timedelta(days=1)
+                if suffix.startswith("/"):
+                    start = self._instant(suffix[1:])
+                    if start is None:
+                        return self._send(400, {"message": "Invalid datetime"})
+                wanted = (query.get("filter_entity_id") or [""])[0].strip().lower()
+                if not wanted:
+                    return self._send(400, {"message": "filter_entity_id is missing"})
+                ids = wanted.split(",")
+                if any("." not in entity_id for entity_id in ids):
+                    return self._send(400, {"message": "Invalid filter_entity_id"})
+                end = start + timedelta(days=1)
+                if "end_time" in query:
+                    end = self._instant(query["end_time"][0])
+                    if end is None:
+                        return self._send(400, {"message": "Invalid end_time"})
+                minimal = "minimal_response" in query
+                states = {s["entity_id"]: s for s in outer.state["states"]}
+                answer = []
+                for entity_id in ids:
+                    changes = outer.state["history"].get(entity_id, [])
+                    before = [c for c in changes if self._instant(c[0]) < start]
+                    within = [c for c in changes if start <= self._instant(c[0]) <= end]
+                    if before:
+                        # The state already held when the window opened, timed
+                        # at the window's start, as `LazyState` does with a
+                        # start time.
+                        within = [(start.isoformat(), before[-1][1]), *within]
+                    rows = []
+                    for index, (when, value) in enumerate(within):
+                        if index and minimal:
+                            rows.append({"state": value, "last_changed": when})
+                            continue
+                        attributes = (states.get(entity_id) or {}).get("attributes") or {}
+                        rows.append(
+                            {
+                                "entity_id": entity_id,
+                                "state": value,
+                                "attributes": attributes,
+                                "last_changed": when,
+                                "last_updated": when,
+                            }
+                        )
+                    answer.append(rows)
+                return self._send(200, answer)
+
+            def _logbook(self, suffix, query):
+                """`LogbookView.get`, transcribed: the same one-day default end."""
+                start = datetime.now(timezone.utc)
+                if suffix.startswith("/"):
+                    start = self._instant(suffix[1:])
+                    if start is None:
+                        return self._send(400, {"message": "Invalid datetime"})
+                end = start + timedelta(days=1)
+                if "end_time" in query:
+                    end = self._instant(query["end_time"][0])
+                    if end is None:
+                        return self._send(400, {"message": "Invalid end_time"})
+                ids = [i for i in (query.get("entity") or [""])[0].split(",") if i]
+                rows = [
+                    entry
+                    for entry in outer.state["logbook"]
+                    if start <= self._instant(entry["when"]) < end
+                    and (not ids or entry.get("entity_id") in ids)
+                ]
+                return self._send(200, rows)
 
             def _not_found(self):
                 """The bodyless 404 an unrouted path actually gets.
@@ -1143,6 +1443,30 @@ class FakeRestServer:
 # ------------------------------------------------------------- WebSocket double
 
 
+def _roll_up_daily(rows: list) -> list:
+    """Hourly rows compiled into UTC days, as the recorder compiles a daily period."""
+    days: dict = {}
+    for row in rows:
+        days.setdefault(row["start"] // 86_400_000, []).append(row)
+    rolled = []
+    for day, hours in sorted(days.items()):
+        means = [h["mean"] for h in hours if h.get("mean") is not None]
+        changes = [h["change"] for h in hours if h.get("change") is not None]
+        rolled.append(
+            {
+                "start": day * 86_400_000,
+                "end": (day + 1) * 86_400_000,
+                "mean": sum(means) / len(means) if means else None,
+                "min": min((h["min"] for h in hours if h.get("min") is not None), default=None),
+                "max": max((h["max"] for h in hours if h.get("max") is not None), default=None),
+                "change": sum(changes) if changes else None,
+                "state": hours[-1].get("state"),
+                "sum": hours[-1].get("sum"),
+            }
+        )
+    return rolled
+
+
 class FakeWsServer:
     """A WebSocket server performing the Home Assistant auth handshake and registry commands."""
 
@@ -1152,6 +1476,10 @@ class FakeWsServer:
         self.entities = [json.loads(json.dumps(e)) for e in ENTITY_REGISTRY]
         self.areas = [json.loads(json.dumps(a)) for a in AREA_REGISTRY]
         self.devices = [json.loads(json.dumps(d)) for d in DEVICE_REGISTRY]
+        self.statistics_meta = [json.loads(json.dumps(m)) for m in STATISTICS_METADATA]
+        #: Stored hourly rows per statistic. A test reshapes one to model a
+        #: meter that resets, goes backwards or stops reporting for a while.
+        self.statistics = statistics_rows()
         self.fail_next = None
         #: A refusal that applies to *every* command rather than the next one.
         #: That is the shape the interesting faults actually have: a non-admin
@@ -1341,12 +1669,80 @@ class FakeWsServer:
             return ok({entry["domain"]: entry["services"] for entry in SERVICES})
         if type_ == "get_states":
             return ok(STATES)
+        if type_ == "recorder/list_statistic_ids":
+            kind = command.get("statistic_type")
+            if kind not in (None, "sum", "mean"):
+                return fail("invalid_format", "value must be one of ['mean', 'sum']")
+            return ok(
+                [
+                    meta
+                    for meta in self.statistics_meta
+                    if kind is None
+                    or (kind == "sum" and meta["has_sum"])
+                    or (kind == "mean" and meta["mean_type"])
+                ]
+            )
+        if type_ == "recorder/get_statistics_metadata":
+            wanted = command.get("statistic_ids")
+            return ok(
+                [m for m in self.statistics_meta if not wanted or m["statistic_id"] in wanted]
+            )
+        if type_ == "recorder/statistics_during_period":
+            return self._statistics_during_period(command, ok, fail)
         # Home Assistant's own wording, and it names nothing: `connection.py`
         # sends a fixed `"Unknown command."` and logs the type rather than
         # returning it. A double that echoed the type back would let a client
         # pass that reads the command name out of a message that never carries
         # one.
         return fail("unknown_command", "Unknown command.")
+
+    def _statistics_during_period(self, command, ok, fail):
+        """`ws_handle_get_statistics_during_period`, transcribed.
+
+        The schema refuses a missing `start_time`, `statistic_ids` or `period`
+        and an unknown period; an unparseable start is `invalid_start_time`.
+        Rows carry only the requested types, a type the statistic does not keep
+        comes back `None` rather than as an error -- which is why a client has
+        to choose the types by kind -- and a statistic with no rows in the
+        window is absent from the answer altogether. Hourly rows are stored;
+        daily ones are rolled up from them the way the recorder compiles them.
+        """
+        for key in ("start_time", "statistic_ids", "period"):
+            if key not in command:
+                return fail("invalid_format", f"required key not provided @ data['{key}']")
+        if command["period"] not in ("5minute", "hour", "day", "week", "month", "year"):
+            return fail("invalid_format", "value must be one of the periods")
+        try:
+            start = datetime.fromisoformat(command["start_time"])
+        except ValueError:
+            return fail("invalid_start_time", "Invalid start_time")
+        end = datetime.fromisoformat(command["end_time"]) if command.get("end_time") else None
+        types = command.get("types") or [
+            "change",
+            "last_reset",
+            "max",
+            "mean",
+            "min",
+            "state",
+            "sum",
+        ]
+        start_ms = start.timestamp() * 1000
+        end_ms = end.timestamp() * 1000 if end else float("inf")
+        answer = {}
+        for statistic_id in command["statistic_ids"]:
+            rows = [
+                r for r in self.statistics.get(statistic_id, []) if start_ms <= r["start"] < end_ms
+            ]
+            if command["period"] == "day":
+                rows = _roll_up_daily(rows)
+            elif command["period"] != "hour":
+                rows = []
+            if rows:
+                answer[statistic_id] = [
+                    {"start": r["start"], "end": r["end"], **{t: r.get(t) for t in types}}
+                    for r in rows
+                ]
+        return ok(answer)
 
     # -- lifecycle ---------------------------------------------------------
 

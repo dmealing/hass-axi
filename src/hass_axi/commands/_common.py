@@ -20,6 +20,16 @@ def friendly_name(state: dict) -> str:
     return attributes.get("friendly_name") or state.get("entity_id", "")
 
 
+def last_reported(state: dict) -> str:
+    """When the integration last reported a value, whether or not it changed.
+
+    `last_reported` moves on every report, `last_updated` only when the state or
+    an attribute changed, so the former is the better freshness signal and the
+    latter the fallback for an instance that predates it.
+    """
+    return state.get("last_reported") or state.get("last_updated") or ""
+
+
 def registry_name(entry: dict, device_names: dict) -> str:
     """The name Home Assistant displays for an entity registry entry.
 

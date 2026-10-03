@@ -14,10 +14,15 @@ from .commands import context as context_command
 from .commands import device as device_command
 from .commands import doctor as doctor_command
 from .commands import entity as entity_command
+from .commands import history as history_command
 from .commands import home as home_command
+from .commands import logbook as logbook_command
+from .commands import ping as ping_command
+from .commands import sensor as sensor_command
 from .commands import service as service_command
 from .commands import setup as setup_command
 from .commands import state as state_command
+from .commands import statistics as statistics_command
 from .commands import template as template_command
 from .commands import wscmd as ws_command
 from .errors import EXIT_ERROR, EXIT_OK, AxiError, UsageError
@@ -28,6 +33,10 @@ from .ws import WsClient
 #: Dispatch order, which is also the order `--help` and the skill list them in.
 COMMAND_ORDER = (
     "state",
+    "sensor",
+    "history",
+    "logbook",
+    "statistics",
     "service",
     "template",
     "entity",
@@ -35,6 +44,7 @@ COMMAND_ORDER = (
     "device",
     "ws",
     "api",
+    "ping",
     "doctor",
     "setup",
     "context",
@@ -42,6 +52,10 @@ COMMAND_ORDER = (
 
 _MODULES = {
     "state": state_command,
+    "sensor": sensor_command,
+    "history": history_command,
+    "logbook": logbook_command,
+    "statistics": statistics_command,
     "service": service_command,
     "template": template_command,
     "entity": entity_command,
@@ -49,6 +63,7 @@ _MODULES = {
     "device": device_command,
     "ws": ws_command,
     "api": api_command,
+    "ping": ping_command,
     "doctor": doctor_command,
     "setup": setup_command,
     "context": context_command,
@@ -70,6 +85,13 @@ _ALIASES = {
     "rest": "api",
     "health": "doctor",
     "status": "doctor",
+    "sensors": "sensor",
+    "stats": "statistics",
+    "statistic": "statistics",
+    "energy": "statistics",
+    "events": "logbook",
+    "log": "logbook",
+    "timeline": "history",
 }
 
 
@@ -93,6 +115,9 @@ class Context:
             # Registered before any transport runs, so a token can never appear
             # in an error message or a debug line.
             output.register_secret(self._config.token)
+            # Chosen once, here, so both transports talk to the same candidate
+            # for the whole run rather than each settling on its own.
+            self._config = config_module.select_reachable(self._config)
         return self._config
 
     def rest(self) -> RestClient:
@@ -119,7 +144,8 @@ def render_root_help() -> str:
         "  --human (readable output), --json (raw JSON output), --timeout <seconds> (default 30),",
         "  --debug (diagnostics on stderr), --help, -v/--version",
         "env[3]:",
-        "  HA_URL (or HASS_SERVER) - Home Assistant base URL, e.g. https://homeassistant.example.com",
+        "  HA_URL (or HASS_SERVER) - Home Assistant base URL, e.g. https://homeassistant.example.com;",
+        "    several, comma-separated, are tried in order and the first that answers is used",
         "  HA_TOKEN (or HASS_TOKEN) - long-lived access token; there is deliberately no --token flag",
         f"  {readonly.ENV_VAR} - set to any non-empty value to refuse every write, on both transports",
         f"summaries[{len(COMMAND_ORDER)}]:",
@@ -131,6 +157,8 @@ def render_root_help() -> str:
             "examples:",
             "  hass-axi",
             "  hass-axi state list --domain light",
+            "  hass-axi sensor list --device-class power --area 'Example Room'",
+            "  hass-axi statistics get sensor.example_legacy_meter --start 7d",
             "  hass-axi entity list --area 'Example Room'",
             "  hass-axi entity update light.example_lamp --name 'Reading Lamp' --area example_room",
             "  hass-axi service call light.turn_on --target-entity light.example_lamp",

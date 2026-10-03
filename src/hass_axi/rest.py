@@ -362,6 +362,35 @@ class RestClient:
         query = {"return_response": ""} if return_response else None
         return self.request("POST", f"/services/{domain}/{service}", body=data, query=query)
 
+    def history(self, entity_ids: list, start: str, end: str) -> list:
+        """State timelines, one list per requested entity, in the order asked.
+
+        ``minimal_response`` keeps every row after the first to a state and a
+        time, which is all a timeline needs; the first row still carries the
+        attributes, so the entity's displayed name comes back with it. The end
+        is always sent -- see :mod:`hass_axi.commands._window` for why an
+        omitted one answers for a single day rather than up to now.
+        """
+        result = self.request(
+            "GET",
+            f"/history/period/{urllib.parse.quote(start, safe='')}",
+            query={
+                "filter_entity_id": ",".join(entity_ids),
+                "end_time": end,
+                "minimal_response": "",
+            },
+        )
+        return result if isinstance(result, list) else []
+
+    def logbook(self, start: str, end: str, entity_ids: list | None = None) -> list:
+        """Logbook entries between two instants, optionally for named entities only."""
+        result = self.request(
+            "GET",
+            f"/logbook/{urllib.parse.quote(start, safe='')}",
+            query={"end_time": end, "entity": ",".join(entity_ids) if entity_ids else None},
+        )
+        return result if isinstance(result, list) else []
+
     def render_template(self, template: str) -> str:
         result = self.request("POST", "/template", body={"template": template})
         return result if isinstance(result, str) else json.dumps(result)
