@@ -248,6 +248,7 @@ def run(ctx, sub: str, parsed):
     help_lines.extend(
         [
             "Run `hass-axi entity list --area <id|name>` to read the registry, which REST cannot reach",
+            "Run `hass-axi area list` to see the areas defined here",
             "Run `hass-axi sensor list --device-class <class>` to find a reading by what it measures",
         ]
     )

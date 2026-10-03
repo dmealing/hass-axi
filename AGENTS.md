@@ -3,6 +3,27 @@
 This file is the project's committed home for project-intrinsic agent knowledge: build, test,
 release, architecture, and sharp-edge notes that should travel with the code.
 
+## The name: `hass-axi`, formerly `ha-axi`
+
+This tool was published as `ha-axi` up to 0.7.1. An unrelated TypeScript Home Assistant CLI is also
+published as `ha-axi`, holds that slot in the community AXI catalog, and installs a binary of the
+same name — so this one was renamed: distribution and console script `hass-axi`, package
+`hass_axi`, variables `HASS_AXI_*`. `HA_URL`/`HA_TOKEN` and their `HASS_*` aliases did not change.
+Three things outlive the rename, and each is deliberate:
+
+- **The old variables still work.** `readonly.LEGACY_ENV_VAR` (`HA_AXI_READ_ONLY`) still switches a
+  session read-only and `HA_AXI_DEBUG` still enables diagnostics; each prints one deprecation notice
+  per process on stderr (`output.deprecated_variable`). The read-only one must never be dropped
+  quietly: an upgrade that turned the guard off is the one outcome that variable cannot have.
+- **`setup hooks` adopts what the old name installed** — see "The session-hook installer".
+- **`legacy/ha-axi/` is the final `ha-axi` release**: a package with no code of its own that
+  depends on `hass-axi` and whose `ha-axi` command forwards to it with a stderr notice. It is built
+  and published by hand, once, after `hass-axi` is on PyPI; no workflow builds it, and
+  `tests/test_legacy_shim.py` is the only thing that runs it before somebody's upgrade does.
+
+Historical prose below that names `ha-axi` (a release number, a defect) describes the tool under its
+old name and is left as it was.
+
 ## The hard constraint: this repository is public and must stay generic
 
 `hass-axi` talks to home automation installations. The failure that matters is not a bug — it is a
@@ -139,7 +160,14 @@ that are neither JWT-shaped nor bearer-prefixed, and anything inside a binary.
   is derived from the code and never declared beside it, and that a code is always a literal.
 - `readonly.py` — the `HASS_AXI_READ_ONLY` gate: the classification vocabulary, the switch reader,
   the refusal, and the one `guard()` all three enforcement points call. It imports nothing but
-  `errors`, so `config`, `rest`, `ws` and `cli` can all depend on it without a cycle.
+  `errors` and `output` (for the deprecation notice of the pre-rename variable), so `config`,
+  `rest`, `ws` and `cli` can all depend on it without a cycle.
+- `commands/_window.py` — the `--start`/`--end` rules the three recorder reads share: an age (`24h`)
+  or an ISO instant, no offset means UTC, and the end is always sent. `_window.now()` is the one
+  clock, so tests pin it with `monkeypatch` rather than racing the wall clock.
+- `commands/sensor.py`, `history.py`, `logbook.py`, `statistics.py`, `ping.py` — the reads that
+  close the gap with the other `ha-axi` and add the sensor and energy reads; see "The recorder
+  reads" below.
 
 ### The service model is a dependency now
 
@@ -188,6 +216,13 @@ this dependency, not something to absorb quietly.
 - **URL userinfo is stripped in `normalize_base_url` and registered as a secret.** The no-argument
   home view prints the base URL, so userinfo must not survive into it.
 - **A bare host defaults to `https://`**, never `http://`.
+- **`HA_URL` may hold several comma-separated candidates, and each is normalised alone** — so
+  userinfo on the second is stripped and registered exactly as on the first. `config.select_reachable`
+  picks one in `cli.Context.config()`, once, so both transports use the same candidate for the run.
+  It moves on only on a transport failure (no TCP connection, or no TLS handshake for `https`),
+  never on an HTTP answer: a 401 from the first candidate is the installation answering, and the
+  next candidate is the same installation. One candidate is never probed. When none answers the
+  first is kept, so the request that follows reports the fault in the ordinary taxonomy.
 - **`HASS_AXI_READ_ONLY` holds at three points, and the two transports are the load-bearing ones.**
   See "The read-only gate" below. Do not move enforcement into command bodies, do not add a
   fourth classification, and do not make the switch parse its value.
@@ -676,7 +711,18 @@ whole output and nothing else. Every wrapper shape fails it — a prefix or anot
 leaves extra tokens in the string, and a wrapper script has its own basename. Adoption is one-way
 and happens
 once; the entry gains the marker on that install and is matched by it forever after. Delete this
-rule only when no installation predating the marker can plausibly remain.
+rule only when no installation predating the marker can plausibly remain. The basename it matches is
+`LEGACY_BINARY_NAMES` — `ha-axi`, the only name those releases were published under.
+
+**The rename added a second adoption rule, and a marker is not enough for it.** Releases 0.5.1 to
+0.7.x marked their entry `managed_by: ha-axi` and ran `ha-axi context`, an executable that is gone
+once the package is renamed. `_is_renamed_own_entry` adopts it and rewrites it. But the unrelated
+tool published as `ha-axi` writes `managed_by`-style markers with **the same string** and runs `ha-axi
+ping --ambient`, so the predicate also requires the command to be exactly what this tool wrote —
+one executable whose basename is `ha-axi`, then `context`, nothing more. The OpenCode plugin is
+retired the same way: `axi-ha-axi.js` is deleted only when its first line is this tool's old header
+in full, because the other tool writes a plugin to the same path whose header starts with the same
+words. `tests/test_hooks.py` holds both halves: ours adopted, theirs untouched.
 
 **The scan covers every group and every entry, and collapses the extras.** It used to `return` at
 the first managed entry, so an already-correct first entry ended it and a second one pointing at a
@@ -780,10 +826,17 @@ own change with its own argument.
 not inferable; see "The read-only gate" above.
 
 **Demotion, and the standing cap.** If a typed command's body reduces to flag-mapping plus a
-request, delete it — the measure is the diff, not the intention. Eleven nouns fit in a root help
-block an agent reads in one glance; a twelfth has to argue that it earns its line. `context` earned
-its own by being the thing a hook can safely run, which no existing noun was — see "The session-hook
-installer". `--data key=value`
+request, delete it — the measure is the diff, not the intention. Eleven nouns once fit in a root
+help block an agent reads in one glance, and every one after has had to argue that it earns its
+line. `context` earned its own by being the thing a hook can safely run, which no existing noun was
+— see "The session-hook installer". The five added with the rename (`sensor`, `history`, `logbook`,
+`statistics`, `ping`) close named gaps against the other `ha-axi`, and each argues by the promotion
+rule rather than by reach: `sensor` crosses transports on every run (1); `statistics` reads the
+recorder's metadata to choose what to ask for and reports a derived summary with caveats (5);
+`history` and `logbook` answer with derived summaries — time in each state, one folded `cause` —
+rather than the raw rows (5), and reach a recorder no existing noun reads; `ping` is the one
+authenticated round-trip a liveness gate needs, which `doctor`'s four checks are not. Sixteen is the
+ceiling this argument supports; the next noun has to displace one or fold into one. `--data key=value`
 stays first-class in every case, because it reaches every field of every service forever with no
 metadata to go stale.
 
@@ -793,6 +846,48 @@ that is wrong. Either read the model live at the moment you enforce it — as `s
 `service get` do — or do not enforce it and let the value through to Home Assistant, which owns the
 schema. This is also why the model is never cached: an integration added or removed rewrites it and
 nothing signals when.
+
+## The recorder reads
+
+`sensor`, `history`, `logbook` and `statistics` read what the recorder and the registries hold, and
+every rule below was read out of `components/history`, `components/logbook` and
+`components/recorder` at 2026.8.3 rather than guessed. The doubles in `tests/conftest.py` transcribe
+the same views, and `tests/test_double_fidelity.py` pins the shapes that matter.
+
+- **A history or logbook window with no `end_time` ends one day after its start, not now.**
+  `HistoryPeriodView` and `LogbookView` both default the end to `start + 1 day` (the logbook to
+  `start + period` days). A client that omits it and asks for `--start 7d` gets the first day only,
+  with no error. `_window.window` therefore always produces an end, and `rest.history`/`rest.logbook`
+  always send it. The other `ha-axi` omits it; do not copy that.
+- **History answers in request order, one list per entity, empty where nothing was recorded.**
+  `_sorted_states_to_dict` seeds the result with every requested id before filling it. With
+  `minimal_response` only the first row of each list is a whole state; the rest are `state` and
+  `last_changed`. The first row is the state already held when the window opened, timed at the
+  window's start — so it counts for the time it held and is not a change.
+- **A statistic's kind comes from the recorder's metadata, never from a device class or a name.**
+  `has_sum` means a meter; `mean_type` 1 an arithmetic mean, 2 a circular one (`has_mean` is the
+  pre-`mean_type` spelling and is still read). Asking `recorder/statistics_during_period` for a type
+  a statistic does not keep is not an error — the value comes back `None` — so `statistics get`
+  groups ids by kind and requests `change,state,sum` or `mean,min,max` per group. A statistic with no
+  rows in the window is absent from the answer, not an empty list.
+- **The total is the sum of `change`.** Not `sum[-1] - sum[0]`, which loses the first bucket, and not
+  the live state. Values arrive in the display unit, which the recorder converts to.
+- **Caveats state, and the number is never adjusted.** A negative `change` is a meter that went
+  backwards and the total includes it. A drop in `state` in a bucket whose `change` is not negative
+  is a *reset* — the recorder started a new cycle and carried the sum across it — and a reset about
+  every 24 hours is called out, because it means the entity's live state is a since-reset reading
+  rather than a running total. A drop booked as a negative change is the first case, not a reset.
+  Missing buckets are counted before the first one and between any two, never after the last: the
+  recorder compiles a bucket only once its period ends, so the newest is routinely not there yet.
+  Every check is a rule about the buckets' shape. **No caveat may name an integration**: rules about
+  a particular vendor's sensors belong to whoever runs that installation, not to this public tool.
+- **Diagnostic sensors are set aside by `entity_category`, never by name**, and hidden ones too. A
+  state with no registry entry is kept: absence of registry data is not a reason to exclude.
+- **The home view's staleness is sensors only, by `last_reported`.** A reading is re-reported while
+  its device is alive whether or not the value moved; an automation, a zone or a closed door reports
+  only on change, and counting those would bury a dead sensor under every quiet entity.
+  `state list --stale` is the generic form, any domain, and agrees with the home view's count for
+  `--domain sensor` because both skip `unavailable` and `unknown`.
 
 ## What the README leads with, and why it is not a feature list
 
@@ -846,7 +941,7 @@ body, neither of which quotes, so the constraint comes from the one reader that 
 
 ```sh
 scripts/dev-setup.sh                     # creates .venv and installs this checkout into it
-.venv/bin/pytest                         # ~1090 tests, a couple of seconds
+.venv/bin/pytest                         # ~1200 tests, a few seconds
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/hass-axi setup skill --check     # SKILL.md is generated, never hand-edited
 ```
@@ -1267,3 +1362,10 @@ worth the history.
 project, and are byte-identical apart from `KNOWN_UNPARSEABLE`.** Two copies that behave differently
 are worse than one that is wrong — the same rule `toon.py` is held to. A change to the grammar
 transcription, the engines or the audit belongs in both repositories in the same sitting.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.

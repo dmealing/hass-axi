@@ -6,7 +6,10 @@
       "package-name": "hass-axi",
       "changelog-path": "CHANGELOG.md",
       "include-component-in-tag": false,
-      "extra-files": ["src/hass_axi/__init__.py"]
+      "extra-files": [
+        "src/hass_axi/__init__.py"
+      ],
+      "bump-minor-pre-major": true
     }
   }
 }

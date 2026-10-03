@@ -19,10 +19,12 @@ SKILL_RELATIVE_PATH = Path("skills") / SKILL_NAME / "SKILL.md"
 FRONTMATTER_DESCRIPTION = (
     "Operate a Home Assistant installation through the hass-axi CLI - read and update the "
     "entity, area and device registries that only the WebSocket API exposes, and call "
-    "services with a capability pre-check and an explained refusal. It also reads entity "
-    "states and renders templates. Use whenever a task touches home automation: renaming "
-    "an entity or the device behind it, moving things between areas, checking what a "
-    "device is doing, or turning something on."
+    "services with a capability pre-check and an explained refusal. It also finds sensors "
+    "by what they measure and where they are, and summarises state history, the logbook "
+    "and recorder statistics - an energy total, an average with min and max - with their "
+    "data-quality caveats. Use whenever a task touches home automation: renaming an entity "
+    "or the device behind it, moving things between areas, checking what a device is "
+    "doing or did, reading how much energy was used, or turning something on."
 )
 
 

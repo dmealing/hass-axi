@@ -420,3 +420,69 @@ def test_an_unknown_websocket_command_is_refused_without_naming_itself(ws_server
         client.send_command("config/nothing_registry/list")
     assert raised.value.code == "NO_SUCH_WS_COMMAND"
     assert [c for c in ws_server.received if c["type"] == "config/nothing_registry/list"]
+
+
+# ------------------------------------------------------------- the recorder
+
+
+def _get(server, path):
+    import urllib.error
+    import urllib.request
+
+    from conftest import FAKE_TOKEN
+
+    request = urllib.request.Request(
+        f"{server.url}{path}", headers={"Authorization": f"Bearer {FAKE_TOKEN}"}
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read())
+
+
+def test_a_history_window_with_no_end_ends_a_day_after_it_starts(rest_server):
+    """`HistoryPeriodView` does not end an open window now, and a client that relies on it is wrong."""
+    _, answer = _get(
+        rest_server,
+        "/api/history/period/2025-12-31T00:00:00%2B00:00?filter_entity_id=light.example_lamp",
+    )
+    # The changes at 06:00 and 18:00 on the fixture day are outside that one day.
+    assert [row["state"] for row in answer[0]] == ["on"]
+
+
+def test_history_refuses_a_request_without_its_entity_filter(rest_server):
+    status, answer = _get(rest_server, "/api/history/period/2026-01-01T00:00:00%2B00:00")
+    assert (status, answer) == (400, {"message": "filter_entity_id is missing"})
+
+
+def test_a_minimal_history_carries_attributes_on_its_first_row_only(rest_server):
+    _, answer = _get(
+        rest_server,
+        "/api/history/period/2026-01-01T00:00:00%2B00:00"
+        "?filter_entity_id=light.example_lamp&end_time=2026-01-02T00:00:00%2B00:00"
+        "&minimal_response",
+    )
+    first, *rest = answer[0]
+    assert "attributes" in first and "entity_id" in first
+    assert all(set(row) == {"state", "last_changed"} for row in rest)
+
+
+def test_a_statistic_asked_for_a_type_it_does_not_keep_answers_empty(ws_server, ws_env):
+    from hass_axi.config import load
+    from hass_axi.ws import WsClient
+
+    with WsClient(load(ws_env)) as client:
+        result = client.run(
+            "statistics.during_period",
+            {
+                "start_time": "2026-01-01T00:00:00+00:00",
+                "statistic_ids": ["sensor.example_temperature", "example:grid_import"],
+                "period": "hour",
+                "types": ["change"],
+            },
+        )
+    # A mean statistic has no change: the rows are there and the value is not.
+    assert {row["change"] for row in result["sensor.example_temperature"]} == {None}
+    # A statistic with no rows in the window is absent, not an empty list.
+    assert "example:grid_import" not in result

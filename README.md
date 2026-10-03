@@ -2,6 +2,11 @@
 
 An Agent eXperience Interface (AXI) CLI for Home Assistant.
 
+> **Renamed from `ha-axi`.** Up to 0.7.1 this tool was published as `ha-axi`. An unrelated Home
+> Assistant CLI is also published under that name, and the two install the same binary, so this one
+> is now `hass-axi`. See [Moving from `ha-axi`](#moving-from-ha-axi) — the old variables keep
+> working, and `hass-axi setup hooks` repairs the hooks the old name installed.
+
 Home Assistant's REST API will happily tell you a lamp is off, and even the name it displays. It
 will not tell you where that name came from, which room the lamp is in, or whether that room came
 from the entity or from the device behind it — and it cannot change any of them. **The entity,
@@ -11,8 +16,12 @@ instead.
 
 That is the first of the two jobs `hass-axi` exists for. The second is getting a service call *right*
 — checked before it is sent, and explained when Home Assistant refuses it with a status code and no
-body. Everything else the tool does — states, templates, arbitrary REST paths, arbitrary WebSocket
-commands — is [plumbing those two need](#everything-else-it-reaches), and is table stakes anywhere.
+body. The same judgement carries over to what the recorder holds: [readings and their
+history](#readings-history-and-energy-summarised-with-their-caveats) are found by what they measure
+and where they are, and summarised with the data-quality problems they show stated beside the
+number. Everything else the tool does — states, templates, arbitrary REST paths, arbitrary
+WebSocket commands — is [plumbing those two need](#everything-else-it-reaches), and is table stakes
+anywhere.
 
 ---
 
@@ -270,6 +279,19 @@ export HA_TOKEN=<long-lived access token>          # or HASS_TOKEN
 Create the token in Home Assistant on your profile page, under **Security → Long-lived access
 tokens**.
 
+`HA_URL` may name several base URLs, comma-separated — typically the local address first and a
+remote one second:
+
+```sh
+export HA_URL=https://homeassistant.example.com,https://remote.example.net
+```
+
+They are tried in order and the first that accepts a connection (and, for `https`, a TLS handshake)
+is used by both transports for the whole run; `hass-axi ping`, `doctor` and the home view say when a
+later one was used. Only a transport failure moves on to the next URL. An HTTP answer — a 401, a
+404, a 500 — is the same installation answering, and trying it another way would only repeat the
+refusal. With one URL nothing is probed and nothing changes.
+
 **There is deliberately no `--token` flag and no credential file.** A token on a command line leaks
 into shell history and the process table; a token in a file leaks into commits. The environment is
 the only channel. Anything token-shaped is redacted before it reaches stdout or stderr, so a
@@ -294,6 +316,51 @@ version: 2026.8.3
 
 `doctor` exits non-zero when any leg fails, so it works as a gate in a script or a hook.
 
+## Readings, history and energy, summarised with their caveats
+
+A question about the house is usually a question about a reading — how much power the kitchen is
+drawing, how much energy went out overnight, how cold the hall got. Answering it from raw state
+means joining two transports and summing buckets by hand, and getting either wrong yields a
+plausible number that is not true.
+
+```sh
+hass-axi sensor list --device-class power --area 'Example Room'
+hass-axi statistics get sensor.example_legacy_meter --start 7d
+hass-axi history get binary_sensor.example_doorway --start 24h
+hass-axi logbook get --entity light.example_lamp --start 2h
+```
+
+- **`sensor list` finds a reading by what it measures and where it is** — `--device-class`,
+  `--unit`, `--area`, `--search` — and answers with its value, unit, area and age. The area comes
+  from the registry, inherited from the device unless the entity sets its own, so every run reads
+  both transports. Diagnostic and configuration sensors (battery voltages, signal strength) are set
+  aside by the registry's own `entity_category`, never by a name pattern; `--all` puts them back.
+  A filter that matches nothing lists the device classes and units that would have matched.
+- **`statistics get` reads the recorder's long-term statistics and answers in the shape the
+  statistic has.** A meter (a *sum* statistic: energy, water, gas) reports its total over the
+  window; a reading (a *mean* statistic: power, temperature) reports its average with its minimum
+  and maximum; a bearing reports a circular mean. The kind comes from the recorder's own metadata,
+  never from a device class or a name — asking for the wrong kind is not an error upstream, the
+  buckets just come back empty.
+- **Data-quality problems are stated, not corrected.** When the buckets show something a reader
+  should know before trusting the number, a `caveats` line says so beside it: buckets missing from
+  the window, a meter that went backwards, a meter that resets about once a day (so its live state
+  is a since-reset reading, not a running total). The number is always what the recorder holds.
+  Every check is a rule about the buckets' shape, nothing about any particular integration.
+- **`history get` summarises a timeline** — the range of a reading, or how long anything else
+  spent in each state — counting the state the entity was already in when the window opened.
+- **`logbook get` says what caused each change** when Home Assistant recorded it, folding the
+  half-dozen `context_*` keys into one `cause`: an automation by name, a service, an entity.
+
+Every window takes `--start` and `--end` as an age (`30m`, `24h`, `7d`) or an ISO 8601 time; a time
+with no offset is UTC, and the end defaults to now. The end is always sent, because Home
+Assistant's history and logbook views end a window that has none a day after its start — so a
+week-long request without it silently answers for one day.
+
+The home view (`hass-axi` with no arguments) also lists what needs attention: entities not
+reporting, batteries under 20%, and sensors whose integration has reported nothing for 24 hours.
+`hass-axi ping` times one authenticated request, for a liveness gate cheaper than `doctor`.
+
 ## Read-only sessions
 
 A third variable makes a session incapable of changing anything:
@@ -313,7 +380,7 @@ class: usage
 help[3]:
   This session is read-only; the command was refused before anything changed
   Reads still work, e.g. `hass-axi state list`, `hass-axi entity list`, `hass-axi area list`
-  Unset HASS_AXI_READ_ONLY to allow writes; it is a switch, so any non-empty value enables it
+  Unset HASS_AXI_READ_ONLY (or HA_AXI_READ_ONLY, its deprecated spelling) to allow writes; it is a switch, so any non-empty value enables it
 ```
 
 The raw WebSocket escape hatch, which is where the registry writes actually live:
@@ -389,6 +456,7 @@ what `hass-axi` is for.
   k=v` sends one, and `ws --raw <api/type>` sends a type that has no declared name yet. Adding a
   declared command is one entry in `REGISTRY` in `src/hass_axi/ws.py`; the auth handshake, id
   correlation and error translation are shared.
+- **`ping`** — one authenticated request, timed: a liveness gate cheaper than `doctor`.
 - **`doctor`** — environment and connection checks over both transports.
 - **`setup`** — install the agent integrations on this machine (below).
 - **`context`** — the ambient document a session hook prints. Reads the environment and the
@@ -403,9 +471,14 @@ The whole command surface, and the transport each half runs on:
 | `hass-axi device list\|get\|update` | WebSocket | The device registry: device names and areas, which entities inherit |
 | `hass-axi service list\|get\|call` | REST | Discover services, read one's fields, and call them |
 | `hass-axi state list\|get` | REST | Entity states and attributes as they are right now |
+| `hass-axi sensor list` | both | Sensors by device class, unit, area or name, with value, unit, area and age |
+| `hass-axi history get` | REST | State timelines, with each reading's range or time in each state |
+| `hass-axi logbook get` | REST | Logbook entries and what caused them |
+| `hass-axi statistics list\|get` | WebSocket | Recorder statistics: a meter's total, a reading's average, min and max |
 | `hass-axi template render` | REST | Render a Jinja template server-side |
 | `hass-axi ws` | WebSocket | Any WebSocket command, declared or raw |
 | `hass-axi api` | REST | Any authenticated REST path |
+| `hass-axi ping` | REST | One authenticated request, timed |
 | `hass-axi doctor` | both | Environment and connection checks |
 | `hass-axi setup` | — | Install the agent integrations |
 | `hass-axi context` | — | The ambient document a session hook prints |
@@ -470,7 +543,7 @@ $ hass-axi state list --domian light
 error: unknown flag --domian for `state list`
 code: UNKNOWN_FLAG
 help[2]:
-  valid flags for `state list`: --area, --domain, --state, --search, --limit, --fields (--help always allowed)
+  valid flags for `state list`: --area, --domain, --state, --search, --stale, --limit, --fields (--help always allowed)
   Run `hass-axi state --help` for the full reference
 ```
 
@@ -520,8 +593,8 @@ The whole vocabulary, which is closed:
 
 - `usage` — `UNKNOWN_COMMAND`, `UNKNOWN_SUBCOMMAND`, `MISSING_SUBCOMMAND`, `UNKNOWN_FLAG`,
   `MISSING_VALUE`, `MISSING_ARGUMENT`, `UNEXPECTED_ARGUMENT`, `CONFLICTING_FLAGS`, `UNKNOWN_FIELD`,
-  `BAD_LIMIT`, `BAD_TIMEOUT`, `BAD_TIME`, `BAD_WINDOW`, `BAD_PERIOD`, `BAD_KIND`, `BAD_JSON`, `BAD_PAIR`, `BAD_SERVICE`, `MISSING_PATH`, `MISSING_NAME`,
-  `MISSING_TEMPLATE`, `MISSING_COMMAND`, `MISSING_PARAM`, `NO_CHANGES`, `NO_SUCH_COMMAND`,
+  `BAD_LIMIT`, `BAD_TIMEOUT`, `BAD_TIME`, `BAD_WINDOW`, `BAD_PERIOD`, `BAD_KIND`, `BAD_JSON`,
+  `BAD_PAIR`, `BAD_SERVICE`, `MISSING_PATH`, `MISSING_NAME`, `MISSING_TEMPLATE`, `MISSING_COMMAND`, `MISSING_PARAM`, `NO_CHANGES`, `NO_SUCH_COMMAND`,
   `UNREADABLE`, `UNREADABLE_FILE`, `UNWRITABLE`, `READ_ONLY`
 - `config` — `NOT_CONFIGURED`, `BAD_URL`, `BAD_TOKEN`, `MISSING_DEPENDENCY`, `REDIRECT_REFUSED`
 - `transport` — `UNREACHABLE`, `TIMEOUT`, `TLS_ERROR`, `CONNECTION_DROPPED`, `UNAVAILABLE`,
@@ -529,8 +602,8 @@ The whole vocabulary, which is closed:
 - `auth` — `UNAUTHORIZED`
 - `permission` — `FORBIDDEN`
 - `not_found` — `NOT_FOUND`, `NO_SUCH_ENTITY`, `NO_SUCH_AREA`, `AMBIGUOUS_AREA`, `NO_SUCH_DEVICE`,
-  `AMBIGUOUS_DEVICE`, `NO_SUCH_DOMAIN`, `NO_SUCH_SERVICE`, `NO_SUCH_STATISTIC`, `NO_ENTITIES_TARGETED`,
-  `NO_SUCH_WS_COMMAND`, `NO_WEBSOCKET_API`
+  `AMBIGUOUS_DEVICE`, `NO_SUCH_DOMAIN`, `NO_SUCH_SERVICE`, `NO_SUCH_STATISTIC`,
+  `NO_ENTITIES_TARGETED`, `NO_SUCH_WS_COMMAND`, `NO_WEBSOCKET_API`
 - `refused` — `BAD_REQUEST`, `METHOD_NOT_ALLOWED`, `SERVER_ERROR`, `API_ERROR`, `INVALID_FORMAT`,
   `NOT_ALLOWED`, `NOT_SUPPORTED`, `HOME_ASSISTANT_ERROR`, `SERVICE_VALIDATION_ERROR`,
   `TEMPLATE_ERROR`, `UNKNOWN_SERVICE_FIELD`, `MISSING_SERVICE_FIELD`, `UNSUPPORTED_CAPABILITY`,
@@ -809,7 +882,39 @@ long-lived PyPI token exists in this repository or anywhere else**.
 
 Trusted publishing requires a one-time configuration on PyPI by the repository owner (project
 `hass-axi`, owner `dmealing`, workflow `release.yml`, environment `pypi`) before the first publish
-succeeds.
+succeeds. `hass-axi` is a new PyPI project, so that configuration is a *pending* publisher created
+before the first release; the trusted publisher registered for `ha-axi` does not carry over. The
+transitional `ha-axi` package under `legacy/ha-axi/` is not built by the workflow — see
+[Moving from `ha-axi`](#moving-from-ha-axi).
+
+## Moving from `ha-axi`
+
+This tool was published as `ha-axi` up to 0.7.1, and renamed to `hass-axi` because an unrelated
+Home Assistant CLI is published under the old name and installs the same binary.
+
+| before | now |
+| --- | --- |
+| `pip install ha-axi` | `pip install hass-axi` |
+| `ha-axi …` | `hass-axi …` |
+| `import ha_axi` | `import hass_axi` |
+| `HA_AXI_READ_ONLY` | `HASS_AXI_READ_ONLY` |
+| `HA_AXI_DEBUG` | `HASS_AXI_DEBUG` |
+| `skills/ha-axi/SKILL.md` | `skills/hass-axi/SKILL.md` |
+
+`HA_URL`, `HA_TOKEN` and their `HASS_SERVER`/`HASS_TOKEN` aliases are unchanged. The old
+`HA_AXI_*` names still work and print a one-line deprecation notice on stderr; a session that sets
+`HA_AXI_READ_ONLY` is still read-only, because an upgrade must never be what switched the guard
+off. Run `hass-axi setup hooks` once after upgrading: it rewrites the hook entry and removes the
+OpenCode plugin the old name installed. It recognises them by the exact command this tool wrote, so
+a hook belonging to the other `ha-axi` is left alone.
+
+**The final `ha-axi` release is a transitional package.** `legacy/ha-axi/` in this repository builds
+`ha-axi` 0.8.0, which contains no code of its own: it depends on `hass-axi`, so `pip install -U
+ha-axi` brings the renamed tool in, and its `ha-axi` command forwards to `hass-axi` after a
+deprecation notice on stderr, so existing scripts and hooks keep working until they are moved. It is
+published once, by hand, after `hass-axi` itself is on PyPI, and nothing is published under the old
+name after it. Uninstalling it (`pip uninstall ha-axi`) removes the forwarding command and frees the
+name for the other tool.
 
 ## License
 
