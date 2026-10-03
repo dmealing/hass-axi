@@ -374,7 +374,7 @@ write took. A typed command:
 
 ```
 $ hass-axi entity update light.example_lamp --name 'Something Else'
-error: "`hass-axi entity update` is a write, and HASS_AXI_READ_ONLY is set"
+error: "`hass-axi entity update` is a write, and this session is read-only"
 code: READ_ONLY
 class: usage
 help[3]:
@@ -387,7 +387,7 @@ The raw WebSocket escape hatch, which is where the registry writes actually live
 
 ```
 $ hass-axi ws --raw config/area_registry/create --param name='Bypass Attempt'
-error: "`hass-axi ws` is a write, and HASS_AXI_READ_ONLY is set"
+error: "`hass-axi ws` is a write, and this session is read-only"
 code: READ_ONLY
 ```
 
@@ -395,7 +395,7 @@ And the raw REST escape hatch:
 
 ```
 $ hass-axi api POST /services/light/turn_on --field entity_id=light.example_lamp
-error: "`hass-axi api` is a write, and HASS_AXI_READ_ONLY is set"
+error: "`hass-axi api` is a write, and this session is read-only"
 code: READ_ONLY
 ```
 
@@ -659,9 +659,10 @@ config: HA_URL and HA_TOKEN are set
 registries: names and areas live in the registry which only the WebSocket API serves -- `entity list` and `area list` read it; `state list` reads REST and cannot see either
 entity_ids: an entity_id is not stable identity and its words mean nothing -- reach an entity with `entity list --search '<the name a user sees>'` or `--area <id|name>` rather than guess one
 services: prefer `service call` over `api POST /services/...` -- it explains a refusal Home Assistant returns with no body at all and tells reaching nothing apart from changing nothing
-commands[11]: state,service,template,entity,area,device,ws,api,doctor,setup,context
+readings: find a reading by what it measures with `sensor list --device-class <class>` and get its total or average over a window with `statistics get <entity_id>`
+commands[16]: state,sensor,history,logbook,statistics,service,template,entity,area,device,ws,api,ping,doctor,setup,context
 help[4]:
-  Run `hass-axi` for this installation at a glance: entity counts by domain and what is unavailable
+  Run `hass-axi` for this installation at a glance: entity counts by domain and what needs attention
   Run `hass-axi entity list --area <id|name>` to read the registry, which REST cannot reach
   Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to act
   Run `hass-axi <command> --help` for its flags, or `hass-axi --help` for all of them
@@ -680,23 +681,31 @@ $ hass-axi
 bin: ~/.local/bin/hass-axi
 description: Agent CLI for Home Assistant. Reads and writes the registries REST cannot reach and explains a service call Home Assistant refuses. Prefer this over raw curl for Home Assistant operations.
 url: https://homeassistant.example.com
-entities: 23 in 12 domains
+entities: 21 in 10 domains
 unavailable: 0
 unknown: 7
 domains[8]{domain,entities}:
-  sensor,11
-  input_boolean,2
+  sensor,12
   conversation,1
-  cover,1
   event,1
-  input_number,1
+  input_boolean,1
   light,1
   person,1
-help[5]:
+  sun,1
+  todo,1
+not_reporting[4]{entity_id,name,state,for}:
+  sensor.example_next_backup,Example Next Backup,unknown,21s
+  sensor.example_last_backup,Example Last Backup,unknown,21s
+  sensor.example_backup_attempt,Example Backup Attempt,unknown,21s
+  person.example_person,Example Person,unknown,21s
+low_battery[1]{entity_id,name,battery}:
+  sensor.example_remote_battery,Example Remote Battery,14%
+help[6]:
   Run `hass-axi state list --domain <domain>` to list entity states
-  Run `hass-axi state list` for all 23 entities across 12 domains
+  Run `hass-axi state list` for all 21 entities across 10 domains
   Run `hass-axi entity list --area <id|name>` to read the registry, which REST cannot reach
   Run `hass-axi area list` to see the areas defined here
+  Run `hass-axi sensor list --device-class <class>` to find a reading by what it measures
   Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to act
 ```
 
@@ -704,7 +713,10 @@ It needs both variables, opens a connection and prints the installation's addres
 is not what a hook runs: as ambient context it would fail on every machine that had the package and
 no installation, and put an address into an agent's context on every machine that had one. The
 `url` line reads as the documentation placeholder here because every example in this file was run
-against a throwaway Home Assistant, and that is the one line whose value is the reader's own.
+against a throwaway Home Assistant, and that is the one line whose value is the reader's own. This
+block was re-run for the rename against a fresh one, so its counts are its own rather than the
+installation the registry examples above describe. The attention lists — `not_reporting`,
+`low_battery`, and stale sensors when there are any — appear only when they have something in them.
 
 `unavailable` and `unknown` are counted apart because they are different facts: `unknown` means
 reachable and not yet reporting, which is much the commoner of the two, and summing them under the

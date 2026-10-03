@@ -51,6 +51,24 @@ STALE_AFTER = "24h"
 #: sensor under every quiet entity on the installation.
 STALE_DOMAINS = ("sensor",)
 
+#: Domains whose entities have no state to report until something happens to
+#: them -- a button never pressed, an event never fired, a scene never
+#: activated -- so `unknown` is their ordinary resting value. They are still
+#: counted under `unknown`, which `state list --state unknown` agrees with, but
+#: listing them as not reporting would bury the entities that are.
+STATELESS_DOMAINS = (
+    "button",
+    "input_button",
+    "event",
+    "notify",
+    "scene",
+    "conversation",
+    "tts",
+    "stt",
+    "wake_word",
+    "ai_task",
+)
+
 
 def executable_path() -> str:
     """The absolute path of this executable, with the home directory collapsed."""
@@ -213,14 +231,18 @@ def run(ctx, sub: str, parsed):
             "for": _window.age_of(state.get("last_changed"), current),
         }
         for state in states
-        if state.get("state") in ("unavailable", "unknown")
+        if state.get("state") == "unavailable"
+        or (
+            state.get("state") == "unknown"
+            and domain_of(state.get("entity_id", "")) not in STATELESS_DOMAINS
+        )
     ]
     if not_reporting:
         doc["not_reporting"] = not_reporting[:ATTENTION_ROWS]
         if len(not_reporting) > ATTENTION_ROWS:
             help_lines.append(
-                f"Run `hass-axi state list --state unavailable` and `--state unknown` "
-                f"for all {len(not_reporting)}"
+                f"{len(not_reporting)} entities are not reporting; run `hass-axi state list "
+                "--state unavailable` and `--state unknown` to see them"
             )
     low = low_batteries(states)
     if low:

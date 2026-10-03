@@ -126,6 +126,20 @@ def test_history_summarises_a_reading_by_its_range_ignoring_unavailable(run_cli,
     assert "time_in_state" not in reading
 
 
+def test_a_row_that_repeats_the_state_is_not_a_change(run_cli, rest_env, rest_server):
+    """The recorder keeps whole states for climate, so an attribute change is a row too."""
+    rest_server.state["history"]["climate.example_thermostat"] = [
+        ("2025-12-31T20:00:00+00:00", "heat"),
+        ("2026-01-01T03:00:00+00:00", "heat"),
+        ("2026-01-01T12:00:00+00:00", "off"),
+    ]
+    code, doc = as_json(run_cli, ["history", "get", "climate.example_thermostat"], rest_env)
+    assert code == 0
+    row = doc["history"][0]
+    assert row["changes"] == 1
+    assert row["time_in_state"] == {"heat": "12h", "off": "12h"}
+
+
 def test_history_answers_for_every_entity_asked_including_one_with_nothing(run_cli, rest_env):
     code, doc = as_json(
         run_cli,
@@ -669,7 +683,22 @@ def test_long_attention_lists_are_capped_with_a_way_to_see_all(run_cli, rest_env
     ]
     _, doc = as_json(run_cli, [], rest_env)
     assert len(doc["not_reporting"]) == 10
-    assert any("for all 12" in line for line in doc["help"])
+    assert any("12 entities are not reporting" in line for line in doc["help"])
+
+
+def test_an_entity_whose_resting_state_is_unknown_is_not_listed_as_not_reporting(
+    run_cli, rest_env, rest_server
+):
+    """A button never pressed is `unknown` by design; a sensor that is `unknown` is not."""
+    rest_server.state["states"] = [
+        _state("button.example_restart", "unknown"),
+        _state("event.example_doorbell", "unknown"),
+        _state("sensor.example_probe", "unknown"),
+    ]
+    code, doc = as_json(run_cli, [], rest_env)
+    assert code == 0
+    assert doc["unknown"] == 3
+    assert [row["entity_id"] for row in doc["not_reporting"]] == ["sensor.example_probe"]
 
 
 def test_state_list_stale_agrees_with_the_home_view(run_cli, rest_env, rest_server):

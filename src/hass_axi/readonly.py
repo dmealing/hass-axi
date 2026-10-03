@@ -122,7 +122,7 @@ def refusal(operation: str) -> ReadOnlyRefused:
     transport.
     """
     return ReadOnlyRefused(
-        f"`{operation}` is a write, and {ENV_VAR} is set",
+        f"`{operation}` is a write, and this session is read-only",
         help_lines=[
             "This session is read-only; the command was refused before anything changed",
             "Reads still work, e.g. `hass-axi state list`, `hass-axi entity list`, `hass-axi area list`",

@@ -410,7 +410,7 @@ def _missing_buckets(rows: list, start, period: str) -> str:
     expected = missing + len(starts)
     return (
         f"{missing} of {expected} {_PERIOD_WORD[period]} buckets have no data; the result covers "
-        f"only the {len(starts)} that do"
+        f"only the {len(starts)} that {'does' if len(starts) == 1 else 'do'}"
     )
 
 

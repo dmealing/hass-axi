@@ -114,7 +114,13 @@ def summarize(entity_id: str, timeline: list, start, end) -> dict:
         moment = _window.parse_timestamp(row.get("last_changed") or row.get("last_updated"))
         if moment is None:
             continue
-        points.append((max(moment, start), str(row.get("state", ""))))
+        state = str(row.get("state", ""))
+        # A row whose state repeats the previous one is an attribute change --
+        # the recorder keeps whole states for climate and a few other domains --
+        # and is neither a change nor a new timeline entry.
+        if points and points[-1][1] == state:
+            continue
+        points.append((max(moment, start), state))
 
     summary: dict = {"entity_id": entity_id}
     if name:

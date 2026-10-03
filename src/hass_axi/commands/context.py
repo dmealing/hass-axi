@@ -81,6 +81,11 @@ IDENTITY_RULE = (
     "`entity list --search '<the name a user sees>'` or `--area <id|name>` rather than guess one"
 )
 
+READINGS_RULE = (
+    "find a reading by what it measures with `sensor list --device-class <class>` and get its "
+    "total or average over a window with `statistics get <entity_id>`"
+)
+
 SERVICE_RULE = (
     "prefer `service call` over `api POST /services/...` -- it explains a refusal Home Assistant "
     "returns with no body at all and tells reaching nothing apart from changing nothing"
@@ -107,6 +112,7 @@ def run(ctx, sub: str, parsed):
     doc["registries"] = REGISTRY_RULE
     doc["entity_ids"] = IDENTITY_RULE
     doc["services"] = SERVICE_RULE
+    doc["readings"] = READINGS_RULE
     doc["commands"] = list(COMMAND_ORDER)
     doc["help"] = HelpBlock(_help(environ, missing))
     return doc
@@ -135,8 +141,8 @@ def _help(environ, missing: list) -> list:
         # cannot work yet. What this reader needs is the two exports.
         return [*setup_help(), "Run `hass-axi --help` for the whole command reference"]
     lines = [
-        "Run `hass-axi` for this installation at a glance: entity counts by domain and what is "
-        "unavailable",
+        "Run `hass-axi` for this installation at a glance: entity counts by domain and what needs "
+        "attention",
         "Run `hass-axi entity list --area <id|name>` to read the registry, which REST cannot reach",
     ]
     if enabled(environ):
