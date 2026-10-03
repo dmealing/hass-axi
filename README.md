@@ -732,7 +732,7 @@ npx skills add dmealing/hass-axi --skill hass-axi
 ```
 
 `skills/hass-axi/SKILL.md` is generated from the CLI's own command table by `hass-axi setup skill`, and
-CI runs `hass-axi setup skill --check` so it can never drift from the commands it documents.
+`scripts/ci-local.sh` runs `hass-axi setup skill --check` so it can never drift from the commands it documents.
 
 ## This repository is public, and stays generic
 
@@ -871,13 +871,17 @@ absent once, and each absence cost a defect that a green suite could not see.
 
 ## Continuous integration
 
+GitHub Actions is disabled on this repository, so none of these workflows runs today. The checks in
+`ci.yml` run locally through `scripts/ci-local.sh`, which the no-mistakes gate runs on every change
+(`.no-mistakes.yaml`); `scripts/ci-local.sh --matrix` adds `pytest` on 3.9–3.12.
+
 | Workflow | Runner | Triggers | What runs |
 | --- | --- | --- | --- |
-| `ci.yml` | self-hosted | push to `main`, nightly, manual | leak scan, lint, `pytest` on 3.9–3.12, generated-skill check |
+| `ci.yml` | self-hosted | push to `main`, nightly, manual | each section of `scripts/ci-local.sh`: leak scan, commit audit, lint, `pytest` on 3.9–3.12, generated-skill check |
 | `hygiene.yml` | `ubuntu-latest` | `pull_request`, including `edited` | the leak scan of the tree, and the two checks that read the pull request's own title and body |
 | `release.yml` | `ubuntu-latest` | push to `main`, manual | release-please, and the OIDC publish when a release PR merges |
 
-A pull request therefore shows **one** hosted check, and that is deliberate. The leak scan is the
+With Actions enabled, a pull request shows **one** hosted check, and that is deliberate. The leak scan is the
 gate that has to run before a human reads a diff; everything heavier runs on the maintainer's own
 machine, where the full matrix is free and does not queue behind anyone. `edited` is in that
 trigger list because a pull request's title and body are published the moment they are written,
