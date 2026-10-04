@@ -705,7 +705,9 @@ def test_remove_takes_out_what_install_wrote_and_is_idempotent(tmp_path):
     assert first["errors"] == []
     assert statuses(first) == {
         "claude-code": "removed",
+        "claude-code-session-end": "removed",
         "codex": "removed",
+        "codex-session-end": "removed",
         "codex-features": "kept",
         "opencode": "removed",
     }
@@ -716,7 +718,14 @@ def test_remove_takes_out_what_install_wrote_and_is_idempotent(tmp_path):
     assert "hooks = true" in (tmp_path / ".codex" / "config.toml").read_text(encoding="utf-8")
 
     second = statuses(hooks.remove(tmp_path))
-    assert second["claude-code"] == second["codex"] == second["opencode"] == "absent"
+    assert (
+        second["claude-code"]
+        == second["claude-code-session-end"]
+        == second["codex"]
+        == second["codex-session-end"]
+        == second["opencode"]
+        == "absent"
+    )
     assert set(statuses(hooks.status(tmp_path, command=EXECUTABLE)).values()) == {
         "missing",
         "installed",

@@ -81,6 +81,63 @@ def test_a_preview_says_a_target_reaches_nothing(run_cli, installation_env, rest
     assert posts(rest_server) == []
 
 
+def test_a_preview_gives_the_sent_calls_verdict_for_a_target_home_assistant_would_skip(
+    run_cli, installation_env, rest_server
+):
+    """`switch.example_outlet` is matched by `switch.toggle` and then dropped
+    for being `unavailable`, so the sent call is a 200 with an empty change set
+    and a report naming the skip. The preview has to answer the same way, or
+    the flag alone changes the verdict of an unchanged command line."""
+    preview_code, preview = as_json(
+        run_cli,
+        ["service", "call", "switch.toggle", "--target-entity", "switch.example_outlet"],
+        installation_env,
+    )
+    sent_code, sent_out = run_cli(
+        [
+            "service",
+            "call",
+            "switch.toggle",
+            "--target-entity",
+            "switch.example_outlet",
+            WRITE,
+        ],
+        installation_env,
+    )
+    assert preview_code == sent_code == 0
+    assert posts(rest_server) == ["/api/services/switch/toggle"]
+    assert preview["would_reach"] == []
+    assert "would reach 0 entities" in preview["target"]
+    assert "switch.example_outlet unavailable, which Home Assistant skips" in preview["target"]
+    assert "unavailable" in sent_out
+    assert "NO_ENTITIES_TARGETED" not in sent_out
+
+
+def test_a_preview_of_a_response_call_that_would_reach_nothing_is_refused(
+    run_cli, installation_env, rest_server
+):
+    """The other world, refused on both sides of the flag: under `--response`
+    the sent call that matched and then skipped an entity is a bodyless 500,
+    so the preview refuses rather than promising a 200."""
+    code, out = run_cli(
+        [
+            "service",
+            "call",
+            "calendar.get_events",
+            "--target-entity",
+            "calendar.example_old_agenda",
+            "--response",
+            "--data",
+            "start_date_time=2026-01-01 00:00:00",
+        ],
+        installation_env,
+    )
+    assert code == 1
+    assert "code: NO_ENTITIES_TARGETED" in out
+    assert "calendar.example_old_agenda is unavailable" in out
+    assert posts(rest_server) == []
+
+
 def test_a_preview_resolves_an_area_to_the_entities_it_would_reach(
     run_cli, installation_env, rest_server
 ):

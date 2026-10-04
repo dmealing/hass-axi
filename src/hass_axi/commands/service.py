@@ -503,10 +503,13 @@ def _preview(ctx, live: _Live, domain: str, service: str, data: dict, parsed, ta
         resolved = live.resolved(parsed)
         reached = _reached(resolved, spec, domain)
         matched = resolved.within(model.target_domains(spec))
-        if not reached and not (parsed.get("no_check") and _available(matched)):
-            unreached = _unreached_target(live, spec, domain, service, parsed)
-            if unreached is not None:
-                raise unreached
+        if wants_response:
+            if not reached:
+                unreached = _unreached_target(live, spec, domain, service, parsed)
+                if unreached is not None:
+                    raise unreached
+        elif not matched:
+            raise _no_entities_targeted(resolved, domain, service, parsed)
         acted_on = reached or _available(matched)
         parts = list(resolved.problems)
         parts.append(

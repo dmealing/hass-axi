@@ -686,8 +686,6 @@ def remove(home: Path | None = None) -> dict:
             except (OSError, ValueError) as exc:
                 report["errors"].append(f"{path}: {exc}")
                 seen[path] = "failed"
-        else:
-            continue
         report["targets"].append({"target": label, "status": seen[path]})
 
     report["targets"].append({"target": "codex-features", "status": "kept"})
