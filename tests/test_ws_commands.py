@@ -194,6 +194,7 @@ def test_the_double_answers_an_update_with_the_stored_entry_not_the_request(run_
             "entity_id=light.example_ceiling",
             "--param",
             "name=Reading Lamp",
+            "--write",
         ],
         ws_env,
     )
@@ -217,6 +218,7 @@ def test_the_double_rejects_a_key_the_api_does_not_declare(run_cli, ws_env):
             "entity_id=light.example_lamp",
             "--param",
             "nickname=Nope",
+            "--write",
         ],
         ws_env,
     )
@@ -359,7 +361,15 @@ def test_ws_sends_a_declared_command(run_cli, ws_env, ws_server):
 
 def test_ws_passes_parameters_through(run_cli, ws_env, ws_server):
     code, _ = run_cli(
-        ["ws", "area.update", "--param", "area_id=example_room", "--param", "name=Example Study"],
+        [
+            "ws",
+            "area.update",
+            "--param",
+            "area_id=example_room",
+            "--param",
+            "name=Example Study",
+            "--write",
+        ],
         ws_env,
     )
     assert code == 0
@@ -387,7 +397,7 @@ def test_ws_points_a_raw_type_at_the_raw_flag(run_cli, ws_env):
 
 
 def test_ws_raw_sends_an_undeclared_type(run_cli, ws_env, ws_server):
-    code, _out = run_cli(["ws", "--raw", "config/floor_registry/list"], ws_env)
+    code, _out = run_cli(["ws", "--raw", "config/floor_registry/list", "--write"], ws_env)
     assert code == 0
     assert ws_server.received[0]["type"] == "config/floor_registry/list"
 

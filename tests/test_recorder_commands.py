@@ -178,7 +178,9 @@ def test_a_malformed_entity_id_is_refused_by_home_assistant_with_its_reason(run_
 
 
 def test_logbook_folds_the_context_into_one_cause(run_cli, rest_env):
-    code, doc = as_json(run_cli, ["logbook", "get"], rest_env)
+    code, doc = as_json(
+        run_cli, ["logbook", "get", "--fields", "when,entity_id,event,cause"], rest_env
+    )
     assert code == 0
     by_event = {(e["entity_id"], e["event"]): e["cause"] for e in doc["entries"]}
     assert by_event[("light.example_lamp", "changed to off")] == "automation Example Morning"
@@ -517,7 +519,11 @@ def test_a_sensor_with_no_registry_entry_is_still_found(run_cli, installation_en
             "last_updated": "2026-01-01T23:59:00+00:00",
         }
     )
-    code, doc = as_json(run_cli, ["sensor", "list", "--device-class", "power"], installation_env)
+    code, doc = as_json(
+        run_cli,
+        ["sensor", "list", "--device-class", "power", "--fields", "name,area,age"],
+        installation_env,
+    )
     assert code == 0
     row = doc["sensors"][0]
     assert (row["name"], row["area"], row["age"]) == ("Example Yaml Power", "", "1m")
@@ -719,3 +725,34 @@ def test_state_list_stale_needs_an_age(run_cli, rest_env):
     code, out = run_cli(["state", "list", "--stale", "yesterday"], rest_env)
     assert code == 2
     assert "code: BAD_TIME" in out
+
+
+# ------------------------------------------------------------ default fields
+
+
+def test_sensor_list_defaults_to_four_fields_and_keeps_the_rest_reachable(
+    run_cli, installation_env
+):
+    """AXI section 2: a default row is paid for once per sensor."""
+    code, doc = as_json(run_cli, ["sensor", "list"], installation_env)
+    assert code == 0
+    assert list(doc["sensors"][0]) == ["entity_id", "name", "value", "unit"]
+    assert any("--fields entity_id,name,value,unit,area,age" in line for line in doc["help"])
+
+    code, doc = as_json(
+        run_cli, ["sensor", "list", "--fields", "entity_id,area,age,device_class"], installation_env
+    )
+    assert code == 0
+    assert list(doc["sensors"][0]) == ["entity_id", "area", "age", "device_class"]
+    assert not any("--fields" in line for line in doc["help"])
+
+
+def test_logbook_get_defaults_to_four_fields_and_keeps_the_rest_reachable(run_cli, rest_env):
+    code, doc = as_json(run_cli, ["logbook", "get"], rest_env)
+    assert code == 0
+    assert list(doc["entries"][0]) == ["when", "name", "event", "cause"]
+    assert any("--fields when,entity_id,event,cause" in line for line in doc["help"])
+
+    code, doc = as_json(run_cli, ["logbook", "get", "--fields", "entity_id,domain,state"], rest_env)
+    assert code == 0
+    assert list(doc["entries"][0]) == ["entity_id", "domain", "state"]

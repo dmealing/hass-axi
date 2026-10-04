@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import hooks, skill
+from .. import hooks, sessionlog, skill
 from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
 from ..output import HelpBlock
@@ -12,7 +12,7 @@ from ..readonly import DYNAMIC, READ, WRITE
 
 COMMAND = Command(
     name="setup",
-    summary="Install or repair the agent integrations for hass-axi",
+    summary="Install, check or remove the agent integrations for hass-axi",
     usage="usage: hass-axi setup <subcommand> [flags]",
     subs=(
         Sub(
@@ -21,10 +21,12 @@ COMMAND = Command(
             # counts as a write anyway. HASS_AXI_READ_ONLY says this tool does not
             # write; splitting that into "not your house" and "not your
             # dotfiles" is a distinction nobody asked for, and the safe half of
-            # it is refusing both.
-            access=WRITE,
-            summary="Install SessionStart hooks for Claude Code, Codex and OpenCode",
-            flags=(Flag("--home", "<path>", note="install under a different home directory"),),
+            # it is refusing both. `status` is the read half, which `access`
+            # below resolves.
+            access=DYNAMIC,
+            args=("[install|status|remove]",),
+            summary="Install, check or remove the session hooks for Claude Code, Codex and OpenCode",
+            flags=(Flag("--home", "<path>", note="act under a different home directory"),),
         ),
         Sub(
             name="skill",
@@ -41,29 +43,64 @@ COMMAND = Command(
     notes=(
         "hooks give ambient context every session; the skill loads on demand instead -- install either",
         "hook installation is idempotent and repairs the path after a reinstall or a move",
+        "`setup hooks status` reports each hook as installed, stale or missing and writes nothing",
+        "`setup hooks remove` takes out only the entries this tool wrote, and leaves Codex's "
+        "`[features] hooks = true` on because other tools' Codex hooks depend on it",
+        "a session-end hook, `hass-axi context end`, records which hass-axi commands a session "
+        "ran -- names and counts, never arguments -- so the next session's context in that "
+        "directory can say so; OpenCode has no session-end event, so its plugin records when a "
+        "session goes idle",
     ),
     examples=(
         "hass-axi setup hooks",
+        "hass-axi setup hooks status",
+        "hass-axi setup hooks remove",
         "hass-axi setup skill",
         "hass-axi setup skill --check",
     ),
 )
 
 
+HOOK_ACTIONS = ("install", "status", "remove")
+
+
+def _hook_action(parsed) -> str:
+    """Which of the three `setup hooks` does; installing is what a bare one means."""
+    action = parsed.positionals[0] if parsed.positionals else "install"
+    if action not in HOOK_ACTIONS:
+        raise UsageError(
+            f"unknown subcommand `{action}` for `setup hooks`",
+            help_lines=[
+                f"subcommands: {', '.join(HOOK_ACTIONS)}",
+                "Run `hass-axi setup --help` for the full reference",
+            ],
+            code="UNKNOWN_SUBCOMMAND",
+        )
+    return action
+
+
 def access(sub: str, parsed) -> str:
-    """`skill --check` only reads the committed copy; without it the file is written."""
+    """`skill --check` and `hooks status` only read; everything else here writes a file."""
+    if sub == "hooks":
+        return READ if _hook_action(parsed) == "status" else WRITE
     return READ if parsed.get("check") else WRITE
 
 
 def run(ctx, sub: str, parsed):
     if sub == "hooks":
-        return _hooks(parsed)
+        home = parsed.get("home")
+        home = Path(home) if home else None
+        action = _hook_action(parsed)
+        if action == "status":
+            return _hooks_status(home)
+        if action == "remove":
+            return _hooks_remove(ctx, home)
+        return _hooks(home)
     return _skill(ctx, parsed)
 
 
-def _hooks(parsed):
-    home = parsed.get("home")
-    report = hooks.install(Path(home) if home else None)
+def _hooks(home):
+    report = hooks.install(home)
     doc = {
         "hooks": {"command": report["command"]},
         "targets": report["targets"],
@@ -73,8 +110,54 @@ def _hooks(parsed):
         doc["__exit_code__"] = 1
     else:
         doc["help"] = HelpBlock(
-            ["Restart your agent session to receive hass-axi ambient context at session start"]
+            [
+                "Restart your agent session to receive hass-axi ambient context at session start",
+                "Run `hass-axi setup hooks status` to check the hooks later",
+                "Run `hass-axi setup hooks remove` to uninstall them",
+            ]
         )
+    return doc
+
+
+def _hooks_status(home):
+    report = hooks.status(home)
+    doc = {
+        "hooks": {"command": report["command"]},
+        "targets": report["targets"],
+    }
+    if report["errors"]:
+        doc["errors"] = report["errors"]
+    # A read, so it exits 0 whatever it finds: "not installed" is an answer.
+    states = {target["status"] for target in report["targets"]}
+    if states - {"installed"}:
+        doc["help"] = HelpBlock(
+            ["Run `hass-axi setup hooks` to install the missing hooks and repair stale ones"]
+        )
+    else:
+        doc["help"] = HelpBlock(["Run `hass-axi setup hooks remove` to uninstall them"])
+    return doc
+
+
+def _hooks_remove(ctx, home):
+    report = hooks.remove(home)
+    # The session record is this tool's own file and is only ever written by
+    # the hooks being removed, so it goes with them. Under `--home` the hooks
+    # belong to another home directory and the record here is not theirs.
+    if home is None:
+        try:
+            state = "removed" if sessionlog.forget(ctx.environ) else "absent"
+        except OSError as exc:
+            report["errors"].append(f"session record: {exc}")
+            state = "failed"
+        report["targets"].append({"target": "session-record", "status": state})
+    doc = {"targets": report["targets"]}
+    if report["errors"]:
+        doc["errors"] = report["errors"]
+        doc["__exit_code__"] = 1
+        return doc
+    # Idempotent: a second removal reports every target `absent` and exits 0,
+    # because the state it asks for already holds.
+    doc["help"] = HelpBlock(["Run `hass-axi setup hooks` to install them again"])
     return doc
 
 

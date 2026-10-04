@@ -10,9 +10,18 @@ from __future__ import annotations
 from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
 from ..output import HelpBlock
-from ..readonly import DYNAMIC, READ
+from ..readonly import DYNAMIC, READ, WRITE
 from ..ws import REGISTRY, access_for_type
-from ._common import parse_json_flag, parse_pairs, plural
+from ._common import (
+    WRITE_FLAG,
+    WRITE_FLAG_NAME,
+    parse_json_flag,
+    parse_pairs,
+    plural,
+    preview_help,
+    preview_note,
+    shorten,
+)
 
 COMMAND = Command(
     name="ws",
@@ -38,18 +47,25 @@ COMMAND = Command(
                 Flag("--params-json", "<object>", note="merged over --param"),
                 Flag("--list", boolean=True, note="show the declared commands and exit"),
                 Flag("--raw", boolean=True, note="treat <command> as a literal API type"),
+                Flag("--full", boolean=True, note="do not shorten a long result"),
+                WRITE_FLAG,
             ),
         ),
     ),
     notes=(
         "declared names are stable; --raw passes any type straight through to the API",
         "--params-json takes a whole JSON object; --param takes repeated key=value pairs",
+        f"a command that writes is previewed and not sent until {WRITE_FLAG_NAME} is passed; "
+        "`ws --list` says which do, and a --raw type no declaration names counts as one",
+        "a long result is shortened -- lists to their first items and strings to a preview -- "
+        "with the full size reported; --full prints all of it",
     ),
     examples=(
         "hass-axi ws --list",
         "hass-axi ws entity.list",
         "hass-axi ws area.update --param area_id=example_room --param name='Example Study'",
-        "hass-axi ws --raw config/floor_registry/list",
+        "hass-axi ws area.update --param area_id=example_room --param name='Example Study' --write",
+        "hass-axi ws --raw config/floor_registry/list --write",
     ),
 )
 
@@ -111,12 +127,18 @@ def access(sub: str, parsed) -> str:
     if _listing_only(parsed):
         return READ
     try:
-        return access_for_type(_resolve(parsed))
+        verdict = access_for_type(_resolve(parsed))
     except UsageError:
         # A name that resolves to nothing sends nothing; `run` raises the same
         # error, which is a better answer than a refusal for a command that
         # does not exist.
         return READ
+    # A write without the write flag is only previewed, and a preview opens no
+    # connection, so it is a read: a read-only session can still see what a
+    # command would have sent.
+    if verdict != READ and not parsed.get("write"):
+        return READ
+    return verdict
 
 
 def run(ctx, sub: str, parsed):
@@ -142,14 +164,29 @@ def run(ctx, sub: str, parsed):
                 code="MISSING_PARAM",
             )
 
+    doc = {"command": {"name": name, "type": type_}}
+    if access_for_type(type_) != READ and not parsed.get("write"):
+        doc["command"]["access"] = WRITE
+        doc["params"] = params or "none"
+        doc["preview"] = preview_note(ctx.environ)
+        doc["help"] = HelpBlock(preview_help(ctx.environ))
+        return doc
+
     with ctx.ws() as client:
         result = client.send_command(type_, params)
 
-    doc = {"command": {"name": name, "type": type_}}
     if result is None:
         doc["result"] = f"{type_} succeeded with an empty result"
-    else:
+        return doc
+    if parsed.get("full"):
         doc["result"] = result
+        return doc
+    doc["result"], note, hint = shorten(
+        result, "Run the same command with --full for the complete result"
+    )
+    if note:
+        doc["truncated"] = note
+        doc["help"] = HelpBlock([hint])
     return doc
 
 
@@ -159,6 +196,7 @@ def _list(parsed):
             "command": command.name,
             "type": command.type,
             "params": ",".join(command.params) or "",
+            "access": access_for_type(command.type),
         }
         for command in sorted(REGISTRY.values(), key=lambda c: c.name)
     ]
@@ -168,6 +206,7 @@ def _list(parsed):
         "help": HelpBlock(
             [
                 "Run `hass-axi ws <command> --param key=value` to send one",
+                f"A command whose access is write is previewed until {WRITE_FLAG_NAME} is passed",
                 "Run `hass-axi ws --raw <api/type>` for a command that is not declared here",
             ]
         ),

@@ -133,12 +133,14 @@ hass-axi service list
 hass-axi service list --domain light
 hass-axi service get light.turn_on
 hass-axi service call light.turn_on --target-entity light.example_lamp
-hass-axi service call light.turn_on --target-area example_room --data brightness=180
-hass-axi service call climate.set_temperature --target-entity climate.example_thermostat --data-json '{"temperature": 21}'
+hass-axi service call light.turn_on --target-entity light.example_lamp --write
+hass-axi service call light.turn_on --target-area example_room --data brightness=180 --write
+hass-axi service call climate.set_temperature --target-entity climate.example_thermostat --data-json '{"temperature": 21}' --write
 ```
 
+- `service call` sends nothing without --write: it checks the call against the published service, resolves the target, runs the capability pre-check and shows the request -- and fails, as the call would, for a service that does not exist or a target that reaches nothing
 - --data-json takes a whole JSON object; --data takes repeated key=value pairs
-- a refused call is explained from `/api/services`, which is read on failure only
+- a refused call is explained from `/api/services`, which a sent call reads on failure only
 - --target-area and --target-device pre-check the published capability, because Home Assistant drops an entity that lacks it without saying so
 
 ### `hass-axi template`
@@ -213,11 +215,14 @@ Send a command over the Home Assistant WebSocket API.
 hass-axi ws --list
 hass-axi ws entity.list
 hass-axi ws area.update --param area_id=example_room --param name='Example Study'
-hass-axi ws --raw config/floor_registry/list
+hass-axi ws area.update --param area_id=example_room --param name='Example Study' --write
+hass-axi ws --raw config/floor_registry/list --write
 ```
 
 - declared names are stable; --raw passes any type straight through to the API
 - --params-json takes a whole JSON object; --param takes repeated key=value pairs
+- a command that writes is previewed and not sent until --write is passed; `ws --list` says which do, and a --raw type no declaration names counts as one
+- a long result is shortened -- lists to their first items and strings to a preview -- with the full size reported; --full prints all of it
 
 ### `hass-axi api`
 
@@ -227,11 +232,14 @@ Make an authenticated request to any Home Assistant REST path.
 hass-axi api /config
 hass-axi api /states/light.example_lamp
 hass-axi api POST /services/light/turn_on --field entity_id=light.example_lamp
-hass-axi api POST /template --body '{"template": "{{ now() }}"}'
+hass-axi api POST /services/light/turn_on --field entity_id=light.example_lamp --write
+hass-axi api POST /template --body '{"template": "{{ now() }}"}' --write
 ```
 
 - methods: GET, POST, PUT, PATCH, DELETE, HEAD; GET is used when no method is given
 - the registries are not reachable over REST -- use `hass-axi ws` for those
+- anything but GET and HEAD is previewed and not sent until --write is passed
+- a long response is shortened -- lists to their first items and strings to a preview -- with the full size reported; --full prints all of it
 
 ### `hass-axi ping`
 
@@ -256,16 +264,21 @@ hass-axi doctor
 
 ### `hass-axi setup`
 
-Install or repair the agent integrations for hass-axi.
+Install, check or remove the agent integrations for hass-axi.
 
 ```sh
 hass-axi setup hooks
+hass-axi setup hooks status
+hass-axi setup hooks remove
 hass-axi setup skill
 hass-axi setup skill --check
 ```
 
 - hooks give ambient context every session; the skill loads on demand instead -- install either
 - hook installation is idempotent and repairs the path after a reinstall or a move
+- `setup hooks status` reports each hook as installed, stale or missing and writes nothing
+- `setup hooks remove` takes out only the entries this tool wrote, and leaves Codex's `[features] hooks = true` on because other tools' Codex hooks depend on it
+- a session-end hook, `hass-axi context end`, records which hass-axi commands a session ran -- names and counts, never arguments -- so the next session's context in that directory can say so; OpenCode has no session-end event, so its plugin records when a session goes idle
 
 ### `hass-axi context`
 
@@ -276,8 +289,9 @@ hass-axi context
 ```
 
 - this is the document `hass-axi setup hooks` installs a SessionStart hook to print
-- it reads the environment and the command table only: no connection, no token, no installation address, and it exits 0 whether or not this machine has Home Assistant
+- it reads the environment, the command table and the local session record only: no connection, no token, no installation address, and it exits 0 whether or not this machine has Home Assistant
 - for live state -- how many entities there are and what is unavailable -- run `hass-axi` with no arguments instead
+- `context end` is the session-end hook: it reads the hook's JSON payload on stdin, counts the hass-axi commands the session ran -- command names only, never arguments -- and `context` then reports the last session in the same directory
 
 ## Rules of thumb
 

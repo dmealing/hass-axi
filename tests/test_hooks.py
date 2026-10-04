@@ -13,9 +13,9 @@ flag is rewritten rather than duplicated into a file its own parser would refuse
 document of its own. A SessionStart hook runs on every session, on every machine
 that has the package, before anybody has decided to use the tool -- so the
 no-argument home view cannot be it: that view needs a credential, opens a
-connection, prints the installation's address, and exits **1** when nothing is
-configured, which is the state of exactly the machine ambient context exists to
-help. The claims that make `hass-axi context` safe there are asserted rather than
+connection, prints the installation's address, and has no live state to show
+when nothing is configured, which is the state of exactly the machine ambient
+context exists to help. The claims that make `hass-axi context` safe there are asserted rather than
 described in a docstring:
 
 - it reaches Home Assistant **zero times**, asserted on the doubles' request log
@@ -68,7 +68,9 @@ def test_install_creates_hooks_for_every_default_target(tmp_path):
     assert report["errors"] == []
     assert {t["target"] for t in report["targets"]} == {
         "claude-code",
+        "claude-code-session-end",
         "codex",
+        "codex-session-end",
         "codex-features",
         "opencode",
     }
@@ -476,9 +478,9 @@ def test_a_path_with_a_space_survives_being_joined_with_the_argument():
 def test_the_installed_hook_runs_the_context_command_not_the_home_view(tmp_path):
     """The join between the two halves, and the defect this replaced.
 
-    The no-argument view needs a credential, opens a connection, prints the
-    installation's address and exits 1 when nothing is configured. A hook that
-    ran it failed on every machine that had the package and no installation --
+    The no-argument view needs a credential, opens a connection and prints the
+    installation's address, and at the time it exited 1 when nothing was
+    configured. A hook that ran it failed on every machine that had the package and no installation --
     and a harness is entitled to drop a non-zero hook's output, so the reader
     who most needed telling that this tool exists was the one who never saw it.
     """
@@ -587,3 +589,270 @@ def test_the_context_document_never_pays_for_a_quoted_scalar(run_cli, rest_env):
             if line.startswith(" ") or ": " not in line:
                 continue
             assert not line.split(": ", 1)[1].startswith('"'), line
+
+
+# ------------------------------------------- session end, status and removal
+
+
+def end_commands_in(settings) -> list:
+    return [hook for group in settings["hooks"]["SessionEnd"] for hook in group["hooks"]]
+
+
+def test_install_adds_a_session_end_hook_for_claude_code_and_codex(tmp_path):
+    hooks.install(tmp_path, command=EXECUTABLE)
+    claude = end_commands_in(read(tmp_path / ".claude" / "settings.json"))
+    codex = end_commands_in(read(tmp_path / ".codex" / "hooks.json"))
+    assert [hook["command"] for hook in claude] == [f"{EXECUTABLE} context end"]
+    assert [hook["command"] for hook in codex] == [f"{EXECUTABLE} context end"]
+    assert all(hook["managed_by"] == "hass-axi" for hook in claude + codex)
+    # Codex allows a session-end hook three seconds at most.
+    assert codex[0]["timeout"] == 3
+
+
+def test_the_opencode_plugin_captures_as_well_as_injects(tmp_path):
+    hooks.install(tmp_path, command=EXECUTABLE)
+    source = (tmp_path / ".config" / "opencode" / "plugins" / "axi-hass-axi.js").read_text(
+        encoding="utf-8"
+    )
+    assert '["context","end"]' in source.replace(", ", ",")
+    assert '"tool.execute.before"' in source
+    assert "session.idle" in source and "session.deleted" in source
+
+
+def test_the_opencode_plugin_is_valid_javascript(tmp_path):
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    plugin = tmp_path / "plugin.mjs"
+    plugin.write_text(hooks.opencode_plugin_source(EXECUTABLE, 10), encoding="utf-8")
+    done = subprocess.run([node, "--check", str(plugin)], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+
+
+def test_a_session_end_entry_this_tool_did_not_mark_is_never_adopted(tmp_path):
+    """No release before the marker wrote a session-end hook, so the two
+    adoption rules that exist for session start have nothing to adopt here."""
+    theirs = {"type": "command", "command": "ha-axi"}
+    also_theirs = {"type": "command", "command": "ha-axi context", "managed_by": "ha-axi"}
+    settings = write_settings(
+        tmp_path, {"hooks": {"SessionEnd": [{"matcher": "", "hooks": [theirs, also_theirs]}]}}
+    )
+    hooks.install(tmp_path, command=EXECUTABLE)
+    kept = end_commands_in(read(settings))
+    assert theirs in kept and also_theirs in kept
+    assert len(kept) == 3
+
+
+def statuses(report) -> dict:
+    return {target["target"]: target["status"] for target in report["targets"]}
+
+
+def snapshot(root) -> dict:
+    return {
+        str(path.relative_to(root)): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def test_status_reports_missing_before_and_installed_after_and_writes_nothing(tmp_path):
+    before = hooks.status(tmp_path, command=EXECUTABLE)
+    assert set(statuses(before).values()) == {"missing"}
+    assert list(tmp_path.iterdir()) == [], "a status check created something"
+
+    hooks.install(tmp_path, command=EXECUTABLE)
+    written = snapshot(tmp_path)
+    after = hooks.status(tmp_path, command=EXECUTABLE)
+    assert statuses(after) == {
+        "claude-code": "installed",
+        "claude-code-session-end": "installed",
+        "codex": "installed",
+        "codex-session-end": "installed",
+        "codex-features": "installed",
+        "opencode": "installed",
+    }
+    assert snapshot(tmp_path) == written
+
+
+def test_status_calls_a_moved_executable_stale(tmp_path):
+    hooks.install(tmp_path, command="/old/bin/hass-axi")
+    report = statuses(hooks.status(tmp_path, command="/new/bin/hass-axi"))
+    assert report["claude-code"] == "stale"
+    assert report["claude-code-session-end"] == "stale"
+    assert report["opencode"] == "stale"
+    assert report["codex-features"] == "installed"
+
+
+def test_status_calls_an_entry_from_before_the_rename_stale(tmp_path):
+    old = {"type": "command", "command": "ha-axi context", "managed_by": "ha-axi", "timeout": 10}
+    write_settings(tmp_path, {"hooks": {"SessionStart": [{"matcher": "", "hooks": [old]}]}})
+    assert statuses(hooks.status(tmp_path, command=EXECUTABLE))["claude-code"] == "stale"
+
+
+def test_status_names_an_opencode_plugin_this_tool_did_not_write(tmp_path):
+    plugin = tmp_path / ".config" / "opencode" / "plugins" / "axi-hass-axi.js"
+    plugin.parent.mkdir(parents=True)
+    plugin.write_text("// somebody else's plugin\n", encoding="utf-8")
+    assert statuses(hooks.status(tmp_path, command=EXECUTABLE))["opencode"] == "unmanaged"
+
+
+def test_remove_takes_out_what_install_wrote_and_is_idempotent(tmp_path):
+    hooks.install(tmp_path, command=EXECUTABLE)
+    first = hooks.remove(tmp_path)
+    assert first["errors"] == []
+    assert statuses(first) == {
+        "claude-code": "removed",
+        "codex": "removed",
+        "codex-features": "kept",
+        "opencode": "removed",
+    }
+    assert read(tmp_path / ".claude" / "settings.json") == {}
+    assert read(tmp_path / ".codex" / "hooks.json") == {}
+    assert not (tmp_path / ".config" / "opencode" / "plugins" / "axi-hass-axi.js").exists()
+    # Shared with every other tool that installs a Codex hook, so it stays.
+    assert "hooks = true" in (tmp_path / ".codex" / "config.toml").read_text(encoding="utf-8")
+
+    second = statuses(hooks.remove(tmp_path))
+    assert second["claude-code"] == second["codex"] == second["opencode"] == "absent"
+    assert set(statuses(hooks.status(tmp_path, command=EXECUTABLE)).values()) == {
+        "missing",
+        "installed",
+    }
+
+
+def test_remove_leaves_everything_this_tool_did_not_write(tmp_path):
+    """The whole point of the marker: removal claims exactly what install would.
+
+    A user's wrapper that names this tool, another tool's hooks on the same
+    events, an unrelated setting and the other `ha-axi`'s marked entry all
+    survive, byte for byte, an install followed by a remove.
+    """
+    document = {
+        "model": "example",
+        "hooks": {
+            "SessionStart": [
+                {
+                    "matcher": "",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "env HA_URL=https://homeassistant.example.com hass-axi",
+                        },
+                        {
+                            "type": "command",
+                            "command": "ha-axi ping --ambient",
+                            "managed_by": "ha-axi",
+                        },
+                    ],
+                },
+                {"matcher": "startup", "hooks": [{"type": "command", "command": "other-tool"}]},
+            ],
+            "SessionEnd": [{"hooks": [{"type": "command", "command": "other-tool end"}]}],
+            "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "x"}]}],
+        },
+    }
+    settings = write_settings(tmp_path, document)
+    hooks.install(tmp_path, command=EXECUTABLE)
+    assert read(settings) != document
+    hooks.remove(tmp_path)
+    assert read(settings) == document
+
+
+def test_remove_never_deletes_an_opencode_plugin_this_tool_did_not_write(tmp_path):
+    plugin = tmp_path / ".config" / "opencode" / "plugins" / "axi-hass-axi.js"
+    plugin.parent.mkdir(parents=True)
+    plugin.write_text("// somebody else's plugin\n", encoding="utf-8")
+    assert statuses(hooks.remove(tmp_path))["opencode"] == "unmanaged"
+    assert plugin.read_text(encoding="utf-8") == "// somebody else's plugin\n"
+
+
+def test_remove_takes_out_an_entry_an_earlier_release_wrote(tmp_path):
+    """What this tool installed under its old name is still what this tool installed."""
+    unmarked = {"type": "command", "command": "/usr/local/bin/ha-axi"}
+    renamed = {"type": "command", "command": "ha-axi context", "managed_by": "ha-axi"}
+    settings = write_settings(
+        tmp_path, {"hooks": {"SessionStart": [{"matcher": "", "hooks": [unmarked, renamed]}]}}
+    )
+    assert statuses(hooks.remove(tmp_path))["claude-code"] == "removed"
+    assert read(settings) == {}
+
+
+def test_the_setup_command_installs_reports_and_removes(run_cli, tmp_path):
+    home = ["--home", str(tmp_path)]
+    code, out = run_cli(["setup", "hooks", "status", *home], {})
+    assert code == 0
+    assert "claude-code,missing" in out
+    assert "Run `hass-axi setup hooks` to install" in out
+
+    assert run_cli(["setup", "hooks", *home], {})[0] == 0
+    assert run_cli(["setup", "hooks", "install", *home], {})[0] == 0
+    code, out = run_cli(["setup", "hooks", "status", *home], {})
+    assert code == 0
+    assert "claude-code-session-end,installed" in out
+    assert "Run `hass-axi setup hooks remove`" in out
+
+    code, out = run_cli(["setup", "hooks", "remove", *home], {})
+    assert code == 0
+    assert "claude-code,removed" in out
+    assert "codex-features,kept" in out
+    code, out = run_cli(["setup", "hooks", "remove", *home], {})
+    assert code == 0
+    assert "claude-code,absent" in out
+
+
+def test_an_unknown_hooks_action_is_a_usage_error_that_names_the_three(run_cli, tmp_path):
+    code, out = run_cli(["setup", "hooks", "uninstall", "--home", str(tmp_path)], {})
+    assert code == 2
+    assert "code: UNKNOWN_SUBCOMMAND" in out
+    assert "install, status, remove" in out
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_removing_the_hooks_removes_the_session_record_they_wrote(run_cli, tmp_path, monkeypatch):
+    from hass_axi import sessionlog
+
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    sessionlog.record(
+        {"session_id": "one", "cwd": str(tmp_path), "commands": ["hass-axi doctor"]},
+        {"doctor": ["doctor"]},
+    )
+    assert sessionlog.state_path().exists()
+    code, out = run_cli(["setup", "hooks", "remove"], {})
+    assert code == 0
+    assert "session-record,removed" in out
+    assert not sessionlog.state_path().exists()
+
+
+def test_a_read_only_session_can_check_the_hooks_and_cannot_remove_them(run_cli, tmp_path):
+    hooks.install(tmp_path, command=EXECUTABLE)
+    written = snapshot(tmp_path)
+    environ = {"HASS_AXI_READ_ONLY": "1"}
+    code, out = run_cli(["setup", "hooks", "status", "--home", str(tmp_path)], environ)
+    assert code == 0
+    assert "targets[" in out
+    code, out = run_cli(["setup", "hooks", "remove", "--home", str(tmp_path)], environ)
+    assert code == 2
+    assert "code: READ_ONLY" in out
+    assert snapshot(tmp_path) == written
+
+
+def test_the_context_document_with_a_recorded_session_stays_within_budget(
+    run_cli, tmp_path, monkeypatch
+):
+    from hass_axi import sessionlog
+
+    monkeypatch.chdir(tmp_path)
+    nouns = {name: [sub.name for sub in spec.subs] for name, spec in cli.command_specs().items()}
+    labels = [f"{noun} {subs[0]}" if subs else noun for noun, subs in nouns.items()]
+    sessionlog.record(
+        {"session_id": "many", "cwd": str(tmp_path), "commands": [f"hass-axi {x}" for x in labels]},
+        nouns,
+    )
+    code, out = run_cli(["context"], {})
+    assert code == 0
+    line = next(row for row in out.splitlines() if row.startswith("last_session: "))
+    assert not line.split(": ", 1)[1].startswith('"'), line
+    assert len(out.encode("utf-8")) < CONTEXT_BUDGET_BYTES

@@ -163,7 +163,7 @@ def test_a_websocket_command_with_no_classification_is_refused(
         "example.write",
         ws.WsCommand(name="example.write", type="example/registry/update", summary="Mutate"),
     )
-    code, out = run_cli(["ws", "example.write"], enabled(ws_env))
+    code, out = run_cli(["ws", "example.write", "--write"], enabled(ws_env))
     assert code == 2
     assert f"code: {CODE}" in out
     assert ws_server.received == []
@@ -201,7 +201,7 @@ def test_a_command_classified_read_still_cannot_write(run_cli, rest_env, rest_se
 
 def test_an_undeclared_websocket_type_is_refused(run_cli, ws_env, ws_server):
     """`--raw` hands an arbitrary type to the API, so an unknown one is a write."""
-    code, out = run_cli(["ws", "--raw", "example/registry/update"], enabled(ws_env))
+    code, out = run_cli(["ws", "--raw", "example/registry/update", "--write"], enabled(ws_env))
     assert code == 2
     assert f"code: {CODE}" in out
     assert ws_server.received == []
@@ -220,7 +220,7 @@ def test_a_write_over_rest_is_refused_and_nothing_reaches_the_installation(
     last moment.
     """
     code, out = run_cli(
-        ["service", "call", "light.turn_on", "--target-entity", "light.example_lamp"],
+        ["service", "call", "light.turn_on", "--target-entity", "light.example_lamp", "--write"],
         enabled(rest_env),
     )
     assert code == 2
@@ -252,7 +252,8 @@ def test_a_write_over_the_websocket_is_refused_and_nothing_reaches_the_installat
 
 def test_the_same_rest_write_succeeds_with_the_variable_unset(run_cli, rest_env, rest_server):
     code, _ = run_cli(
-        ["service", "call", "light.turn_on", "--target-entity", "light.example_lamp"], rest_env
+        ["service", "call", "light.turn_on", "--target-entity", "light.example_lamp", "--write"],
+        rest_env,
     )
     assert code == 0
     assert [r for r in rest_server.requests if r["path"] == "/api/services/light/turn_on"]
@@ -358,7 +359,14 @@ def test_the_websocket_client_refuses_before_it_opens_a_connection(ws_server):
 
 def test_the_rest_escape_hatch_refuses_an_unsafe_method(run_cli, rest_env, rest_server):
     code, out = run_cli(
-        ["api", "POST", "/services/light/turn_on", "--field", "entity_id=light.example_lamp"],
+        [
+            "api",
+            "POST",
+            "/services/light/turn_on",
+            "--field",
+            "entity_id=light.example_lamp",
+            "--write",
+        ],
         enabled(rest_env),
     )
     assert code == 2
@@ -377,7 +385,14 @@ def test_the_websocket_escape_hatch_refuses_a_declared_write_reached_by_raw_type
 ):
     """`--raw` is judged by the type it names, not by the name it was given."""
     code, out = run_cli(
-        ["ws", "--raw", "config/entity_registry/update", "--param", "entity_id=light.example_lamp"],
+        [
+            "ws",
+            "--raw",
+            "config/entity_registry/update",
+            "--param",
+            "entity_id=light.example_lamp",
+            "--write",
+        ],
         enabled(ws_env),
     )
     assert code == 2
@@ -386,7 +401,7 @@ def test_the_websocket_escape_hatch_refuses_a_declared_write_reached_by_raw_type
 
 
 def test_the_websocket_escape_hatch_still_reads_by_raw_type(run_cli, ws_env):
-    code, _ = run_cli(["ws", "--raw", "config/floor_registry/list"], enabled(ws_env))
+    code, _ = run_cli(["ws", "--raw", "config/floor_registry/list", "--write"], enabled(ws_env))
     assert code == 0
 
 
@@ -556,7 +571,7 @@ def test_a_refusal_is_distinguishable_from_a_rejected_token(run_cli, rest_env, r
     not accepted" retries the wrong fix.
     """
     rest_server.status_override = (401, {"message": "Unauthorized"})
-    code, out = run_cli(["service", "call", "light.turn_on"], rest_env)
+    code, out = run_cli(["service", "call", "light.turn_on", "--write"], rest_env)
     assert (code, "code: UNAUTHORIZED" in out) == (1, True)
     assert CODE not in out
 

@@ -515,7 +515,7 @@ classified whether or not its author knew the taxonomy existed. `tests/test_erro
 **every** subcommand from `cli._MODULES` against **every** fault on **both** transports and fails on
 the first one that cannot name its class. `INVOCATIONS` there is maintained by hand, because only a
 person knows what arguments a command needs, but it is never *enumerated* by hand: it is reconciled
-against the dispatch table, and `LOCAL_ONLY` names the two subcommands that reach no transport, so
+against the dispatch table, and `LOCAL_ONLY` names the subcommands that reach no transport, so
 "it does not touch Home Assistant" is a claim somebody made rather than a gap nobody noticed.
 
 ### What Home Assistant actually returns, and why each split is a fact rather than a preference
@@ -578,7 +578,8 @@ something a caller can act on.
 reach `cli._error_document`, so neither printed a code. `home` is the live-state view an agent asks
 for once it has a reason to — the most-read error surface the tool has, the session hook's
 `context` document being one that cannot fail — and the one that could not be classified. Both
-carry `code` and `class` now: `home` at the top level, `doctor` on the failing check row, which is
+carry `code` and `class` now: `home` at the top level beside `live_state: not available`, at exit
+0, and `doctor` on the failing check row, which is
 what makes the case a reverse proxy actually produces — REST answering
 and the WebSocket upgrade refused — two readable facts instead of one unhealthy instance. A failing
 `doctor` therefore renders its `checks` block in **list** form rather than tabular, because the rows
@@ -624,8 +625,9 @@ Nothing is inferred from a name or an HTTP verb: `service call` mutates through 
 looks like any other POST, `template render` is a POST that changes nothing, and the WebSocket
 command set does not follow REST conventions at all.
 
-**`DYNAMIC` is a fourth answer, not a hole.** Three subcommands carry their subject in their
-arguments rather than in their declaration — `api`, `ws` and `setup skill` — so they declare
+**`DYNAMIC` is a fourth answer, not a hole.** Five subcommands carry their subject in their
+arguments rather than in their declaration — `api`, `ws`, `service call`, `setup skill` and
+`setup hooks` — so they declare
 `DYNAMIC` and their module exposes `access(sub, parsed)`. A module that declares `DYNAMIC` and
 supplies no resolver is unclassified in a costume and `cli._access` treats it as a write; a test
 asserts every `DYNAMIC` sub has one. `wscmd` resolves the *type* through the same `_resolve` that
@@ -660,8 +662,8 @@ declaration names is a write.
 
 **`setup` writes to this machine rather than to Home Assistant, and counts as a write anyway.** The
 variable says this tool does not write; splitting that into "not your house" and "not your
-dotfiles" is a distinction nobody asked for. `setup skill --check` is the read half, which is what
-`DYNAMIC` buys there.
+dotfiles" is a distinction nobody asked for. `setup skill --check` and `setup hooks status` are
+the read half, which is what `DYNAMIC` buys there.
 
 **Refused commands stay visible, and that is the opposite of the sibling project's playback gate —
 deliberately.** There the capability was hidden from help and from the command table, because a
@@ -686,8 +688,8 @@ below — credentials fetched per command, never stored — and the suite itself
 
 ## The session-hook installer
 
-`hooks.py` writes into three files nobody in this project owns: the user's `~/.claude/settings.json`,
-their `~/.codex/config.toml`, and an OpenCode plugin directory. That is what makes its failure mode
+`hooks.py` writes into files nobody in this project owns: the user's `~/.claude/settings.json`,
+their `~/.codex/hooks.json` and `~/.codex/config.toml`, and an OpenCode plugin directory. That is what makes its failure mode
 different from every other module here — a mistake does not produce a wrong answer, it damages a
 file the user has to repair by hand — and all three rules below were paid for by a defect that
 shipped in 0.5.1 and was found in the sibling AXI CLI, which had been given this design to port.
@@ -743,21 +745,19 @@ edit at all — a key beside an array of tables lands inside one element and ena
 refusal and `_install_codex_features` reports `skipped` with the file byte-identical. A target that
 only looks installed is the failure this whole section is about.
 
-**The hook runs `hass-axi context`, never the bare executable, and the reason is an exit code.** The
-no-argument home view is live state: it needs a credential, opens a connection, prints the
-installation's address, and reports `NOT_CONFIGURED` with exit **1** when nothing is set. That is
-the right answer to "show me this installation" and the wrong thing to run at session start, because
-it fails for exactly the machine ambient context exists to reach — the one that has the package and
-has never been pointed at Home Assistant — and a harness is entitled to drop a non-zero hook's
-output rather than put it in front of the agent. It also pays a round-trip and prints an address on
-every session, into a channel that is logged and transcribed.
+**The hook runs `hass-axi context`, never the bare executable.** The no-argument home view is live
+state: it needs a credential, opens a connection and prints the installation's address. That is the
+right answer to "show me this installation" and the wrong thing to run at session start, because it
+has nothing to show the machine ambient context exists to reach — the one that has the package and
+has never been pointed at Home Assistant — and it pays a round-trip and prints an address on every
+session, into a channel that is logged and transcribed.
 
-**The taxonomy did not move, and that is the whole shape of the fix.** `hass-axi` with nothing
-configured still reports `NOT_CONFIGURED` and still exits 1, because a caller who asked for live
-state and cannot have it *has* met a `config` fault. `context` asks a different question — describe
-this installation without connecting to it — so it gets a different answer rather than a softened
-one. Softening the home view would have made every script and every `doctor`-as-a-gate downstream
-stop being able to tell configured from not. Only the hook path changed.
+**The home view exits 0 whatever it finds, and names the fault anyway.** With nothing configured,
+or with an installation that does not answer, it prints `live_state: not available`, the `code` and
+`class` of what stood in the way, the command names and the help lines, and exits 0: a bare run asks
+what is here, and "nothing yet" is an answer. A caller that has to tell configured from not reads
+`code`, and `ping` and `doctor` are the commands whose exit code reports it. `context` asks a
+different question — describe this installation without connecting to it.
 
 **What `context` may cost, and what it may say.** It loads on every session, so
 `CONTEXT_BUDGET_BYTES` in `tests/test_hooks.py` asserts the ceiling rather than intending it: a line
@@ -946,7 +946,7 @@ body, neither of which quotes, so the constraint comes from the one reader that 
 
 ```sh
 scripts/dev-setup.sh                     # creates .venv and installs this checkout into it
-.venv/bin/pytest                         # ~1200 tests, a few seconds
+.venv/bin/pytest                         # ~1300 tests, a few seconds
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/hass-axi setup skill --check     # SKILL.md is generated, never hand-edited
 ```

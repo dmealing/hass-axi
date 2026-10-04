@@ -1882,6 +1882,17 @@ class FakeInstallation:
 
 
 @pytest.fixture(autouse=True)
+def _isolated_session_record(tmp_path, monkeypatch):
+    """Point the session record at a directory this test owns.
+
+    `hass-axi context` reads it and `hass-axi context end` writes it, and the
+    default is under the real home directory: a suite that left it there would
+    read whatever the developer's own sessions recorded, and write to it.
+    """
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
+
+
+@pytest.fixture(autouse=True)
 def _clean_secrets():
     output.reset_secrets()
     output.reset_notices()
