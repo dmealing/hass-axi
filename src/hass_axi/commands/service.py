@@ -500,7 +500,15 @@ def _preview(ctx, live: _Live, domain: str, service: str, data: dict, parsed, ta
         fault = _incapable_fault(live, spec, domain, service, parsed)
         if fault is not None:
             raise fault
-        resolved = live.resolved(parsed)
+        try:
+            resolved = live.resolved(parsed)
+        except AxiError as exc:
+            doc["target"] = f"{_scope_phrase(parsed)} could not be resolved: {exc.message}"
+            doc["capability_check"] = f"not run - the target could not be resolved: {exc.message}"
+            doc["help"] = HelpBlock(
+                [*preview_help(ctx.environ), *_target_help(domain, service, parsed)]
+            )
+            return doc
         reached = _reached(resolved, spec, domain)
         matched = resolved.within(model.target_domains(spec))
         if wants_response:

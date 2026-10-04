@@ -138,6 +138,31 @@ def test_a_preview_of_a_response_call_that_would_reach_nothing_is_refused(
     assert posts(rest_server) == []
 
 
+def test_a_preview_degrades_the_way_the_call_does_when_the_registries_are_unreadable(
+    run_cli, rest_env, rest_server
+):
+    """`rest_env` points the WebSocket URL at the REST double, so the upgrade
+    is refused while REST answers -- the reverse-proxy topology `doctor` names.
+    The sent call works through it: the pre-check swallows the unreadable
+    registries and the POST goes out over REST. The preview has to give that
+    same verdict, not raise the transport fault, or the flag alone decides
+    whether an area-targeted call is possible at all."""
+    preview_code, preview = as_json(
+        run_cli,
+        ["service", "call", "light.turn_off", "--target-area", "example_room"],
+        rest_env,
+    )
+    sent_code, sent_out = run_cli(
+        ["service", "call", "light.turn_off", "--target-area", "example_room", WRITE],
+        rest_env,
+    )
+    assert preview_code == sent_code == 0
+    assert posts(rest_server) == ["/api/services/light/turn_off"]
+    assert preview["target"].startswith("area example_room could not be resolved: ")
+    assert preview["capability_check"].startswith("not run - the target could not be resolved: ")
+    assert "light.turn_off" in sent_out
+
+
 def test_a_preview_resolves_an_area_to_the_entities_it_would_reach(
     run_cli, installation_env, rest_server
 ):
