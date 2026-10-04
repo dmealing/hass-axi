@@ -1,6 +1,7 @@
 error: unknown subcommand `updat` for `device`
 code: UNKNOWN_SUBCOMMAND
 class: usage
-help[2]:
+help[3]:
+  did you mean: update
   subcommands: list, get, update
   Run `hass-axi device --help` for the full reference

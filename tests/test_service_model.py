@@ -197,6 +197,34 @@ def test_an_area_id_as_a_target_costs_no_registry_read(run_cli, rest_env, rest_s
     assert code == 0
 
 
+def test_an_area_named_after_another_areas_id_is_refused_rather_than_guessed(
+    run_cli, installation, installation_env
+):
+    """`example_hall`'s own id must not shadow a different area merely named that.
+
+    A target has to actuate the one area meant, never a guess between two: an
+    id match is only taken outright when no other area's folded name equals
+    the same value.
+    """
+    installation.ws.areas.append(
+        {
+            "area_id": "example_den",
+            "name": "example_hall",
+            "icon": None,
+            "floor_id": None,
+            "aliases": [],
+        }
+    )
+    code, out = run_cli(
+        ["service", "call", "light.turn_on", "--target-area", "example_hall", "--write"],
+        installation_env,
+    )
+    assert code == 1
+    assert "matches more than one area" in out
+    assert "example_hall" in out
+    assert "example_den" in out
+
+
 def test_a_target_that_matched_but_changed_nothing_says_so(run_cli, installation_env):
     """The other world: entities were reached, and none of them changed."""
     code, out = run_cli(
@@ -426,13 +454,16 @@ def test_a_target_that_cannot_be_resolved_does_not_fail_a_call_that_worked(
 ):
     """The registries answer the follow-up question, not the call itself.
 
-    `rest_env` serves REST and nothing else, so resolving an area target is
-    impossible. The call still went out and Home Assistant still accepted it, so
-    the report says what it could not read rather than inventing a failure.
+    `rest_env` serves REST and nothing else, so resolving the target for the
+    report is impossible. `--target-device` needs no pre-call registry read --
+    unlike `--target-area`, which now always resolves before the call goes out
+    and would fail the call outright rather than soften into this report. The
+    call still went out and Home Assistant still accepted it, so the report
+    says what it could not read rather than inventing a failure.
     """
     rest_server.state["service_result"] = []
     code, out = run_cli(
-        ["service", "call", "light.turn_off", "--target-area", "example_room", "--write"],
+        ["service", "call", "light.turn_off", "--target-device", "device_example", "--write"],
         rest_env,
     )
     assert code == 0

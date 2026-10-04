@@ -343,6 +343,39 @@ def resolve_area(areas: list, needle: str, *, offer_create: bool = False) -> dic
     )
 
 
+def resolve_area_target(areas: list, needle: str) -> dict:
+    """Find the one area a service target names, refusing a guess outright.
+
+    `resolve_area`'s id-first rule is right for a filter, where the worst
+    outcome is an empty result: an id matches `office` on `Office`'s id ahead
+    of `office`'s own name, which is what an agent typing an id means. A
+    service target actuates something, so the same shortcut would let an
+    exact-id match named `office` silently win over a *different* area
+    actually named `office` -- the id owner acts, the name owner does not,
+    and nothing says so. An id is only taken outright when no other area's
+    folded name equals it; otherwise this reports the same ambiguity
+    `resolve_area`/`entity list --area` give that input.
+    """
+    match = next((a for a in areas if a.get("area_id") == needle), None)
+    if match is not None:
+        wanted = fold(needle)
+        others = [a for a in areas if a is not match and fold(a.get("name") or "") == wanted]
+        if not others:
+            return match
+        ties = [match, *others]
+        ids = ", ".join(a.get("area_id", "") for a in ties)
+        raise AxiError(
+            f"{needle!r} matches more than one area: {ids}",
+            help_lines=[
+                f"candidates: {', '.join(_area_label(a) for a in ties)}",
+                "Pass the area_id instead of the name",
+                "Run `hass-axi area list` to see each area's id",
+            ],
+            code="AMBIGUOUS_AREA",
+        )
+    return resolve_area(areas, needle)
+
+
 def resolve_floor(floors: list, needle: str) -> dict:
     """Find a floor by ``floor_id`` or by name.
 

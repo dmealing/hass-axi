@@ -131,7 +131,9 @@ def test_service_call_sends_targets_flat_as_home_assistant_requires(run_cli, res
     assert "changed[1]{entity_id,name,state}:" in out
 
 
-def test_service_call_sends_every_target_kind_flat(run_cli, rest_env, rest_server):
+def test_service_call_sends_every_target_kind_flat(run_cli, installation, installation_env):
+    # `--target-area` now always resolves the registry before the call, so this
+    # needs both transports on one origin rather than `rest_env` alone.
     code, _ = run_cli(
         [
             "service",
@@ -145,12 +147,12 @@ def test_service_call_sends_every_target_kind_flat(run_cli, rest_env, rest_serve
             "device_one",
             "--write",
         ],
-        rest_env,
+        installation_env,
     )
     assert code == 0
-    body = next(r for r in rest_server.requests if r["path"] == "/api/services/light/turn_on")[
-        "body"
-    ]
+    body = next(
+        r for r in installation.rest.requests if r["path"] == "/api/services/light/turn_on"
+    )["body"]
     assert body == {
         "entity_id": ["light.example_lamp"],
         "area_id": ["example_room"],

@@ -17,8 +17,6 @@ passes -- see :func:`_preview`.
 
 from __future__ import annotations
 
-import re
-
 from axi_toolkit.ha import services as model
 
 from ..argspec import Command, Flag, Sub
@@ -39,7 +37,7 @@ from ._common import (
     preview_help,
     preview_note,
     project,
-    resolve_area,
+    resolve_area_target,
     select_fields,
 )
 
@@ -451,31 +449,30 @@ def _call(ctx, parsed):
     return doc
 
 
-_AREA_ID = re.compile(r"^[a-z0-9_]+$")
-
-
 def _resolve_area_names(ctx, parsed) -> None:
     """Turn any `--target-area` given as a name into the area's id, in place.
 
     Every other `--area` takes an id or a name, and Home Assistant takes only
-    the id. The registry is read only when a value cannot be an id as written
-    -- an id is lower case, digits and underscores -- so a call that names ids
-    pays nothing for this, and a name that matches no area stays as it was
-    typed for the target report to explain.
+    the id. The registry is always read when a target area is given, because
+    an id-shaped value is never actuated on a guess: `resolve_area_target`
+    only takes an exact `area_id` outright when no *other* area's folded name
+    also equals it, and refuses with the same ambiguity `entity list --area`
+    reports otherwise. A name that matches no area stays as it was typed for
+    the target report to explain.
 
     A registry that cannot be read is raised, not swallowed: sending the name
     on as though it were an id reaches nothing, and Home Assistant answers that
     with an empty change set and no word about why.
     """
     given = list(parsed.get("target_area") or [])
-    if all(_AREA_ID.match(value) for value in given):
+    if not given:
         return
     with ctx.ws() as client:
         areas = client.run("area.list") or []
     resolved = []
     for value in given:
         try:
-            resolved.append(resolve_area(areas, value).get("area_id") or value)
+            resolved.append(resolve_area_target(areas, value).get("area_id") or value)
         except NotFound:
             resolved.append(value)
     parsed.flags["target_area"] = resolved

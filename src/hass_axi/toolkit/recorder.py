@@ -193,31 +193,39 @@ def summarize(meta: dict, rows: list, start, period: str, *, end=None, hourly=No
     summary["buckets"] = len(rows)
     caveats: list = []
 
-    if not rows:
+    if not rows and not measured:
         caveats.append("no statistics were recorded in this window")
-    elif kind == "sum":
-        changes = [c for c in (_number(r.get("change")) for r in measured) if c is not None]
-        summary["total"] = _round(sum(changes)) if changes else None
-        caveats.extend(sum_caveats(rows, unit))
-    else:
-        means = [m for m in (_number(r.get("mean")) for r in measured) if m is not None]
-        lows = [m for m in (_number(r.get("min")) for r in measured) if m is not None]
-        highs = [m for m in (_number(r.get("max")) for r in measured) if m is not None]
-        if kind == "circular mean":
-            # A bearing wraps at 360, so neither the arithmetic mean nor the
-            # smallest and largest value say anything: 350 and 10 average 180
-            # and span 340 degrees, for a wind that never left north.
-            summary["mean"] = _round(circular_mean(means)) if means else None
-            caveats.append(
-                "a circular quantity such as a bearing: the mean is a circular mean, and min "
-                "and max are not reported because they wrap"
-            )
+    elif not rows:
+        # The display period's own bucket has not been compiled yet -- the
+        # recorder only closes one once its period ends -- but the hourly
+        # rows behind it are already in, so the numbers are read from those.
+        caveats.append(f"the current {period} bucket has not been compiled yet")
+
+    if rows or measured:
+        if kind == "sum":
+            changes = [c for c in (_number(r.get("change")) for r in measured) if c is not None]
+            summary["total"] = _round(sum(changes)) if changes else None
+            caveats.extend(sum_caveats(measured, unit))
         else:
-            summary["mean"] = _round(sum(means) / len(means)) if means else None
-            summary["min"] = _round(min(lows)) if lows else None
-            summary["max"] = _round(max(highs)) if highs else None
-        if not means:
-            caveats.append("the buckets carry no mean value")
+            means = [m for m in (_number(r.get("mean")) for r in measured) if m is not None]
+            lows = [m for m in (_number(r.get("min")) for r in measured) if m is not None]
+            highs = [m for m in (_number(r.get("max")) for r in measured) if m is not None]
+            if kind == "circular mean":
+                # A bearing wraps at 360, so neither the arithmetic mean nor
+                # the smallest and largest value say anything: 350 and 10
+                # average 180 and span 340 degrees, for a wind that never
+                # left north.
+                summary["mean"] = _round(circular_mean(means)) if means else None
+                caveats.append(
+                    "a circular quantity such as a bearing: the mean is a circular mean, and "
+                    "min and max are not reported because they wrap"
+                )
+            else:
+                summary["mean"] = _round(sum(means) / len(means)) if means else None
+                summary["min"] = _round(min(lows)) if lows else None
+                summary["max"] = _round(max(highs)) if highs else None
+            if not means:
+                caveats.append("the buckets carry no mean value")
 
     if rows and hourly is None and period in COARSE_PERIODS:
         outside = overhang(rows, start, end)

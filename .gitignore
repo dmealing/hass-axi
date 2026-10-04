@@ -20,3 +20,6 @@ venv/
 
 # The live suite writes its invocation log and its lab credential here.
 tests/live/.results/
+
+# A developer's local Serena configuration.
+.serena/

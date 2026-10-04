@@ -35,6 +35,7 @@ from .commands import wscmd as ws_command
 from .errors import EXIT_ERROR, EXIT_OK, AxiError, UsageError
 from .output import MODE_HUMAN, MODE_JSON, MODE_TOON, HelpBlock
 from .rest import RestClient
+from .toolkit.names import close_matches
 from .ws import WsClient
 
 #: Dispatch order, which is also the order `--help` and the skill list them in.
@@ -369,12 +370,15 @@ def _pick_sub(command: Command, argv: list) -> tuple:
             return default, argv
 
     if leading is not None:
+        close = close_matches(leading, ((s.name, s.name) for s in command.subs))
+        help_lines = []
+        if close:
+            help_lines.append(f"did you mean: {', '.join(close)}")
+        help_lines.append(f"subcommands: {', '.join(s.name for s in command.subs)}")
+        help_lines.append(f"Run `hass-axi {command.name} --help` for the full reference")
         raise UsageError(
             f"unknown subcommand `{leading}` for `{command.name}`",
-            help_lines=[
-                f"subcommands: {', '.join(s.name for s in command.subs)}",
-                f"Run `hass-axi {command.name} --help` for the full reference",
-            ],
+            help_lines=help_lines,
             code="UNKNOWN_SUBCOMMAND",
         )
     raise UsageError(

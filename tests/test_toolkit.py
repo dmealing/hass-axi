@@ -9,78 +9,85 @@ server and no command line.
 
 from __future__ import annotations
 
-import ast
+import subprocess
 import sys
+import textwrap
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import pytest
 
-from hass_axi import toolkit
 from hass_axi.toolkit import names, recorder, shapes
 
-TOOLKIT = Path(toolkit.__file__).parent
-MODULES = sorted(TOOLKIT.glob("*.py"))
 
+def test_the_toolkit_imports_cleanly_with_the_cli_and_its_dependencies_unimportable():
+    """It is something another program can import for its rules alone.
 
-def test_the_toolkit_imports_nothing_from_the_cli_layers():
-    """Only the standard library and its own modules: no command, parser, output or transport.
-
-    A library that imported the output boundary would print; one that imported
-    a command module would drag the argument parser and both transports in
-    behind it. Either way it would stop being something another program can
-    import for its rules alone.
+    A library that reached into the CLI layers, a transport or an output
+    boundary could not be imported without dragging them in behind it. This
+    runs the import in a fresh interpreter whose meta-path hook raises on any
+    of those names, so the proof is that the import itself succeeds rather
+    than that the source happens not to mention them.
     """
-    assert {path.name for path in MODULES} >= {
-        "__init__.py",
-        "names.py",
-        "shapes.py",
-        "recorder.py",
-    }
-    own = {path.stem for path in MODULES}
-    stdlib = set(getattr(sys, "stdlib_module_names", ())) | {"__future__"}
-    for path in MODULES:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                roots = {alias.name.split(".")[0] for alias in node.names}
-            elif isinstance(node, ast.ImportFrom):
-                if node.level == 1:
-                    # A sibling inside the toolkit, and nothing above it.
-                    named = {node.module} if node.module else {a.name for a in node.names}
-                    assert named <= own, (
-                        f"{path.name} imports {sorted(named - own)} from the package"
-                    )
-                    continue
-                assert node.level == 0, f"{path.name} reaches above the toolkit package"
-                roots = {(node.module or "").split(".")[0]}
-            else:
-                continue
-            assert "hass_axi" not in roots, f"{path.name} imports the CLI package"
-            assert not {"axi_toolkit", "websockets"} & roots, f"{path.name} imports a dependency"
-            if len(stdlib) > 1:
-                assert roots <= stdlib, f"{path.name} imports {sorted(roots - stdlib)}"
+    script = textwrap.dedent(
+        """
+        import sys
+
+        class _Blocked:
+            BLOCKED = ("hass_axi.cli", "hass_axi.commands", "hass_axi.rest", "hass_axi.ws",
+                       "hass_axi.output", "hass_axi.argspec", "axi_toolkit", "websockets")
+
+            def find_module(self, name, path=None):
+                if name == "hass_axi.toolkit" or name.startswith("hass_axi.toolkit."):
+                    return None
+                if any(name == b or name.startswith(b + ".") for b in self.BLOCKED):
+                    return self
+                return None
+
+            def load_module(self, name):
+                raise ImportError(f"blocked: {name}")
+
+        sys.meta_path.insert(0, _Blocked())
+
+        from hass_axi.toolkit import names, recorder, shapes  # noqa: F401
+
+        print("ok")
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=30
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
 
 
 def test_the_toolkit_says_nothing_about_the_command_line():
-    """Its text is about Home Assistant: no message it produces names a CLI command."""
-    for path in MODULES:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        docstrings = {
-            id(node.body[0].value)
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef))
-            and node.body
-            and isinstance(node.body[0], ast.Expr)
-            and isinstance(node.body[0].value, ast.Constant)
-        }
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                if id(node) in docstrings:
-                    continue
-                assert "hass-axi" not in node.value and "Run `" not in node.value, (
-                    f"{path.name} produces text that names the command line: {node.value!r}"
-                )
+    """Its messages are about Home Assistant: none names a CLI command to run.
+
+    Driven through the public functions with representative inputs, so a
+    string that is dead code or has since been edited out cannot pass this by
+    looking right in the source.
+    """
+    area = {"area_id": "example_room", "name": "Example Room"}
+    other = {"area_id": "example_hall", "name": "Example Room"}
+    resolution = names.resolve(
+        "exampl room",
+        [area, other],
+        ident=lambda a: a["area_id"],
+        name=lambda a: a["name"],
+    )
+    meta = {"statistic_id": "sensor.example_energy", "has_sum": True, "unit_of_measurement": "kWh"}
+    summary = recorder.summarize(meta, [], datetime.now(timezone.utc), "day")
+
+    texts: list = []
+    texts.extend(str(c) for c in names.nearest("exampl room", [area, other], lambda a: [a["name"]]))
+    texts.extend(str(v) for v in names.close_matches("exampl room", [(area["name"], area)]))
+    texts.extend(str(c) for c in summary.get("caveats", []))
+    texts.append(str(resolution))
+    texts.append(str(shapes.is_entity_id("light.example_lamp")))
+
+    for text in texts:
+        assert "hass-axi" not in text
+        assert "Run `" not in text
 
 
 # --------------------------------------------------------------------- names
