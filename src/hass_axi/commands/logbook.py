@@ -17,7 +17,11 @@ from ._common import count_line, matches_search, parse_limit, project, select_fi
 
 DEFAULT_LIMIT = 50
 LIST_FIELDS = ["when", "name", "entity_id", "event", "cause", "domain", "state"]
-DEFAULT_LIST_FIELDS = ["when", "name", "entity_id", "event", "cause"]
+#: Four columns: when, what, what happened and why. `name` rather than
+#: `entity_id` because every logbook entry has one and some -- Home Assistant
+#: starting, an integration's own event -- have no entity at all; the id is one
+#: `--fields` away.
+DEFAULT_LIST_FIELDS = ["when", "name", "event", "cause"]
 
 COMMAND = Command(
     name="logbook",
@@ -91,6 +95,8 @@ def run(ctx, sub: str, parsed):
     help_lines = []
     if len(shown) < len(rows):
         help_lines.append(f"Run with `--limit {len(rows)}` to see all {len(rows)}")
+    if not parsed.get("fields"):
+        help_lines.append("Add `--fields when,entity_id,event,cause` for the entity ids")
     help_lines.append("Run `hass-axi history get <entity_id>` for time spent in each state")
     doc["help"] = HelpBlock(help_lines)
     return doc

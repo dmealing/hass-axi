@@ -45,7 +45,7 @@ def test_a_refused_service_call_names_the_services_that_do_exist(run_cli, rest_e
     the real names can come from is the model -- fetched here, on failure only.
     """
     code, out = run_cli(
-        ["service", "call", "light.turn_onn", "--target-entity", "light.example_lamp"],
+        ["service", "call", "light.turn_onn", "--target-entity", "light.example_lamp", "--write"],
         rest_env,
     )
     assert code == 1
@@ -55,7 +55,7 @@ def test_a_refused_service_call_names_the_services_that_do_exist(run_cli, rest_e
 
 
 def test_a_refused_call_on_an_unknown_domain_lists_the_domains(run_cli, rest_env):
-    code, out = run_cli(["service", "call", "lightt.turn_on"], rest_env)
+    code, out = run_cli(["service", "call", "lightt.turn_on", "--write"], rest_env)
     assert code == 1
     assert "no service domain named 'lightt'" in out
     assert "light" in out
@@ -69,7 +69,7 @@ def test_a_field_the_service_does_not_declare_is_named_back(run_cli, rest_env):
     enrichment seen from the other side.
     """
     code, out = run_cli(
-        ["service", "call", "light.turn_on", "--data", "brightnes=180"],
+        ["service", "call", "light.turn_on", "--data", "brightnes=180", "--write"],
         rest_env,
     )
     assert code == 1
@@ -79,7 +79,9 @@ def test_a_field_the_service_does_not_declare_is_named_back(run_cli, rest_env):
 
 
 def test_a_missing_required_field_is_named_rather_than_guessed_at(run_cli, rest_env):
-    code, out = run_cli(["service", "call", "calendar.get_events", "--response"], rest_env)
+    code, out = run_cli(
+        ["service", "call", "calendar.get_events", "--response", "--write"], rest_env
+    )
     assert code == 1
     assert "start_date_time" in out
     assert "hass-axi service get calendar.get_events" in out
@@ -90,7 +92,7 @@ def test_the_enrichment_survives_a_model_that_cannot_be_read(run_cli, rest_env, 
     original = rest_server.state["services"]
     rest_server.state["services"] = "not a list at all"
     try:
-        code, out = run_cli(["service", "call", "light.turn_onn"], rest_env)
+        code, out = run_cli(["service", "call", "light.turn_onn", "--write"], rest_env)
     finally:
         rest_server.state["services"] = original
     assert code == 1
@@ -115,6 +117,7 @@ def test_a_response_only_service_asks_for_the_flag_not_the_query_parameter(run_c
             "calendar.list_events",
             "--data",
             "start_date_time=2026-01-01 00:00:00",
+            "--write",
         ],
         rest_env,
     )
@@ -126,7 +129,15 @@ def test_a_response_only_service_asks_for_the_flag_not_the_query_parameter(run_c
 
 def test_asking_for_a_response_a_service_cannot_give_says_to_drop_the_flag(run_cli, rest_env):
     code, out = run_cli(
-        ["service", "call", "light.turn_on", "--target-entity", "light.example_lamp", "--response"],
+        [
+            "service",
+            "call",
+            "light.turn_on",
+            "--target-entity",
+            "light.example_lamp",
+            "--response",
+            "--write",
+        ],
         rest_env,
     )
     assert code == 1
@@ -146,7 +157,7 @@ def test_an_empty_change_set_says_whether_anything_was_targeted(run_cli, install
     off", and reporting exit 0 with the identical sentence is a soft failure.
     """
     code, out = run_cli(
-        ["service", "call", "switch.toggle", "--target-area", "example_room"],
+        ["service", "call", "switch.toggle", "--target-area", "example_room", "--write"],
         installation_env,
     )
     assert code == 1
@@ -156,7 +167,7 @@ def test_an_empty_change_set_says_whether_anything_was_targeted(run_cli, install
 
 def test_an_area_that_does_not_exist_is_reported_rather_than_accepted(run_cli, installation_env):
     code, out = run_cli(
-        ["service", "call", "light.turn_on", "--target-area", "nowhere"],
+        ["service", "call", "light.turn_on", "--target-area", "nowhere", "--write"],
         installation_env,
     )
     assert code == 1
@@ -167,7 +178,7 @@ def test_an_area_that_does_not_exist_is_reported_rather_than_accepted(run_cli, i
 def test_an_area_name_passed_where_an_id_belongs_is_diagnosed(run_cli, installation_env):
     """`--target-area` is an area_id; a name silently matches nothing upstream."""
     code, out = run_cli(
-        ["service", "call", "light.turn_on", "--target-area", "Example Room"],
+        ["service", "call", "light.turn_on", "--target-area", "Example Room", "--write"],
         installation_env,
     )
     assert code == 1
@@ -178,7 +189,14 @@ def test_an_area_name_passed_where_an_id_belongs_is_diagnosed(run_cli, installat
 def test_a_target_that_matched_but_changed_nothing_says_so(run_cli, installation_env):
     """The other world: entities were reached, and none of them changed."""
     code, out = run_cli(
-        ["service", "call", "light.turn_off", "--target-entity", "light.example_ceiling"],
+        [
+            "service",
+            "call",
+            "light.turn_off",
+            "--target-entity",
+            "light.example_ceiling",
+            "--write",
+        ],
         installation_env,
     )
     assert code == 0
@@ -189,7 +207,7 @@ def test_a_target_that_matched_but_changed_nothing_says_so(run_cli, installation
 def test_an_unavailable_entity_is_named_rather_than_silently_skipped(run_cli, installation_env):
     """Home Assistant skips an unavailable entity without a word about it."""
     code, out = run_cli(
-        ["service", "call", "switch.toggle", "--target-entity", "switch.example_outlet"],
+        ["service", "call", "switch.toggle", "--target-entity", "switch.example_outlet", "--write"],
         installation_env,
     )
     assert code == 0
@@ -198,7 +216,7 @@ def test_an_unavailable_entity_is_named_rather_than_silently_skipped(run_cli, in
 
 def test_an_entity_that_does_not_exist_is_not_reported_as_success(run_cli, installation_env):
     code, out = run_cli(
-        ["service", "call", "light.turn_on", "--target-entity", "light.absent"],
+        ["service", "call", "light.turn_on", "--target-entity", "light.absent", "--write"],
         installation_env,
     )
     assert code == 1
@@ -210,7 +228,7 @@ def test_a_call_that_changed_something_pays_for_no_extra_reads(
 ):
     """The happy path stays one request: no model, no registry, no state sweep."""
     code, out = run_cli(
-        ["service", "call", "light.turn_off", "--target-entity", "light.example_lamp"],
+        ["service", "call", "light.turn_off", "--target-entity", "light.example_lamp", "--write"],
         installation_env,
     )
     assert code == 0
@@ -304,6 +322,7 @@ def test_a_capability_the_target_cannot_have_is_refused_before_dispatch(
             "media_player.media_next_track",
             "--target-area",
             "example_hall",
+            "--write",
         ],
         installation_env,
     )
@@ -325,7 +344,7 @@ def test_a_service_with_an_upstream_fallback_is_not_gated(run_cli, installation_
     works today.
     """
     code, out = run_cli(
-        ["service", "call", "media_player.volume_up", "--target-area", "example_hall"],
+        ["service", "call", "media_player.volume_up", "--target-area", "example_hall", "--write"],
         installation_env,
     )
     assert code == 0
@@ -342,6 +361,7 @@ def test_the_capability_gate_can_be_skipped(run_cli, installation_env, rest_serv
             "--target-area",
             "example_hall",
             "--no-check",
+            "--write",
         ],
         installation_env,
     )
@@ -364,6 +384,7 @@ def test_an_explicit_entity_target_is_not_pre_checked(run_cli, installation_env,
             "media_player.media_next_track",
             "--target-entity",
             "media_player.example_speaker",
+            "--write",
         ],
         installation_env,
     )
@@ -380,7 +401,7 @@ def test_a_service_with_no_capability_requirement_reads_no_states(
 ):
     """The gate costs one model read and stops there when nothing is gated."""
     code, _ = run_cli(
-        ["service", "call", "light.turn_off", "--target-area", "example_room"],
+        ["service", "call", "light.turn_off", "--target-area", "example_room", "--write"],
         installation_env,
     )
     assert code == 0
@@ -400,7 +421,7 @@ def test_a_target_that_cannot_be_resolved_does_not_fail_a_call_that_worked(
     """
     rest_server.state["service_result"] = []
     code, out = run_cli(
-        ["service", "call", "light.turn_off", "--target-area", "example_room"],
+        ["service", "call", "light.turn_off", "--target-area", "example_room", "--write"],
         rest_env,
     )
     assert code == 0
@@ -410,7 +431,7 @@ def test_a_target_that_cannot_be_resolved_does_not_fail_a_call_that_worked(
 
 def test_a_name_too_far_off_gets_a_listing_rather_than_a_wrong_guess(run_cli, rest_env):
     """`did you mean` has to mean it; the rest of the domain is a separate sentence."""
-    code, out = run_cli(["service", "call", "light.zzzzzz"], rest_env)
+    code, out = run_cli(["service", "call", "light.zzzzzz", "--write"], rest_env)
     assert code == 1
     assert "did you mean" not in out
     assert "hass-axi service list --domain light" in out
@@ -439,6 +460,7 @@ def test_a_response_call_that_reached_nothing_gets_the_same_answer_as_one_that_d
         "example_room",
         "--data",
         "start_date_time=2026-01-01 00:00:00",
+        "--write",
     ]
     with_flag_code, with_flag = run_cli([*argv, "--response"], installation_env)
     assert with_flag_code == 1
@@ -468,6 +490,7 @@ def test_a_response_call_that_reached_something_is_untouched_by_that_branch(
             "--response",
             "--data",
             "start_date_time=2026-01-01 00:00:00",
+            "--write",
         ],
         installation_env,
     )
@@ -491,6 +514,7 @@ def test_a_named_entity_outside_the_services_domain_is_reported_as_unreached(
             "--response",
             "--data",
             "start_date_time=2026-01-01 00:00:00",
+            "--write",
         ],
         installation_env,
     )
@@ -520,6 +544,7 @@ def test_a_response_call_that_matched_only_unavailable_entities_names_them(
             "--response",
             "--data",
             "start_date_time=2026-01-01 00:00:00",
+            "--write",
         ],
         installation_env,
     )
@@ -551,6 +576,7 @@ def test_the_same_call_without_response_keeps_reporting_the_silent_skip(run_cli,
             "calendar.example_old_agenda",
             "--data",
             "start_date_time=2026-01-01 00:00:00",
+            "--write",
         ],
         installation_env,
     )
@@ -579,6 +605,7 @@ def test_a_no_check_response_call_names_the_capability_it_lacked(run_cli, instal
             "example_hall",
             "--no-check",
             "--response",
+            "--write",
         ],
         installation_env,
     )
@@ -599,7 +626,7 @@ def test_a_device_target_that_reached_nothing_suggests_a_command_that_works(
     and nothing else in the tool went from a device to its entities.
     """
     code, out = run_cli(
-        ["service", "call", "light.turn_on", "--target-device", "device_three"],
+        ["service", "call", "light.turn_on", "--target-device", "device_three", "--write"],
         installation_env,
     )
     assert code == 1

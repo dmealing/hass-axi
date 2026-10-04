@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .. import readonly
+from ..argspec import Flag
 from ..errors import AxiError, NotFound, UsageError
+from ..output import truncate
 from . import _window
 
 #: Preview length for long free-text values before `--full` is needed.
@@ -372,3 +375,92 @@ def count_line(shown: int, matched: int, total: int, *, filtered: bool) -> str:
 def matches_search(needle: str, *values) -> bool:
     lowered = needle.lower()
     return any(lowered in str(value or "").lower() for value in values)
+
+
+# ------------------------------------------------------------ write previews
+
+#: The one flag that turns a preview into a request, on every command that can
+#: change something through a subject it does not declare: `service call`, a
+#: write-method `api` request and a write `ws` command. One name on all three,
+#: so an agent that learns it once has learnt it everywhere.
+WRITE_FLAG_NAME = "--write"
+WRITE_FLAG = Flag(
+    WRITE_FLAG_NAME,
+    boolean=True,
+    note="send it; without this the command shows what would be sent and sends nothing",
+)
+
+#: The line a preview prints where a result would be, so that "would" is never
+#: read as "did".
+PREVIEW_LINE = "nothing was sent to Home Assistant"
+
+
+def preview_note(environ) -> str:
+    """What a preview says about itself, including a write that would be refused."""
+    if readonly.enabled(environ):
+        return f"{PREVIEW_LINE}; this session is read-only so {WRITE_FLAG_NAME} would be refused"
+    return PREVIEW_LINE
+
+
+def preview_help(environ) -> list:
+    if readonly.enabled(environ):
+        return [f"Unset {readonly.active_var(environ)} to allow writes in this session"]
+    return [f"Run the same command with {WRITE_FLAG_NAME} to send it"]
+
+
+# ------------------------------------------------- shortening a raw response
+
+#: Items kept from each list in a raw `api` or `ws` response before `--full`.
+RAW_ITEMS = 25
+
+
+def shorten(result, hint: str) -> tuple:
+    """Shorten an arbitrary JSON response, reporting what was withheld.
+
+    The escape hatches hand back whatever Home Assistant answered, and some of
+    those answers are every state or every registry entry in the installation.
+    Structure is kept rather than cut mid-document, so what remains is still
+    data: every list keeps its first :data:`RAW_ITEMS` items and every string
+    its first :data:`PREVIEW_CHARS` characters, through :func:`truncate`, which
+    appends the original length.
+
+    Returns ``(result, note, hint)``. ``note`` is empty when nothing was cut;
+    otherwise it says what was and how large the whole response is, and
+    ``hint`` is handed back for the help block -- the escape hatch is suggested
+    only when something was actually withheld.
+    """
+    cut_lists: list = []
+    cut_strings = [0]
+
+    def walk(node):
+        if isinstance(node, str):
+            text, note = truncate(node, PREVIEW_CHARS, hint)
+            if note:
+                cut_strings[0] += 1
+            return text
+        if isinstance(node, list):
+            if len(node) > RAW_ITEMS:
+                cut_lists.append(len(node))
+            return [walk(item) for item in node[:RAW_ITEMS]]
+        if isinstance(node, dict):
+            return {key: walk(value) for key, value in node.items()}
+        return node
+
+    shortened = walk(result)
+    if not cut_lists and not cut_strings[0]:
+        return result, "", ""
+
+    parts = []
+    if cut_lists:
+        largest = max(cut_lists)
+        if len(cut_lists) == 1:
+            parts.append(f"first {RAW_ITEMS} of {largest} items shown")
+        else:
+            parts.append(
+                f"{len(cut_lists)} lists cut to their first {RAW_ITEMS} items "
+                f"(the largest holds {largest})"
+            )
+    if cut_strings[0]:
+        parts.append(f"{plural(cut_strings[0], 'string')} cut to {PREVIEW_CHARS} chars")
+    total = len(json.dumps(result, separators=(",", ":"), ensure_ascii=False, default=str))
+    return shortened, f"{'; '.join(parts)} (truncated, {total} chars total)", hint

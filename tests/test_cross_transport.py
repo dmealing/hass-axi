@@ -114,7 +114,7 @@ def test_a_service_call_and_a_registry_read_share_one_base_url(
 ):
     """A POST body survives the routing, so the origin is genuinely shared."""
     code, _ = run_cli(
-        ["service", "call", "light.turn_on", "--target-entity", "light.example_lamp"],
+        ["service", "call", "light.turn_on", "--target-entity", "light.example_lamp", "--write"],
         installation_env,
     )
     assert code == 0

@@ -53,7 +53,10 @@ LIST_FIELDS = [
     "last_reported",
     "entity_category",
 ]
-DEFAULT_LIST_FIELDS = ["entity_id", "name", "value", "unit", "area", "age"]
+#: Four columns: which sensor, what it reads and in what unit. Where it is and
+#: how fresh the reading is are one `--fields` away; a default row is paid for
+#: once per sensor, and most questions are answered by the reading itself.
+DEFAULT_LIST_FIELDS = ["entity_id", "name", "value", "unit"]
 
 #: Registry categories that mark an entity as not a reading. Home Assistant
 #: defines exactly these two.
@@ -162,6 +165,11 @@ def run(ctx, sub: str, parsed):
         doc["set_aside"] = f"{plural(set_aside, 'diagnostic, config or hidden sensor')} not shown"
     doc["sensors"] = project(shown, fields)
     help_lines = ["Run `hass-axi statistics get <entity_id>` for a total or average over a window"]
+    if not parsed.get("fields"):
+        help_lines.append(
+            "Add `--fields entity_id,name,value,unit,area,age` for where each sensor is and "
+            "how old its reading is"
+        )
     if len(shown) < matched:
         help_lines.append(f"Run `hass-axi sensor list --limit {matched}` to see all {matched}")
     if set_aside:

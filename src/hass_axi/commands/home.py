@@ -26,6 +26,11 @@ COMMAND = Command(
     usage="usage: hass-axi",
     default_sub="home",
     subs=(Sub(name="home", summary="Show connection status and a state summary", access=READ),),
+    notes=(
+        "the home view exits 0 whether or not the installation answered: when it is not "
+        "configured or not reachable it says so under `live_state` with a `code` and a `class`; "
+        "`hass-axi ping` and `hass-axi doctor` are the commands whose exit code reports it",
+    ),
     examples=("hass-axi",),
 )
 
@@ -141,20 +146,28 @@ def stale_entities(states: list, current, after: str = STALE_AFTER) -> list:
     ]
 
 
+def _commands() -> list:
+    """The command names, for a view that has no live state to lead with."""
+    from ..cli import COMMAND_ORDER
+
+    return list(COMMAND_ORDER)
+
+
 def run(ctx, sub: str, parsed):
     doc = {"bin": executable_path(), "description": DESCRIPTION}
     missing = missing_env_vars(ctx.environ)
     if missing:
-        # Coded like every other failure: a caller who asked for live state and
-        # cannot have it has met a config fault, and scripts that gate on this
-        # view rely on telling configured from not. The session hook prints
-        # `hass-axi context` rather than this view, precisely because this branch
-        # exits 1 -- see `commands/context.py`.
-        doc["error"] = f"{' and '.join(missing)} not set in the environment"
+        # Described, not failed. A bare run asks what is here, and on a machine
+        # that has never been pointed at an installation the answer is "nothing
+        # yet, and this is how" -- an answer the view gives in full, so it exits
+        # 0. The code and class still say which fault stands between the caller
+        # and live state, for anything that switches on them; `hass-axi ping` and
+        # `hass-axi doctor` are the commands whose exit code reports it.
+        doc["live_state"] = f"not available - {' and '.join(missing)} not set in the environment"
         doc["code"] = "NOT_CONFIGURED"
         doc["class"] = fault_class("NOT_CONFIGURED")
+        doc["commands"] = _commands()
         doc["help"] = HelpBlock(setup_help())
-        doc["__exit_code__"] = 1
         return doc
 
     config = ctx.config()
@@ -171,14 +184,17 @@ def run(ctx, sub: str, parsed):
     try:
         states = ctx.rest().states()
     except AxiError as exc:
-        doc["error"] = exc.message
+        # The same rule as the unconfigured branch above: this view reports
+        # what it found, and an installation that did not answer is what it
+        # found. Exit 0, with the fault named so a caller can still tell.
+        doc["live_state"] = f"not available - {exc.message}"
         if exc.code:
             doc["code"] = exc.code
             doc["class"] = exc.fault_class
+        doc["commands"] = _commands()
         doc["help"] = HelpBlock(
             [*exc.help_lines, "Run `hass-axi doctor` to see which transport is failing"]
         )
-        doc["__exit_code__"] = 1
         return doc
 
     counts: dict = {}
@@ -265,7 +281,8 @@ def run(ctx, sub: str, parsed):
         )
     else:
         help_lines.append(
-            "Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to act"
+            "Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to preview "
+            "an action and add --write to send it"
         )
     doc["help"] = HelpBlock(help_lines)
     return doc

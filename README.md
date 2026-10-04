@@ -130,7 +130,7 @@ The typed write surface is `entity update` — `--name`, `--area` and `--icon`, 
 `--clear-*` that falls back to what the integration supplies, plus `--new-id` to rename the
 `entity_id` itself — together with `area create` and `area update`, and `device get` and
 `device update` on the registry behind them. Deleting an area is deliberately not given a typed
-command; `hass-axi ws area.delete` is there if you mean it, and the same goes for disabling or
+command; `hass-axi ws area.delete --write` is there if you mean it, and the same goes for disabling or
 deleting a device.
 
 **The device is usually the level a name or an area is wrong at**, which is why `device update`
@@ -149,11 +149,18 @@ Home Assistant will accept a service call that cannot possibly do anything and a
 empty list. Three different outcomes arrive on the wire looking identical, and a client that
 forwards the call and prints the reply reports all three as success.
 
+**Nothing is sent until you say so.** `service call` without `--write` is a preview: it reads the
+published service, resolves the target, runs the capability pre-check and prints the request it
+would make, the entities it would reach and what the check found — and sends nothing. It fails, as
+the call would, for a service that does not exist or a target that reaches nothing, so every
+refusal below is the same answer with or without the flag. `--write` sends it. The same flag, with
+the same meaning, gates a write-method `hass-axi api` request and a write `hass-axi ws` command.
+
 **An entity that cannot do the thing is dropped in silence** when it was reached through an area or
 a device. `hass-axi` reads the capability the service publishes and says so before sending:
 
 ```
-$ hass-axi service call cover.set_cover_position --target-area example_room --data position=50
+$ hass-axi service call cover.set_cover_position --target-area example_room --data position=50 --write
 error: "cover.set_cover_position needs a supported_features bitmask containing any of 4, and no entity the target matched has one: cover.example_blind reports 3"
 code: UNSUPPORTED_CAPABILITY
 help[4]:
@@ -174,7 +181,7 @@ claim about itself, and a wrong claim must not become a wall.
 **A target that matched nothing** exits 1 and says so, rather than reporting a successful no-op:
 
 ```
-$ hass-axi service call light.turn_on --target-area example_study
+$ hass-axi service call light.turn_on --target-area example_study --write
 error: "area example_study matched 0 entities light.turn_on can act on, so the call did nothing"
 code: NO_ENTITIES_TARGETED
 help[3]:
@@ -186,7 +193,7 @@ help[3]:
 **A call that genuinely had nothing to do** is a success, and says which:
 
 ```
-$ hass-axi service call light.turn_off --target-entity light.example_lamp
+$ hass-axi service call light.turn_off --target-entity light.example_lamp --write
 service: light.turn_off
 changed: light.turn_off accepted with 0 states changed
 target: entity light.example_lamp matched 1 entity; which reported no state change
@@ -209,7 +216,7 @@ lacking a capability, and a `--response` call that matched nothing, arrive as a 
 with a fixed apology.) `hass-axi` fetches the service model at that point and answers from it:
 
 ```
-$ hass-axi service call light.turn_on --target-entity light.example_lamp --data brightnes=180
+$ hass-axi service call light.turn_on --target-entity light.example_lamp --data brightnes=180 --write
 error: light.turn_on does not accept field brightnes
 code: UNKNOWN_SERVICE_FIELD
 help[2]:
@@ -217,7 +224,9 @@ help[2]:
   Run `hass-axi service get light.turn_on` for their types and which are required
 ```
 
-A call that succeeds pays for none of that: the explanation is failure-path only. The model is
+A call that succeeds pays for none of that: the explanation is failure-path only. (A preview
+names the same field before anything is sent, as a warning rather than a refusal, because a
+published field list is an integration's claim about itself.) The model is
 never cached — an integration added or removed rewrites it, and nothing signals when.
 
 `service get` renders the same model on demand, from the installation itself, so it is never stale
@@ -233,7 +242,7 @@ target: entity domain cover; supported_features matching any of 4
 fields[1]{field,required,type,description}:
   position,true,number,""
 help[2]:
-  Run `hass-axi service call cover.set_cover_position --target-entity <entity_id> --data position=<value>` to call it
+  Run `hass-axi service call cover.set_cover_position --target-entity <entity_id> --data position=<value>` to preview the call, and add --write to send it
   Run `hass-axi state get <entity_id>` and compare its supported_features attribute
 ```
 
@@ -331,7 +340,8 @@ hass-axi logbook get --entity light.example_lamp --start 2h
 ```
 
 - **`sensor list` finds a reading by what it measures and where it is** — `--device-class`,
-  `--unit`, `--area`, `--search` — and answers with its value, unit, area and age. The area comes
+  `--unit`, `--area`, `--search` — and answers with its value and unit; `--fields` adds its area,
+  the age of the reading and the rest. The area comes
   from the registry, inherited from the device unless the entity sets its own, so every run reads
   both transports. Diagnostic and configuration sensors (battery voltages, signal strength) are set
   aside by the registry's own `entity_category`, never by a name pattern; `--all` puts them back.
@@ -386,7 +396,7 @@ help[3]:
 The raw WebSocket escape hatch, which is where the registry writes actually live:
 
 ```
-$ hass-axi ws --raw config/area_registry/create --param name='Bypass Attempt'
+$ hass-axi ws --raw config/area_registry/create --param name='Bypass Attempt' --write
 error: "`hass-axi ws` is a write, and this session is read-only"
 code: READ_ONLY
 ```
@@ -394,14 +404,16 @@ code: READ_ONLY
 And the raw REST escape hatch:
 
 ```
-$ hass-axi api POST /services/light/turn_on --field entity_id=light.example_lamp
+$ hass-axi api POST /services/light/turn_on --field entity_id=light.example_lamp --write
 error: "`hass-axi api` is a write, and this session is read-only"
 code: READ_ONLY
 ```
 
 Each of those last two prints the same three `help` lines as the first; only the head of the output
 is reproduced here. All three exit `2`, and the area registry is unchanged afterwards: the refusal
-is reached before either transport is opened, and before the token is even read.
+is reached before either transport is opened, and before the token is even read. Without
+`--write` the last two are previews, which send nothing and are therefore still allowed: a
+read-only session can see what a request would have been, and is told the write would be refused.
 
 Four things about it are deliberate, and the first two are why it is worth having at all.
 
@@ -453,16 +465,21 @@ what `hass-axi` is for.
 - **`template render`** — render a Jinja template server-side, from `--template`, `--template-file`
   or stdin. It sees every entity Home Assistant knows about.
 - **`api`** — any authenticated REST path, with `--field`, `--body` and `--query`. The escape hatch
-  for anything with no typed command.
-- **`ws`** — any WebSocket command. `ws --list` prints the declared names, `ws <name> --param
-  k=v` sends one, and `ws --raw <api/type>` sends a type that has no declared name yet. Adding a
+  for anything with no typed command. Anything but `GET` and `HEAD` is previewed until `--write`
+  is passed. A long response is shortened — each list to its first 25 items, each string to a
+  preview — with the full size reported, and `--full` prints all of it.
+- **`ws`** — any WebSocket command. `ws --list` prints the declared names and whether each reads
+  or writes, `ws <name> --param k=v` sends a read and previews a write until `--write` is passed,
+  and `ws --raw <api/type>` reaches a type that has no declared name yet — which counts as a
+  write. Results are shortened like `api`'s, with `--full` for the whole of one. Adding a
   declared command is one entry in `REGISTRY` in `src/hass_axi/ws.py`; the auth handshake, id
   correlation and error translation are shared.
 - **`ping`** — one authenticated request, timed: a liveness gate cheaper than `doctor`.
 - **`doctor`** — environment and connection checks over both transports.
-- **`setup`** — install the agent integrations on this machine (below).
-- **`context`** — the ambient document a session hook prints. Reads the environment and the
-  command table only, so it reaches nothing and exits 0 with nothing configured (below).
+- **`setup`** — install, check or remove the agent integrations on this machine (below).
+- **`context`** — the ambient document a session hook prints. Reads the environment, the command
+  table and the local session record only, so it reaches nothing and exits 0 with nothing
+  configured (below).
 
 The whole command surface, and the transport each half runs on:
 
@@ -471,9 +488,9 @@ The whole command surface, and the transport each half runs on:
 | `hass-axi entity list\|get\|update` | WebSocket | The entity registry: names, areas, platforms, entity ids |
 | `hass-axi area list\|get\|create\|update` | WebSocket | The area registry |
 | `hass-axi device list\|get\|update` | WebSocket | The device registry: device names and areas, which entities inherit |
-| `hass-axi service list\|get\|call` | REST | Discover services, read one's fields, and call them |
+| `hass-axi service list\|get\|call` | REST | Discover services, read one's fields, preview a call and send it |
 | `hass-axi state list\|get` | REST | Entity states and attributes as they are right now |
-| `hass-axi sensor list` | both | Sensors by device class, unit, area or name, with value, unit, area and age |
+| `hass-axi sensor list` | both | Sensors by device class, unit, area or name, with value and unit |
 | `hass-axi history get` | REST | State timelines, with each reading's range or time in each state |
 | `hass-axi logbook get` | REST | Logbook entries and what caused them |
 | `hass-axi statistics list\|get` | WebSocket | Recorder statistics: a meter's total, a reading's average, min and max |
@@ -482,7 +499,7 @@ The whole command surface, and the transport each half runs on:
 | `hass-axi api` | REST | Any authenticated REST path |
 | `hass-axi ping` | REST | One authenticated request, timed |
 | `hass-axi doctor` | both | Environment and connection checks |
-| `hass-axi setup` | — | Install the agent integrations |
+| `hass-axi setup` | — | Install, check or remove the agent integrations |
 | `hass-axi context` | — | The ambient document a session hook prints |
 
 `--help` on any command is the authoritative reference: it lists every flag per subcommand, with
@@ -637,21 +654,39 @@ Two ways to make this discoverable. **You only need one.**
 hass-axi setup hooks
 ```
 
-Installs a `SessionStart` hook for Claude Code (`~/.claude/settings.json`) and Codex
-(`~/.codex/hooks.json`, plus `[features] hooks = true`), and a managed ambient-context plugin for
-OpenCode. It is idempotent, repairs the recorded path after a reinstall or a move, and refuses to
-overwrite a plugin it does not manage.
+Installs a `SessionStart` and a `SessionEnd` hook for Claude Code (`~/.claude/settings.json`) and
+Codex (`~/.codex/hooks.json`, plus `[features] hooks = true`), and a managed plugin for OpenCode
+that does both jobs. It is idempotent, repairs the recorded path after a reinstall or a move, and
+refuses to overwrite a plugin it does not manage.
 
-It owns exactly one entry, and knows which one by a `managed_by` key it writes into that entry — not
+```sh
+hass-axi setup hooks status   # installed, stale or missing, per target; writes nothing
+hass-axi setup hooks remove   # takes out what this tool installed, and nothing else
+```
+
+`remove` leaves Codex's `[features] hooks = true` on, because every other tool's Codex hooks depend
+on it, and deletes the session record described below.
+
+**The session-end hook records what the session did with this tool**, so the next session's context
+in the same directory can say so: `last_session: 2026-01-02 ran state list x3 and service call x1
+with 1 sent by --write`. It runs `hass-axi context end`, which reads the transcript the agent names
+and counts the `hass-axi` commands issued through its tools. The record is command names and counts
+and never an argument — arguments are where entity ids, area names and a token typed on a command
+line would be — and it is kept in one local file, `sessions.json` under `$XDG_STATE_HOME/hass-axi/`
+(`~/.local/state/hass-axi/` when that is unset). It
+opens no connection and cannot fail a session's close: anything it cannot read is recorded as
+nothing. OpenCode has no session-end event, so its plugin records when a session goes idle.
+
+It owns exactly its own entries, and knows which by a `managed_by` key it writes into each — not
 by the command naming this tool. A `SessionStart` hook you wrote yourself is left alone however it
 reaches this tool: an environment prefix, another interpreter, a shell wrapper. An entry written by
 a release before that key existed is adopted once, in the one shape those releases could produce —
 the executable and nothing else — so upgrading repairs the hook you already have rather than adding
 a second beside it.
 
-What the hook puts in front of a session is `hass-axi context`, which reads the environment and the
-command table and nothing else — no connection, no token, no address, and exit 0 whether or not this
-machine has ever been pointed at Home Assistant:
+What the hook puts in front of a session is `hass-axi context`, which reads the environment, the
+command table and that local record and nothing else — no connection, no token, no address, and
+exit 0 whether or not this machine has ever been pointed at Home Assistant:
 
 ```
 $ hass-axi context
@@ -666,7 +701,7 @@ commands[16]: state,sensor,history,logbook,statistics,service,template,entity,ar
 help[4]:
   Run `hass-axi` for this installation at a glance: entity counts by domain and what needs attention
   Run `hass-axi entity list --area <id|name>` to read the registry, which REST cannot reach
-  Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to act
+  Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to preview an action and add --write to send it
   Run `hass-axi <command> --help` for its flags, or `hass-axi --help` for all of them
 ```
 
@@ -708,12 +743,15 @@ help[6]:
   Run `hass-axi entity list --area <id|name>` to read the registry, which REST cannot reach
   Run `hass-axi area list` to see the areas defined here
   Run `hass-axi sensor list --device-class <class>` to find a reading by what it measures
-  Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to act
+  Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to preview an action and add --write to send it
 ```
 
-It needs both variables, opens a connection and prints the installation's address, which is why it
-is not what a hook runs: as ambient context it would fail on every machine that had the package and
-no installation, and put an address into an agent's context on every machine that had one. The
+It opens a connection and prints the installation's address, which is why it is not what a hook
+runs: as ambient context it would pay a round-trip at every session start and put an address into
+an agent's context. With nothing configured, or with an installation that does not answer, it
+still exits 0: it prints `live_state: not available`, the `code` and `class` of what stood in the
+way, the command names and the setup lines. `hass-axi ping` and `hass-axi doctor` are the commands
+whose exit code reports whether the installation is reachable. The
 `url` line reads as the documentation placeholder here because every example in this file was run
 against a throwaway Home Assistant, and that is the one line whose value is the reader's own. This
 block was re-run for the rename against a fresh one, so its counts are its own rather than the

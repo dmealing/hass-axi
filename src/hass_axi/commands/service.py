@@ -8,6 +8,11 @@ could act on lives in the model it publishes at ``GET /api/services``, so that
 model is read here -- on the failure path, where it costs nothing, and before
 dispatch only where the alternative is a call the installation will silently
 drop on the floor.
+
+Nothing is dispatched at all without ``--write``. Without it `service call` is a
+preview, which reads the same model and the same registries to say what the
+call would send, what it would reach and whether the capability pre-check
+passes -- see :func:`_preview`.
 """
 
 from __future__ import annotations
@@ -17,8 +22,10 @@ from axi_toolkit.ha import services as model
 from ..argspec import Command, Flag, Sub
 from ..errors import ApiError, AxiError, NotFound, UsageError
 from ..output import HelpBlock, truncate
-from ..readonly import READ, WRITE
+from ..readonly import DYNAMIC, READ, WRITE
 from ._common import (
+    WRITE_FLAG,
+    WRITE_FLAG_NAME,
     device_area_map,
     domain_of,
     effective_area_id,
@@ -26,6 +33,8 @@ from ._common import (
     parse_json_flag,
     parse_pairs,
     plural,
+    preview_help,
+    preview_note,
     project,
     select_fields,
 )
@@ -36,6 +45,9 @@ DEFAULT_GET_FIELDS = ["field", "required", "type", "description"]
 #: Descriptions are prose written for a UI, so they are previewed rather than
 #: printed whole; `--full` is the escape hatch, as it is on `state get`.
 DESCRIPTION_CHARS = 120
+
+#: Entities a preview lists by name before it only counts the rest.
+PREVIEW_ROWS = 20
 
 COMMAND = Command(
     name="service",
@@ -64,10 +76,12 @@ COMMAND = Command(
             # response: `weather.get_forecasts` reads, `conversation.process`
             # can turn the house upside down, and nothing Home Assistant
             # publishes tells the two apart. The safe half of that ignorance is
-            # to refuse both.
-            access=WRITE,
+            # to refuse both -- and, for the same reason, to send neither until
+            # the caller says so: without the write flag the call is checked
+            # and shown, which only reads, and `access` below says which.
+            access=DYNAMIC,
             args=("<domain.service>",),
-            summary="Call a service",
+            summary="Preview a service call, or send it with --write",
             flags=(
                 Flag("--target-entity", "<entity_id>", repeat=True),
                 Flag("--target-area", "<area_id>", repeat=True),
@@ -82,12 +96,17 @@ COMMAND = Command(
                     boolean=True,
                     note="skip the capability pre-check on --target-area/--target-device",
                 ),
+                WRITE_FLAG,
             ),
         ),
     ),
     notes=(
+        f"`service call` sends nothing without {WRITE_FLAG_NAME}: it checks the call against the "
+        "published service, resolves the target, runs the capability pre-check and shows the "
+        "request -- and fails, as the call would, for a service that does not exist or a target "
+        "that reaches nothing",
         "--data-json takes a whole JSON object; --data takes repeated key=value pairs",
-        "a refused call is explained from `/api/services`, which is read on failure only",
+        "a refused call is explained from `/api/services`, which a sent call reads on failure only",
         "--target-area and --target-device pre-check the published capability, because"
         " Home Assistant drops an entity that lacks it without saying so",
     ),
@@ -96,10 +115,16 @@ COMMAND = Command(
         "hass-axi service list --domain light",
         "hass-axi service get light.turn_on",
         "hass-axi service call light.turn_on --target-entity light.example_lamp",
-        "hass-axi service call light.turn_on --target-area example_room --data brightness=180",
-        "hass-axi service call climate.set_temperature --target-entity climate.example_thermostat --data-json '{\"temperature\": 21}'",
+        "hass-axi service call light.turn_on --target-entity light.example_lamp --write",
+        "hass-axi service call light.turn_on --target-area example_room --data brightness=180 --write",
+        "hass-axi service call climate.set_temperature --target-entity climate.example_thermostat --data-json '{\"temperature\": 21}' --write",
     ),
 )
+
+
+def access(sub: str, parsed) -> str:
+    """`service call` writes only when it is told to; the preview only reads."""
+    return WRITE if parsed.get("write") else READ
 
 
 def run(ctx, sub: str, parsed):
@@ -149,7 +174,8 @@ def _list(ctx, parsed):
                 [
                     "Run `hass-axi service list --domain <domain>` to see one domain's services",
                     "Run `hass-axi service get <domain>.<service>` to see one service's fields",
-                    "Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to call one",
+                    "Run `hass-axi service call <domain>.<service> --target-entity <entity_id>` to "
+                    "preview a call, and add --write to send it",
                 ]
             ),
         }
@@ -177,7 +203,8 @@ def _list(ctx, parsed):
         "help": HelpBlock(
             [
                 f"Run `hass-axi service get {rows[0]['service']}` to see its fields",
-                f"Run `hass-axi service call {rows[0]['service']} --target-entity <entity_id>` to call one",
+                f"Run `hass-axi service call {rows[0]['service']} --target-entity <entity_id>` to "
+                "preview a call, and add --write to send it",
             ]
         ),
     }
@@ -237,7 +264,7 @@ def _get(ctx, parsed):
         example += "".join(f" --data {name}=<value>" for name in required)
     if response == model.RESPONSE_REQUIRED:
         example += " --response"
-    help_lines = [f"Run `{example}` to call it"]
+    help_lines = [f"Run `{example}` to preview the call, and add --write to send it"]
     if response == model.RESPONSE_REQUIRED:
         help_lines.append(
             f"{domain}.{service} answers with a payload or not at all, so --response is required"
@@ -325,6 +352,11 @@ class _Live:
             self._model = published if isinstance(published, list) and published else None
         return self._model
 
+    def use_model(self, published) -> None:
+        """Hand over a model the caller has already read, so it is not read twice."""
+        self._read_model = True
+        self._model = published if isinstance(published, list) and published else None
+
     def spec(self, domain: str, service: str):
         published = self.model()
         return None if published is None else model.find_service(published, domain, service)
@@ -369,6 +401,8 @@ def _call(ctx, parsed):
         parsed.get("target_entity") or parsed.get("target_area") or parsed.get("target_device")
     )
     live = _Live(ctx)
+    if not parsed.get("write"):
+        return _preview(ctx, live, domain, service, data, parsed, targeted)
     _precheck(live, domain, service, parsed)
 
     try:
@@ -403,6 +437,125 @@ def _call(ctx, parsed):
         # Home Assistant gives the same one to both. Resolving the target says
         # which, and is paid for only here, where the answer is ambiguous.
         _report_target(live, doc, domain, service, parsed)
+    return doc
+
+
+def _preview(ctx, live: _Live, domain: str, service: str, data: dict, parsed, targeted: bool):
+    """Show what `service call` would send, checked as far as reading allows.
+
+    A preview that only echoed the arguments would say nothing the caller did
+    not already know. This one asks the installation the questions the call
+    itself would have answered -- does the service exist, does it take a
+    response, what does the target reach, does anything it reaches carry the
+    capability -- and raises the same error the call would have earned for each
+    one Home Assistant enforces. Only reads are made: the service model, the
+    states, and the registries when an area or a device is named.
+    """
+    published = ctx.rest().services()
+    wants_response = parsed.get("response", False)
+    request = {
+        "method": "POST",
+        "path": f"/api/services/{domain}/{service}",
+        "body": data or "empty",
+    }
+    if wants_response:
+        request["response"] = "requested"
+    if not (isinstance(published, list) and published):
+        # No installation has no services, so this is a model that could not be
+        # read. The request can still be shown; nothing about it can be checked,
+        # and saying so beats passing checks that never ran.
+        return {
+            "service": f"{domain}.{service}",
+            "preview": preview_note(ctx.environ),
+            "request": request,
+            "checks": "not run - the service model could not be read",
+            "help": HelpBlock([*preview_help(ctx.environ), *_generic_help(domain, service)]),
+        }
+
+    fault = _model_fault(published, domain, service, wants_response)
+    if fault is not None:
+        raise fault
+    spec = model.find_service(published, domain, service)
+    live.use_model(published)
+
+    doc: dict = {
+        "service": f"{domain}.{service}",
+        "preview": preview_note(ctx.environ),
+        "request": request,
+    }
+
+    field_fault = _field_fault(spec, domain, service, data)
+    doc["fields"] = (
+        f"{field_fault.message}, which Home Assistant refuses on most services"
+        if field_fault is not None
+        else "every field sent is one the service publishes and no required one is missing"
+    )
+
+    masks = model.feature_masks(spec, domain)
+    if not targeted:
+        doc["target"] = "none given"
+        doc["capability_check"] = "not applicable without a target"
+    else:
+        _precheck(live, domain, service, parsed)
+        fault = _incapable_fault(live, spec, domain, service, parsed)
+        if fault is not None:
+            raise fault
+        try:
+            resolved = live.resolved(parsed)
+        except AxiError as exc:
+            doc["target"] = f"{_scope_phrase(parsed)} could not be resolved: {exc.message}"
+            doc["capability_check"] = f"not run - the target could not be resolved: {exc.message}"
+            doc["help"] = HelpBlock(
+                [*preview_help(ctx.environ), *_target_help(domain, service, parsed)]
+            )
+            return doc
+        reached = _reached(resolved, spec, domain)
+        matched = resolved.within(model.target_domains(spec))
+        if wants_response:
+            if not reached:
+                unreached = _unreached_target(live, spec, domain, service, parsed)
+                if unreached is not None:
+                    raise unreached
+        elif not matched:
+            raise _no_entities_targeted(resolved, domain, service, parsed)
+        acted_on = reached or _available(matched)
+        parts = list(resolved.problems)
+        parts.append(
+            f"{_scope_phrase(parsed)} would reach {plural(len(acted_on), 'entity', 'entities')}"
+        )
+        skipped = [s.get("entity_id", "") for s in matched if s.get("state") == "unavailable"]
+        if skipped:
+            parts.append(f"{', '.join(skipped)} unavailable, which Home Assistant skips")
+        doc["target"] = "; ".join(parts)
+        doc["would_reach"] = [
+            {
+                "entity_id": state.get("entity_id", ""),
+                "name": friendly_name(state),
+                "state": state.get("state", ""),
+            }
+            for state in acted_on[:PREVIEW_ROWS]
+        ]
+        if not masks:
+            doc["capability_check"] = "nothing to check - this service publishes no requirement"
+        elif parsed.get("no_check") and not reached:
+            doc["capability_check"] = (
+                "skipped by --no-check - no entity reached reports a supported_features value "
+                f"containing any of {', '.join(str(mask) for mask in masks)}"
+            )
+        else:
+            doc["capability_check"] = (
+                f"passed - {len(reached)} of {len(_available(matched))} available can do this "
+                f"(supported_features contains any of {', '.join(str(mask) for mask in masks)})"
+            )
+
+    help_lines = preview_help(ctx.environ)
+    if targeted and len(doc.get("would_reach") or []) < len(acted_on):
+        help_lines.append(
+            f"{len(acted_on)} entities would be reached; the first {PREVIEW_ROWS} are listed"
+        )
+    if field_fault is not None:
+        help_lines.extend(field_fault.help_lines)
+    doc["help"] = HelpBlock(help_lines)
     return doc
 
 
@@ -734,6 +887,41 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
         # way forward it should have carried all along.
         return _with_help(exc, _generic_help(domain, service))
 
+    fault = _model_fault(published, domain, service, wants_response)
+    if fault is not None:
+        return fault
+    spec = model.find_service(published, domain, service)
+    fault = _field_fault(spec, domain, service, data)
+    if fault is not None:
+        return fault
+
+    fault = _incapable_fault(live, spec, domain, service, parsed)
+    if fault is not None:
+        return fault
+
+    # Last, because everything above explains the refusal from what was *sent*,
+    # and this explains it from what was *reached*. A call whose target names
+    # nothing is a 200 with an empty change set -- which `_report_target` answers
+    # -- unless `--response` is set, where `helpers/service.py` raises
+    # `HomeAssistantError("Service call requested response data but did not match
+    # any entities")` and aiohttp renders it as a bare 500 with no body. The
+    # only command that can fail this way is the one whose failure carries
+    # nothing to read, so the diagnosis has to be re-derived here or it is lost.
+    unreached = _unreached_target(live, spec, domain, service, parsed)
+    if unreached is not None:
+        return unreached
+
+    return _with_help(exc, _generic_help(domain, service))
+
+
+def _model_fault(published, domain: str, service: str, wants_response: bool):
+    """What the published model says is wrong with a call, or None.
+
+    Whether the service exists and whether it answers with a payload are
+    things Home Assistant itself enforces, so they read the same before a call
+    as after a refused one: the preview and the failure path both come through
+    here, which is what makes a preview fail where the call would have.
+    """
     if model.find_domain(published, domain) is None:
         return _no_such_domain(published, domain)
 
@@ -746,7 +934,18 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
         return _response_mismatch(domain, service, False)
     if response == model.RESPONSE_NONE and wants_response:
         return _response_mismatch(domain, service, True)
+    return None
 
+
+def _field_fault(spec, domain: str, service: str, data: dict):
+    """A field the service does not publish, or a required one left out, or None.
+
+    Kept apart from :func:`_model_fault` because it is a weaker fact. After a
+    refusal it is the explanation; before a call it is only likely, since a
+    published field list is an integration's claim about itself and a script
+    takes variables it never declared. So the failure path raises it and the
+    preview reports it without refusing.
+    """
     declared = model.field_names(spec)
     sent = [key for key in data if key not in model.TARGET_KEYS]
     unknown = [key for key in sent if key not in declared]
@@ -776,6 +975,11 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
             code="MISSING_SERVICE_FIELD",
         )
 
+    return None
+
+
+def _incapable_fault(live: _Live, spec, domain: str, service: str, parsed):
+    """`UNSUPPORTED_CAPABILITY` for an entity named outright that lacks it, or None."""
     masks = model.feature_masks(spec, domain)
     if masks:
         incapable = _incapable(live, parsed, masks)
@@ -794,19 +998,7 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
                 code="UNSUPPORTED_CAPABILITY",
             )
 
-    # Last, because everything above explains the refusal from what was *sent*,
-    # and this explains it from what was *reached*. A call whose target names
-    # nothing is a 200 with an empty change set -- which `_report_target` answers
-    # -- unless `--response` is set, where `helpers/service.py` raises
-    # `HomeAssistantError("Service call requested response data but did not match
-    # any entities")` and aiohttp renders it as a bare 500 with no body. The
-    # only command that can fail this way is the one whose failure carries
-    # nothing to read, so the diagnosis has to be re-derived here or it is lost.
-    unreached = _unreached_target(live, spec, domain, service, parsed)
-    if unreached is not None:
-        return unreached
-
-    return _with_help(exc, _generic_help(domain, service))
+    return None
 
 
 def _unreached_target(live: _Live, spec, domain: str, service: str, parsed):

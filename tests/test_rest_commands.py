@@ -119,6 +119,7 @@ def test_service_call_sends_targets_flat_as_home_assistant_requires(run_cli, res
             "light.example_lamp",
             "--data",
             "brightness=180",
+            "--write",
         ],
         rest_env,
     )
@@ -142,6 +143,7 @@ def test_service_call_sends_every_target_kind_flat(run_cli, rest_env, rest_serve
             "example_room",
             "--target-device",
             "device_one",
+            "--write",
         ],
         rest_env,
     )
@@ -165,7 +167,14 @@ def test_the_rest_double_rejects_a_nested_target(run_cli, rest_env):
     guards; naming the key is what stops it being a dead end.
     """
     code, out = run_cli(
-        ["service", "call", "light.turn_on", "--data-json", '{"target": {"entity_id": "x"}}'],
+        [
+            "service",
+            "call",
+            "light.turn_on",
+            "--data-json",
+            '{"target": {"entity_id": "x"}}',
+            "--write",
+        ],
         rest_env,
     )
     assert code == 1
@@ -183,6 +192,7 @@ def test_service_call_merges_a_json_object_over_key_value_data(run_cli, rest_env
             "brightness=1",
             "--data-json",
             '{"brightness": 9}',
+            "--write",
         ],
         rest_env,
     )
@@ -192,7 +202,7 @@ def test_service_call_merges_a_json_object_over_key_value_data(run_cli, rest_env
 
 def test_service_call_reports_an_empty_change_set_definitively(run_cli, rest_env, rest_server):
     rest_server.state["service_result"] = []
-    code, out = run_cli(["service", "call", "light.turn_off"], rest_env)
+    code, out = run_cli(["service", "call", "light.turn_off", "--write"], rest_env)
     assert code == 0
     assert "changed: light.turn_off accepted with 0 states changed" in out
 
@@ -207,6 +217,7 @@ def test_service_call_surfaces_a_service_response(run_cli, rest_env, rest_server
             "--response",
             "--data",
             "start_date_time=2026-01-01 00:00:00",
+            "--write",
         ],
         rest_env,
     )
@@ -215,13 +226,13 @@ def test_service_call_surfaces_a_service_response(run_cli, rest_env, rest_server
 
 
 def test_service_call_rejects_a_malformed_service_name(run_cli, rest_env):
-    code, out = run_cli(["service", "call", "turn_on"], rest_env)
+    code, out = run_cli(["service", "call", "turn_on", "--write"], rest_env)
     assert code == 2
     assert "expected <domain>.<service>" in out
 
 
 def test_service_call_rejects_malformed_data(run_cli, rest_env):
-    code, out = run_cli(["service", "call", "light.turn_on", "--data", "oops"], rest_env)
+    code, out = run_cli(["service", "call", "light.turn_on", "--data", "oops", "--write"], rest_env)
     assert code == 2
     assert "--data needs key=value" in out
 
@@ -282,7 +293,14 @@ def test_api_defaults_to_get(run_cli, rest_env):
 
 def test_api_posts_fields(run_cli, rest_env, rest_server):
     code, _ = run_cli(
-        ["api", "POST", "/services/light/turn_on", "--field", "entity_id=light.example_lamp"],
+        [
+            "api",
+            "POST",
+            "/services/light/turn_on",
+            "--field",
+            "entity_id=light.example_lamp",
+            "--write",
+        ],
         rest_env,
     )
     assert code == 0
@@ -372,7 +390,7 @@ def test_a_response_cut_off_mid_body_reports_the_transport_not_a_traceback(run_c
 
 def test_a_method_not_allowed_is_translated(run_cli, rest_env, rest_server):
     rest_server.status_override = (405, {"message": "Method not allowed"})
-    code, out = run_cli(["api", "DELETE", "/states"], rest_env)
+    code, out = run_cli(["api", "DELETE", "/states", "--write"], rest_env)
     assert code == 1
     assert "DELETE is not allowed" in out
     assert "hass-axi api --help" in out

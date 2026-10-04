@@ -511,6 +511,7 @@ INVOCATIONS = {
         "light.turn_on",
         "--target-entity",
         "light.example_ceiling",
+        "--write",
     ],
     ("state", "list"): ["state", "list"],
     ("state", "get"): ["state", "get", "light.example_ceiling"],
@@ -527,7 +528,13 @@ INVOCATIONS = {
 #: The subcommands that never reach Home Assistant. Named rather than inferred,
 #: and asserted below, so "it does not touch a transport" has to be a claim
 #: somebody made rather than a gap nobody noticed.
-LOCAL_ONLY = {("setup", "hooks"), ("setup", "skill"), ("context", "context")}
+LOCAL_ONLY = {("setup", "hooks"), ("setup", "skill"), ("context", "context"), ("context", "end")}
+
+#: The one subcommand that meets a fault and still exits 0. The home view
+#: answers "what is here", and an installation that did not answer is what is
+#: there; it names the code and the class like every other command, which is
+#: what the sweep holds it to. `ping` and `doctor` are the exit-code gates.
+REPORTS_AND_EXITS_ZERO = {("home", "home")}
 
 CLI_SUBCOMMANDS = [
     (name, sub.name) for name, module in sorted(cli._MODULES.items()) for sub in module.COMMAND.subs
@@ -598,7 +605,11 @@ def test_every_command_classifies_every_fault(
     """
     env = _apply(fault, rest_server, ws_server, installation.environ, closed_port)
     code, out = run_cli(INVOCATIONS[(command, sub)], env)
-    assert code != 0, f"`{command} {sub}` succeeded against {FAULTS[fault]}"
+    if (command, sub) in REPORTS_AND_EXITS_ZERO:
+        assert code == 0
+        assert "live_state: " in out and "not available" in out
+    else:
+        assert code != 0, f"`{command} {sub}` succeeded against {FAULTS[fault]}"
     assert "class: unclassified" not in out
     assert f"class: {fault}" in out, (
         f"`{command} {sub}` reported no `{fault}` class against {FAULTS[fault]}:\n{out}"
@@ -669,16 +680,35 @@ def test_the_home_view_carries_a_code_like_every_other_command(run_cli, rest_env
     """
     rest_server.forbidden = True
     code, out = run_cli([], rest_env)
-    assert code == 1
+    assert code == 0
     assert "code: FORBIDDEN" in out
     assert f"class: {PERMISSION}" in out
 
 
 def test_the_home_view_codes_a_missing_environment(run_cli):
     code, out = run_cli([], {})
-    assert code == 1
+    assert code == 0
     assert "code: NOT_CONFIGURED" in out
     assert f"class: {CONFIG}" in out
+
+
+def test_an_unreachable_installation_is_reported_by_the_home_view_at_exit_zero(
+    run_cli, closed_port
+):
+    """The other half of the same rule: the view says what it found.
+
+    `ping` is the command whose exit code reports reachability, and it still
+    fails against the same address.
+    """
+    env = {"HA_URL": f"http://127.0.0.1:{closed_port}", "HA_TOKEN": "example-token"}
+    code, out = run_cli([], env)
+    assert code == 0
+    assert "error:" not in out
+    assert "live_state: " in out and "not available" in out
+    assert "code: UNREACHABLE" in out
+    assert "class: transport" in out
+    assert "Run `hass-axi doctor`" in out
+    assert run_cli(["ping"], env)[0] == 1
 
 
 # ----------------------------------------------- the local classes, in passing

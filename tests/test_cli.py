@@ -25,17 +25,23 @@ def test_the_home_view_reports_the_executable_path_with_home_collapsed(run_cli, 
     assert "/home/" not in bin_line
 
 
-def test_an_unconfigured_home_view_explains_how_to_configure_and_exits_non_zero(run_cli):
+def test_an_unconfigured_home_view_explains_how_to_configure_and_exits_zero(run_cli):
+    """AXI section 8: a bare run shows what is here, and describing a machine
+    with no installation is an answer rather than a failure. The fault is still
+    named, so a caller can tell configured from not without reading prose."""
     code, out = run_cli([], {})
-    assert code == 1
-    assert "HA_URL and HA_TOKEN not set" in out
+    assert code == 0
+    assert "error:" not in out
+    assert "live_state: not available - HA_URL and HA_TOKEN not set" in out
+    assert "code: NOT_CONFIGURED" in out
+    assert "commands[" in out
     assert "export" not in out.lower() or "HA_URL" in out
     assert "Run `hass-axi doctor`" in out
 
 
 def test_a_partially_configured_home_view_names_only_what_is_missing(run_cli):
     code, out = run_cli([], {"HA_URL": "https://ha.example.com"})
-    assert code == 1
+    assert code == 0
     assert "HA_TOKEN not set" in out
     assert "HA_URL and" not in out
 
