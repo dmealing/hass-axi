@@ -36,17 +36,21 @@ def test_the_toolkit_imports_cleanly_with_the_cli_and_its_dependencies_unimporta
             BLOCKED = ("hass_axi.cli", "hass_axi.commands", "hass_axi.rest", "hass_axi.ws",
                        "hass_axi.output", "hass_axi.argspec", "axi_toolkit", "websockets")
 
-            def find_module(self, name, path=None):
+            def find_spec(self, name, path=None, target=None):
                 if name == "hass_axi.toolkit" or name.startswith("hass_axi.toolkit."):
                     return None
                 if any(name == b or name.startswith(b + ".") for b in self.BLOCKED):
-                    return self
+                    raise ImportError(f"blocked: {name}")
                 return None
 
-            def load_module(self, name):
-                raise ImportError(f"blocked: {name}")
-
         sys.meta_path.insert(0, _Blocked())
+
+        try:
+            import hass_axi.cli  # noqa: F401
+        except ImportError:
+            pass
+        else:
+            raise SystemExit("hook did not block hass_axi.cli")
 
         from hass_axi.toolkit import names, recorder, shapes  # noqa: F401
 
