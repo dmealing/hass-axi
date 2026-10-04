@@ -28,7 +28,7 @@ from .errors import (
 )
 from .output import debug
 from .readonly import READ, WRITE, guard
-from .shapes import describe, health_fault, is_entity_id, is_text, shape_fault
+from .toolkit.shapes import describe, health_fault, is_entity_id, is_text, shape_fault
 
 _JSON = "application/json"
 
@@ -294,12 +294,17 @@ class RestClient:
         return result
 
     def _url(self, path: str, query: dict | None) -> str:
-        path = urllib.parse.quote(api_path(path), safe=_PATH_SAFE)
+        # A query written into the path itself (`/states?x=y`) stays a query:
+        # only the part before the first `?` is a path to escape.
+        route, mark, embedded = api_path(path).partition("?")
+        path = urllib.parse.quote(route, safe=_PATH_SAFE)
+        if mark:
+            path = f"{path}?{urllib.parse.quote(embedded, safe=_PATH_SAFE + '?')}"
         url = f"{self.config.base_url}{path}"
         if query:
             pairs = [(k, v) for k, v in query.items() if v is not None]
             if pairs:
-                url = f"{url}?{urllib.parse.urlencode(pairs)}"
+                url = f"{url}{'&' if '?' in url else '?'}{urllib.parse.urlencode(pairs)}"
         return url
 
     def _http_error(self, exc, method: str, path: str):

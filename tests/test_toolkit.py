@@ -1,42 +1,86 @@
-"""The pure rules: names, response shapes and recorder statistics, tested as functions.
+"""`hass_axi.toolkit`: the library surface, tested as functions.
 
-`hass_axi.names`, `hass_axi.shapes` and `hass_axi.recorder_rules` hold rules a
-second client of Home Assistant would need unchanged, so they are written to
-be moved: no CLI, no transport and no output boundary in them, only the
-standard library. The first test here is what keeps that true; the rest state
-each rule against plain values, with no server and no command line.
+The toolkit holds rules a program other than the CLI needs unchanged -- names,
+response shapes, recorder statistics -- so it is written to be imported: plain
+values in, plain values out, a failed lookup as data. The first test here is
+what keeps it a library; the rest state each rule against plain values, with no
+server and no command line.
 """
 
 from __future__ import annotations
 
 import ast
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
-from hass_axi import names, recorder_rules, shapes
+from hass_axi import toolkit
+from hass_axi.toolkit import names, recorder, shapes
 
-SRC = Path(names.__file__).parent
-PURE = ("names.py", "shapes.py", "recorder_rules.py")
+TOOLKIT = Path(toolkit.__file__).parent
+MODULES = sorted(TOOLKIT.glob("*.py"))
 
 
-@pytest.mark.parametrize("module", PURE)
-def test_a_pure_module_imports_nothing_but_the_standard_library(module):
-    import sys
+def test_the_toolkit_imports_nothing_from_the_cli_layers():
+    """Only the standard library and its own modules: no command, parser, output or transport.
 
-    tree = ast.parse((SRC / module).read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name.split(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            assert node.level == 0, f"{module} has a relative import; it must stand alone"
-            imported.add((node.module or "").split(".")[0])
+    A library that imported the output boundary would print; one that imported
+    a command module would drag the argument parser and both transports in
+    behind it. Either way it would stop being something another program can
+    import for its rules alone.
+    """
+    assert {path.name for path in MODULES} >= {
+        "__init__.py",
+        "names.py",
+        "shapes.py",
+        "recorder.py",
+    }
+    own = {path.stem for path in MODULES}
     stdlib = set(getattr(sys, "stdlib_module_names", ())) | {"__future__"}
-    if len(stdlib) > 1:
-        assert imported <= stdlib, f"{module} imports {sorted(imported - stdlib)}"
-    assert not {"hass_axi", "axi_toolkit", "websockets"} & imported
+    for path in MODULES:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                roots = {alias.name.split(".")[0] for alias in node.names}
+            elif isinstance(node, ast.ImportFrom):
+                if node.level == 1:
+                    # A sibling inside the toolkit, and nothing above it.
+                    named = {node.module} if node.module else {a.name for a in node.names}
+                    assert named <= own, (
+                        f"{path.name} imports {sorted(named - own)} from the package"
+                    )
+                    continue
+                assert node.level == 0, f"{path.name} reaches above the toolkit package"
+                roots = {(node.module or "").split(".")[0]}
+            else:
+                continue
+            assert "hass_axi" not in roots, f"{path.name} imports the CLI package"
+            assert not {"axi_toolkit", "websockets"} & roots, f"{path.name} imports a dependency"
+            if len(stdlib) > 1:
+                assert roots <= stdlib, f"{path.name} imports {sorted(roots - stdlib)}"
+
+
+def test_the_toolkit_says_nothing_about_the_command_line():
+    """Its text is about Home Assistant: no message it produces names a CLI command."""
+    for path in MODULES:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        docstrings = {
+            id(node.body[0].value)
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef))
+            and node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+        }
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if id(node) in docstrings:
+                    continue
+                assert "hass-axi" not in node.value and "Run `" not in node.value, (
+                    f"{path.name} produces text that names the command line: {node.value!r}"
+                )
 
 
 # --------------------------------------------------------------------- names
@@ -57,10 +101,99 @@ def test_two_spellings_of_one_name_fold_to_the_same_thing(typed, stored):
     assert names.fold(typed) == names.fold(stored)
 
 
+@pytest.mark.parametrize(
+    ("typed", "stored"),
+    [
+        ("cafe", "Caf\u00e9"),
+        ("uber", "\u00dcber"),
+        ("nino", "Ni\u00f1o"),
+        ("north-east", "North\u2013East"),
+        ("north-east", "North\u2014East"),
+        ("north-east", "North\u2011East"),
+        ("5-10", "5\u221210"),
+        ("and so on...", "And so on\u2026"),
+        ("example room", "Example\u00a0Room"),
+        ("example room", "Example   Room"),
+        ("it's", "it\u2032s"),
+    ],
+)
+def test_dashes_the_ellipsis_accents_and_spacing_fold_too(typed, stored):
+    assert names.fold(typed) == names.fold(stored)
+
+
 def test_folding_keeps_names_that_differ_apart():
     assert names.fold("Example Room") != names.fold("Example Rooms")
-    assert names.fold("café") != names.fold("cafe")
-    assert names.fold(None) == "" and names.fold(7) == "7"
+    assert names.fold("Example Room") != names.fold("ExampleRoom")
+    assert names.fold("north-east") != names.fold("north east")
+    assert names.fold(None) == "" and names.fold(7) == "7" and names.fold(0) == "0"
+
+
+def test_matching_is_a_folded_substring():
+    assert names.matches("example's", "The Example\u2019s Phone")
+    assert names.matches("cafe", None, "Corner Caf\u00e9")
+    assert not names.matches("garage", "Corner Caf\u00e9")
+
+
+AREAS = [
+    {"id": "kitchen", "name": "Kitchen"},
+    {"id": "cafe", "name": "Caf\u00e9"},
+    {"id": "cafe_2", "name": "Cafe"},
+    {"id": "garage", "name": "Garage"},
+    {"id": "den", "name": "Example\u2019s Den"},
+]
+
+
+def resolve(needle, **options):
+    return names.resolve(
+        needle, AREAS, ident=lambda a: a["id"], name=lambda a: a["name"], **options
+    )
+
+
+def test_an_identifier_resolves_before_any_name():
+    found = resolve("cafe")
+    assert (found.match["id"], found.by, found.ties, found.near) == ("cafe", "id", (), ())
+
+
+def test_a_name_resolves_however_it_was_typed():
+    found = resolve("example's den")
+    assert (found.match["id"], found.by) == ("den", "name")
+    assert resolve("  KITCHEN ").match["id"] == "kitchen"
+
+
+def test_a_folded_tie_returns_every_candidate_and_picks_none():
+    """`Caf\u00e9` and `Cafe` are one name once folded, so typing either is a tie."""
+    for typed in ("Caf\u00e9", "Cafe", "CAFE"):
+        found = resolve(typed)
+        assert found.match is None and found.found is False
+        assert found.ambiguous
+        assert [a["id"] for a in found.ties] == ["cafe", "cafe_2"]
+        assert found.near == ()
+
+
+def test_a_miss_returns_the_nearest_entries_as_data():
+    found = resolve("Kitchn")
+    assert not found.found and not found.ambiguous
+    assert found.near[0]["id"] == "kitchen"
+    assert resolve("zzzzzz").near == ()
+    assert resolve("").near == ()
+
+
+def test_resolution_by_identifier_alone_ignores_names():
+    assert resolve("Kitchen", by_name=False).match is None
+    assert resolve("kitchen", by_name=False).match["id"] == "kitchen"
+    assert resolve("kitche", by_name=False).near[0]["id"] == "kitchen"
+
+
+def test_near_entries_are_returned_once_and_bounded():
+    entries = [{"id": f"room_{n}", "name": f"Example Room {n}"} for n in range(40)]
+    near = names.nearest("Example Room", entries, lambda e: [e["name"], e["id"]])
+    assert len(near) == names.MAX_CANDIDATES
+    assert len({e["id"] for e in near}) == len(near)
+
+
+def test_two_entries_sharing_a_folded_label_are_both_near():
+    entries = [{"name": "Caf\u00e9"}, {"name": "Cafe"}]
+    assert len(names.nearest("caff", entries, lambda e: [e["name"]])) == 2
 
 
 def test_a_near_miss_is_offered_and_a_far_one_is_not():
@@ -192,20 +325,20 @@ def bucket(start, length, change) -> dict:
 
 
 def test_kind_comes_from_the_metadata():
-    assert recorder_rules.kind_of({"has_sum": True, "mean_type": 1}) == "sum"
-    assert recorder_rules.kind_of({"mean_type": 1}) == "mean"
-    assert recorder_rules.kind_of({"mean_type": 2}) == "circular mean"
-    assert recorder_rules.kind_of({"has_mean": True}) == "mean"
-    assert recorder_rules.kind_of({}) == ""
+    assert recorder.kind_of({"has_sum": True, "mean_type": 1}) == "sum"
+    assert recorder.kind_of({"mean_type": 1}) == "mean"
+    assert recorder.kind_of({"mean_type": 2}) == "circular mean"
+    assert recorder.kind_of({"has_mean": True}) == "mean"
+    assert recorder.kind_of({}) == ""
 
 
 def test_the_default_period_follows_the_window():
-    assert recorder_rules.default_period(86400) == "hour"
-    assert recorder_rules.default_period(7 * 86400) == "day"
-    assert recorder_rules.default_period(90 * 86400) == "month"
-    assert recorder_rules.wants_hourly("day", 7 * 86400)
-    assert not recorder_rules.wants_hourly("hour", 7 * 86400)
-    assert not recorder_rules.wants_hourly("month", 800 * 86400)
+    assert recorder.default_period(86400) == "hour"
+    assert recorder.default_period(7 * 86400) == "day"
+    assert recorder.default_period(90 * 86400) == "month"
+    assert recorder.wants_hourly("day", 7 * 86400)
+    assert not recorder.wants_hourly("hour", 7 * 86400)
+    assert not recorder.wants_hourly("month", 800 * 86400)
 
 
 def test_a_total_is_read_from_the_hourly_rows_inside_the_window():
@@ -213,7 +346,7 @@ def test_a_total_is_read_from_the_hourly_rows_inside_the_window():
     end = START + timedelta(hours=12)
     daily = [bucket(-12, 24, 24.0)]
     hourly = hours([1.0] * 24, first=-12)
-    summary = recorder_rules.summarize(METER, daily, START, "day", end=end, hourly=hourly)
+    summary = recorder.summarize(METER, daily, START, "day", end=end, hourly=hourly)
     assert summary["total"] == 12
     assert summary["buckets"] == 1
     assert "caveats" not in summary
@@ -221,7 +354,7 @@ def test_a_total_is_read_from_the_hourly_rows_inside_the_window():
 
 def test_without_hourly_rows_the_summary_says_what_its_buckets_cover():
     end = START + timedelta(hours=12)
-    summary = recorder_rules.summarize(METER, [bucket(-12, 24, 24.0)], START, "day", end=end)
+    summary = recorder.summarize(METER, [bucket(-12, 24, 24.0)], START, "day", end=end)
     assert summary["total"] == 24
     assert any("more than the window asked for" in c for c in summary["caveats"])
 
@@ -229,20 +362,20 @@ def test_without_hourly_rows_the_summary_says_what_its_buckets_cover():
 def test_buckets_inside_the_window_carry_no_overhang_caveat():
     end = START + timedelta(hours=48)
     rows = [bucket(0, 24, 5.0), bucket(24, 24, 6.0)]
-    summary = recorder_rules.summarize(METER, rows, START, "day", end=end)
+    summary = recorder.summarize(METER, rows, START, "day", end=end)
     assert summary["total"] == 11 and "caveats" not in summary
 
 
 def test_one_bucket_that_dwarfs_the_rest_is_stated_and_not_removed():
     changes = [1.0] * 10
     changes[4] = 500.0
-    summary = recorder_rules.summarize(
+    summary = recorder.summarize(
         METER, hours(changes), START, "hour", end=START + timedelta(hours=10)
     )
     assert summary["total"] == 509
     caveat = next(c for c in summary["caveats"] if c.startswith("one bucket"))
     assert "500 kWh" in caveat and "the total includes it" in caveat
-    assert recorder_rules.iso(START + timedelta(hours=4)) in caveat
+    assert recorder.iso(START + timedelta(hours=4)) in caveat
 
 
 @pytest.mark.parametrize(
@@ -255,14 +388,14 @@ def test_one_bucket_that_dwarfs_the_rest_is_stated_and_not_removed():
     ],
 )
 def test_ordinary_meters_get_no_outlier_caveat(changes):
-    summary = recorder_rules.summarize(
+    summary = recorder.summarize(
         METER, hours(changes), START, "hour", end=START + timedelta(hours=len(changes))
     )
     assert not any("one bucket" in c for c in summary.get("caveats", []))
 
 
 def test_a_meter_that_went_backwards_is_reported_and_counted():
-    summary = recorder_rules.summarize(
+    summary = recorder.summarize(
         METER, hours([1.0, -2.0, 1.0]), START, "hour", end=START + timedelta(hours=3)
     )
     assert summary["total"] == 0
@@ -272,20 +405,20 @@ def test_a_meter_that_went_backwards_is_reported_and_counted():
 def test_a_reset_is_a_drop_in_state_the_change_does_not_show():
     rows = hours([1.0, 1.0, 1.0])
     rows[1]["state"] = 0.5  # the reading fell; the recorder carried the sum across
-    summary = recorder_rules.summarize(METER, rows, START, "hour", end=START + timedelta(hours=3))
+    summary = recorder.summarize(METER, rows, START, "hour", end=START + timedelta(hours=3))
     assert summary["total"] == 3
     assert any("reset 1 time" in c for c in summary["caveats"])
 
 
 def test_missing_buckets_are_counted_before_the_first_and_between_but_not_after():
     rows = hours([1.0, 1.0], first=2) + hours([1.0], first=6)
-    summary = recorder_rules.summarize(METER, rows, START, "hour", end=START + timedelta(hours=12))
+    summary = recorder.summarize(METER, rows, START, "hour", end=START + timedelta(hours=12))
     gap = next(c for c in summary["caveats"] if "have no data" in c)
     assert gap.startswith("4 of 7 hourly buckets")
 
 
 def test_no_rows_is_said():
-    summary = recorder_rules.summarize(METER, [], START, "hour", end=START + timedelta(hours=3))
+    summary = recorder.summarize(METER, [], START, "hour", end=START + timedelta(hours=3))
     assert summary["caveats"] == ["no statistics were recorded in this window"]
 
 
@@ -294,7 +427,7 @@ def test_a_mean_reports_mean_min_and_max():
         {"start": at(n), "end": at(n + 1), "mean": 20.0 + n, "min": 19.0 + n, "max": 21.0 + n}
         for n in range(3)
     ]
-    summary = recorder_rules.summarize(READING, rows, START, "hour", end=START + timedelta(hours=3))
+    summary = recorder.summarize(READING, rows, START, "hour", end=START + timedelta(hours=3))
     assert (summary["mean"], summary["min"], summary["max"]) == (21, 19, 23)
 
 
@@ -303,7 +436,7 @@ def test_a_bearing_gets_a_circular_mean_and_no_extremes():
     rows = [
         {"start": at(n), "end": at(n + 1), "mean": value} for n, value in enumerate([350.0, 10.0])
     ]
-    summary = recorder_rules.summarize(meta, rows, START, "hour", end=START + timedelta(hours=2))
+    summary = recorder.summarize(meta, rows, START, "hour", end=START + timedelta(hours=2))
     assert summary["mean"] in (0, 360)
     assert "min" not in summary and "max" not in summary
 
@@ -317,6 +450,6 @@ def test_a_timestamp_is_read_in_every_form_the_recorder_sends():
         "2026-01-01T00:00:00+00:00",
         "2026-01-01T00:00:00",
     ):
-        assert recorder_rules.parse_timestamp(value) == moment
-    assert recorder_rules.parse_timestamp("soon") is None
-    assert recorder_rules.parse_timestamp(None) is None
+        assert recorder.parse_timestamp(value) == moment
+    assert recorder.parse_timestamp("soon") is None
+    assert recorder.parse_timestamp(None) is None

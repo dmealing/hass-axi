@@ -24,7 +24,7 @@ from ..argspec import Command, Flag, Sub
 from ..errors import NotFound, UsageError
 from ..output import HelpBlock
 from ..readonly import READ
-from ..recorder_rules import (
+from ..toolkit.recorder import (
     MEAN_TYPES,
     PERIOD_WORD,
     PERIODS,
@@ -150,6 +150,8 @@ def _list(ctx, parsed):
     rows.sort(key=lambda row: row["statistic_id"])
     total = len(rows)
     if wanted_kind:
+        # `mean` takes in a circular mean, as the recorder's own
+        # `statistic_type` filter does: both are statistics that keep a mean.
         rows = [r for r in rows if r["kind"].endswith(wanted_kind)]
     search = parsed.get("search")
     if search:

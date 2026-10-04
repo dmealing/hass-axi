@@ -155,9 +155,9 @@ def test_an_area_can_be_created_changed_and_deleted(run_cli, ws_env, ws_server):
     code, doc = as_json(run_cli, ["area", "create", "--name", "example annex", WRITE], ws_env)
     assert code == 0
     assert "already exists" in doc["created"]
-    # One that differs only in spacing is the same name to Home Assistant,
-    # which refuses it: nothing is created and the refusal says why.
-    code, doc = as_json(run_cli, ["area", "create", "--name", "Example  Annex", WRITE], ws_env)
+    # One that differs only by a space is another name here and the same name
+    # to Home Assistant, which refuses it: nothing is created and it says why.
+    code, doc = as_json(run_cli, ["area", "create", "--name", "ExampleAnnex", WRITE], ws_env)
     assert code == 1
     assert "is already in use" in doc["error"]
     assert len([a for a in ws_server.areas if a["area_id"] == area_id]) == 1

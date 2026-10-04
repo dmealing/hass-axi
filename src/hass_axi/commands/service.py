@@ -462,20 +462,21 @@ def _resolve_area_names(ctx, parsed) -> None:
     -- an id is lower case, digits and underscores -- so a call that names ids
     pays nothing for this, and a name that matches no area stays as it was
     typed for the target report to explain.
+
+    A registry that cannot be read is raised, not swallowed: sending the name
+    on as though it were an id reaches nothing, and Home Assistant answers that
+    with an empty change set and no word about why.
     """
     given = list(parsed.get("target_area") or [])
     if all(_AREA_ID.match(value) for value in given):
         return
-    try:
-        with ctx.ws() as client:
-            areas = client.run("area.list") or []
-    except AxiError:
-        return
+    with ctx.ws() as client:
+        areas = client.run("area.list") or []
     resolved = []
     for value in given:
         try:
             resolved.append(resolve_area(areas, value).get("area_id") or value)
-        except AxiError:
+        except NotFound:
             resolved.append(value)
     parsed.flags["target_area"] = resolved
 

@@ -552,6 +552,40 @@ That flag exists because an agent that learns `--area` on `entity list` will rea
 `state list`. A filter is not the same as importing registry columns into the runtime view, which
 is why `area` is still not a `state list --fields` choice.
 
+## Library: `hass_axi.toolkit`
+
+The rules this tool applies are importable by a program that is not the CLI. `hass_axi.toolkit` is
+the supported library surface: plain values in, plain values out, and a failed lookup or an answer
+of the wrong shape reported as data rather than raised as a CLI error. Nothing in it imports the
+command modules, the argument parser, the output boundary or a transport, it depends on the
+standard library alone, and no text it produces names a command to run. It is new, and it may grow.
+
+```python
+from hass_axi.toolkit import names, recorder, shapes
+
+found = names.resolve(
+    "example's den", areas, ident=lambda a: a["area_id"], name=lambda a: a["name"]
+)
+found.match  # the one area that was named, or None
+found.ties  # every area sharing the folded name, when more than one does
+found.near  # the nearest areas, when nothing matched
+
+shapes.health_fault(answer)  # None, or why this is not Home Assistant's API root
+recorder.summarize(meta, buckets, start, "day", end=end, hourly=hourly_rows)
+```
+
+- **`names`** — `fold` compares names the way people type them: case, typographic quotation marks,
+  dashes, the ellipsis, accents and spacing do not matter. `resolve` finds an entry by identifier and
+  then by folded name, and **reports a tie instead of breaking it**: two names that fold alike come
+  back as candidates, never as a pick. `nearest` returns near misses.
+- **`shapes`** — whether a decoded answer is what Home Assistant's API gives (`health_fault`,
+  `shape_fault`), whether a body is text (`is_text`), whether a value can be an entity id.
+- **`recorder`** — a statistic's kind from its metadata, the total, mean, minimum and maximum inside
+  a window (`summarize`), and the caveats its buckets support: missing buckets, a meter that went
+  backwards or reset, one bucket that dwarfs the rest, buckets that reach outside the window.
+
+The CLI's own commands are built on it, so the two cannot disagree.
+
 ## Output format
 
 Structured [TOON](https://toonformat.dev/) on stdout by default, which is roughly 40% cheaper in

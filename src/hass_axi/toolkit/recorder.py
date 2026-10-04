@@ -5,8 +5,8 @@ the metadata `recorder/list_statistic_ids` publishes. Nothing here fetches,
 prints or parses an argument: the caller reads the recorder and hands the rows
 over, and gets back a summary and a list of caveats. That is deliberate -- the
 rules are the same for any client of a Home Assistant recorder, and a module
-with no transport, no CLI and no output in it can move to wherever a second
-client can import it.
+with no transport, no CLI and no output in it is one another program can
+import.
 
 Three facts carry most of the weight, and each was read out of
 `components/recorder/statistics.py` rather than guessed:
@@ -180,6 +180,11 @@ def summarize(meta: dict, rows: list, start, period: str, *, end=None, hourly=No
     unit = unit_of(meta)
     rows = sorted((r for r in rows if isinstance(r, dict)), key=lambda r: r.get("start") or 0)
     measured = rows if hourly is None else inside(hourly, start, end)
+    if hourly is not None and rows and not measured:
+        # Buckets, and no hourly rows behind them: the numbers cannot be read
+        # from inside the window, so the buckets are summed as they came and
+        # the summary says what they cover, exactly as when none were asked for.
+        measured, hourly = rows, None
     summary: dict = {"statistic_id": meta.get("statistic_id", "")}
     if meta.get("name"):
         summary["name"] = meta["name"]

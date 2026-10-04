@@ -921,3 +921,94 @@ def test_remove_keeps_a_file_that_holds_somebody_elses_settings(run_cli, tmp_pat
     assert _setup(run_cli, tmp_path)[0] == 0
     assert _setup(run_cli, tmp_path, "remove")[0] == 0
     assert json.loads(settings.read_text(encoding="utf-8")) == {"theme": "dark"}
+
+
+# ------------------------------------------------- a folded tie is not a guess
+
+
+def test_two_areas_that_fold_to_one_name_are_reported_and_neither_is_picked(
+    run_cli, ws_env, ws_server
+):
+    for area_id, name in (("cafe", "Caf\u00e9"), ("cafe_2", "Cafe")):
+        ws_server.areas.append(
+            {"area_id": area_id, "name": name, "icon": None, "floor_id": None, "aliases": []}
+        )
+    code, doc = as_json(run_cli, ["area", "get", "CAFE"], ws_env)
+    assert (code, doc["code"], doc["class"]) == (1, "AMBIGUOUS_AREA", "not_found")
+    assert "(id cafe)" in doc["help"][0] and "(id cafe_2)" in doc["help"][0]
+    # The id still names exactly one of them.
+    code, doc = as_json(run_cli, ["area", "get", "cafe_2"], ws_env)
+    assert (code, doc["area"]["name"]) == (0, "Cafe")
+
+
+def test_a_dash_and_an_accent_are_typed_plain(run_cli, ws_env, ws_server):
+    ws_server.areas.append(
+        {
+            "area_id": "north_east",
+            "name": "North\u2013East Caf\u00e9\u2026",
+            "icon": None,
+            "floor_id": None,
+            "aliases": [],
+        }
+    )
+    code, doc = as_json(run_cli, ["area", "get", "north-east cafe..."], ws_env)
+    assert (code, doc["area"]["area_id"]) == (0, "north_east")
+
+
+# ------------------------------------------------------ what the review found
+
+
+def test_a_query_written_into_the_path_is_still_a_query(run_cli, rest_env, rest_server):
+    code, _ = run_cli(["api", "/states?entity_id=light.example_lamp"], rest_env)
+    assert code == 0
+    sent = rest_server.requests[-1]
+    assert (sent["path"], sent["query"]) == ("/api/states", "entity_id=light.example_lamp")
+    code, _ = run_cli(["api", "/states?a=1", "--query", "b=2"], rest_env)
+    assert rest_server.requests[-1]["query"] == "a=1&b=2"
+
+
+def test_a_wide_flat_answer_of_long_strings_is_bounded_too(run_cli, rest_env, rest_server):
+    """No list, no nesting, no string over the per-string limit -- and 24,000 characters."""
+    from hass_axi.commands._common import RAW_BUDGET_CHARS
+
+    rest_server.status_override = (200, {f"field_{i}": "x" * 1190 for i in range(20)})
+    code, doc = as_json(run_cli, ["api", "/config"], rest_env)
+    assert code == 0
+    assert len(json.dumps(doc["result"])) <= RAW_BUDGET_CHARS
+    assert "20 strings cut to 200 chars" in doc["truncated"]
+    code, full = as_json(run_cli, ["api", "/config", "--full"], rest_env)
+    assert len(full["result"]["field_0"]) == 1190
+
+
+def test_an_area_name_that_cannot_be_looked_up_is_not_sent_as_an_id(
+    run_cli, installation_env, rest_server, ws_server
+):
+    ws_server.fail_all = {"code": "unknown_error", "message": "Unknown error"}
+    code, doc = as_json(
+        run_cli,
+        ["service", "call", "light.turn_on", "--target-area", "Example Room", "--write"],
+        installation_env,
+    )
+    assert code == 1
+    assert doc["code"] == "API_ERROR"
+    assert not [r for r in rest_server.requests if r["method"] == "POST"]
+
+
+def test_buckets_with_no_hourly_rows_behind_them_are_summed_and_said():
+    from datetime import datetime, timedelta, timezone
+
+    from hass_axi.toolkit import recorder
+
+    start = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+    day = {
+        "start": int((start - timedelta(hours=12)).timestamp() * 1000),
+        "end": int((start + timedelta(hours=12)).timestamp() * 1000),
+        "change": 24.0,
+        "state": 124.0,
+    }
+    meta = {"statistic_id": "sensor.example_meter", "has_sum": True}
+    summary = recorder.summarize(
+        meta, [day], start, "day", end=start + timedelta(hours=12), hourly=[]
+    )
+    assert summary["total"] == 24
+    assert any("more than the window asked for" in c for c in summary["caveats"])

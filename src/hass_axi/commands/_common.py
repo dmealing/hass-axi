@@ -10,9 +10,9 @@ from typing import Any
 from .. import readonly
 from ..argspec import Flag
 from ..errors import AxiError, NotFound, UsageError
-from ..names import MAX_CANDIDATES, close_matches, fold
 from ..output import truncate
-from ..shapes import is_entity_id
+from ..toolkit.names import MAX_CANDIDATES, fold, matches, resolve
+from ..toolkit.shapes import is_entity_id
 from . import _window
 
 #: Preview length for long free-text values before `--full` is needed.
@@ -293,50 +293,43 @@ def parse_json_flag(raw: str | None, *, flag: str) -> dict:
     return parsed
 
 
-def _area_candidates(areas: list, needle: str) -> list:
-    labelled = []
-    for area in areas:
-        rendering = f"{quote(area.get('name') or '')} (id {area.get('area_id', '')})"
-        labelled.append((area.get("name") or "", rendering))
-        labelled.append((area.get("area_id") or "", rendering))
-    seen: list = []
-    for rendering in close_matches(needle, labelled):
-        if rendering not in seen:
-            seen.append(rendering)
-    return seen
+def _area_label(area: dict) -> str:
+    return f"{quote(area.get('name') or '')} (id {area.get('area_id', '')})"
+
+
+def _did_you_mean(renderings: list) -> list:
+    """The help line naming near misses, or nothing when there are none."""
+    return [f"did you mean: {', '.join(renderings)}"] if renderings else []
 
 
 def resolve_area(areas: list, needle: str, *, offer_create: bool = False) -> dict:
     """Find an area by ``area_id`` or by name, however the name was typed.
 
-    A name that matches nothing is answered with the areas nearest it. Creating
-    one is offered only where the caller asked for an area by itself
-    (``offer_create``), last, and as what it is: a filter that mistyped
-    `Kitchn` wanted the kitchen, not a second area called `Kitchn`.
+    The lookup itself is :func:`hass_axi.toolkit.names.resolve`, which answers
+    in data: one area, every area sharing the folded name, or the nearest ones.
+    This turns that into the CLI's errors. A name that matches nothing is
+    answered with the areas nearest it; creating one is offered only where the
+    caller asked for an area by itself (``offer_create``), last, and as what it
+    is -- a filter that mistyped `Kitchn` wanted the kitchen, not a second area
+    called `Kitchn`.
     """
-    for area in areas:
-        if area.get("area_id") == needle:
-            return area
-    lowered = fold(needle)
-    matches = [a for a in areas if fold(a.get("name")) == lowered]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        ids = ", ".join(a.get("area_id", "") for a in matches)
+    found = resolve(needle, areas, ident=lambda a: a.get("area_id"), name=lambda a: a.get("name"))
+    if found.found:
+        return found.match
+    if found.ambiguous:
+        ids = ", ".join(a.get("area_id", "") for a in found.ties)
         # Exit 1, not 2: the command was well formed, and only a lookup
         # against the live registry could reveal the name is shared.
         raise AxiError(
             f"{needle!r} matches more than one area: {ids}",
             help_lines=[
+                f"candidates: {', '.join(_area_label(a) for a in found.ties)}",
                 "Pass the area_id instead of the name",
                 "Run `hass-axi area list` to see each area's id",
             ],
             code="AMBIGUOUS_AREA",
         )
-    help_lines = []
-    candidates = _area_candidates(areas, needle)
-    if candidates:
-        help_lines.append(f"did you mean: {', '.join(candidates)}")
+    help_lines = _did_you_mean([_area_label(a) for a in found.near])
     help_lines.append("Run `hass-axi area list` to see the areas that exist")
     if offer_create:
         help_lines.append(
@@ -357,29 +350,24 @@ def resolve_floor(floors: list, needle: str) -> dict:
     or not, so the lookup has to happen here: a mistyped floor is otherwise a
     floor nothing answers to, stored at exit 0.
     """
-    for floor in floors:
-        if floor.get("floor_id") == needle:
-            return floor
-    wanted = fold(needle)
-    matches = [f for f in floors if fold(f.get("name")) == wanted]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        ids = ", ".join(f.get("floor_id", "") for f in matches)
+
+    def label(floor: dict) -> str:
+        return f"{quote(floor.get('name') or '')} (id {floor.get('floor_id', '')})"
+
+    found = resolve(needle, floors, ident=lambda f: f.get("floor_id"), name=lambda f: f.get("name"))
+    if found.found:
+        return found.match
+    if found.ambiguous:
+        ids = ", ".join(f.get("floor_id", "") for f in found.ties)
         raise AxiError(
             f"{needle!r} matches more than one floor: {ids}",
-            help_lines=["Pass the floor_id instead of the name"],
+            help_lines=[
+                f"candidates: {', '.join(label(f) for f in found.ties)}",
+                "Pass the floor_id instead of the name",
+            ],
             code="AMBIGUOUS_FLOOR",
         )
-    labelled = []
-    for floor in floors:
-        rendering = f"{quote(floor.get('name') or '')} (id {floor.get('floor_id', '')})"
-        labelled.append((floor.get("name") or "", rendering))
-        labelled.append((floor.get("floor_id") or "", rendering))
-    help_lines = []
-    candidates = list(dict.fromkeys(close_matches(needle, labelled)))
-    if candidates:
-        help_lines.append(f"did you mean: {', '.join(candidates)}")
+    help_lines = _did_you_mean([label(f) for f in found.near])
     if floors:
         known = ", ".join(sorted(f.get("floor_id", "") for f in floors))
         help_lines.append(f"floors in this installation: {known}")
@@ -406,46 +394,24 @@ def check_icon(value) -> None:
         )
 
 
-def _device_by_id(devices: list, needle: str) -> dict | None:
-    for device in devices:
-        if device.get("id") == needle:
-            return device
-    return None
+def _device_label(device: dict) -> str:
+    return f"{quote(displayed_device_name(device))} (id {device.get('id', '')})"
 
 
-def _device_candidates(devices: list, needle: str) -> list:
-    """Devices a failed lookup most likely meant: an id it begins, or a near name."""
-    found: list = []
-    for device in devices:
-        device_id = device.get("id") or ""
-        if needle and device_id.startswith(needle):
-            found.append(f"{quote(displayed_device_name(device))} (id {device_id})")
-    labelled = [
-        (
-            displayed_device_name(device),
-            f"{quote(displayed_device_name(device))} (id {device.get('id', '')})",
-        )
-        for device in devices
-    ]
-    for rendering in close_matches(needle, labelled):
-        if rendering not in found:
-            found.append(rendering)
-    return found[:MAX_CANDIDATES]
-
-
-def _no_such_device(needle: str, *, by_name: bool, devices: list = ()) -> NotFound:
+def _no_such_device(needle: str, near, *, by_name: bool, devices: list) -> NotFound:
     """The one failed-device-lookup error, phrased for the handle that was tried.
 
     Exit 1, the same side of the line `resolve_area` puts a missing area on: the
     command was well formed and only the live registry could say the subject is
-    not there.
+    not there. A device whose id begins with what was typed is named outright,
+    ahead of the near names, because `device list --search` matches names and
+    not ids: suggesting it for a truncated id suggests a search that finds
+    nothing.
     """
-    help_lines = ["Run `hass-axi device list --fields device_id,name` to see each device's id"]
-    candidates = _device_candidates(list(devices), needle)
-    if candidates:
-        # Named outright, because `device list --search` matches names and not
-        # ids: suggesting it for a truncated id suggests a search that finds nothing.
-        help_lines.insert(0, f"did you mean: {', '.join(candidates)}")
+    begun = [d for d in devices if needle and (d.get("id") or "").startswith(needle)]
+    candidates = begun + [d for d in near if not any(d is b for b in begun)]
+    help_lines = _did_you_mean([_device_label(d) for d in candidates[:MAX_CANDIDATES]])
+    help_lines.append("Run `hass-axi device list --fields device_id,name` to see each device's id")
     if by_name:
         help_lines.append(f"Run `hass-axi device list --search {quote(needle)}` to search by name")
     return NotFound(
@@ -467,10 +433,12 @@ def resolve_device(devices: list, device_id: str) -> dict:
     itself takes.
     """
     needle = device_id.strip()
-    device = _device_by_id(devices, needle)
-    if device is not None:
-        return device
-    raise _no_such_device(needle, by_name=False, devices=devices)
+    found = resolve(
+        needle, devices, ident=lambda d: d.get("id"), name=displayed_device_name, by_name=False
+    )
+    if found.found:
+        return found.match
+    raise _no_such_device(needle, found.near, by_name=False, devices=devices)
 
 
 def resolve_device_ref(devices: list, needle: str) -> dict:
@@ -485,15 +453,11 @@ def resolve_device_ref(devices: list, needle: str) -> dict:
     same reason it is on an area.
     """
     text = needle.strip()
-    device = _device_by_id(devices, text)
-    if device is not None:
-        return device
-    lowered = fold(text)
-    matches = [d for d in devices if fold(displayed_device_name(d)) == lowered]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        ids = ", ".join(d.get("id", "") for d in matches)
+    found = resolve(text, devices, ident=lambda d: d.get("id"), name=displayed_device_name)
+    if found.found:
+        return found.match
+    if found.ambiguous:
+        ids = ", ".join(d.get("id", "") for d in found.ties)
         raise AxiError(
             f"{needle!r} matches more than one device: {ids}",
             help_lines=[
@@ -502,7 +466,7 @@ def resolve_device_ref(devices: list, needle: str) -> dict:
             ],
             code="AMBIGUOUS_DEVICE",
         )
-    raise _no_such_device(text, by_name=True, devices=devices)
+    raise _no_such_device(text, found.near, by_name=True, devices=devices)
 
 
 def area_is_placed(area_id: str, areas: list) -> bool:
@@ -548,8 +512,7 @@ def count_line(shown: int, matched: int, total: int, *, filtered: bool) -> str:
 
 
 def matches_search(needle: str, *values) -> bool:
-    wanted = fold(needle)
-    return any(wanted in fold(value) for value in values)
+    return matches(needle, *values)
 
 
 # ------------------------------------------------------------ write previews
@@ -625,6 +588,10 @@ RAW_ITEMS = 25
 #: is summarised from the bottom up until it fits.
 RAW_BUDGET_CHARS = 20_000
 
+#: The string limit a response falls back to when it is still over the budget
+#: with nothing left to collapse: a wide, flat answer of long strings.
+RAW_STRING_CHARS = 200
+
 
 def shorten(result, hint: str) -> tuple:
     """Shorten an arbitrary JSON response, reporting what was withheld.
@@ -676,14 +643,37 @@ def shorten(result, hint: str) -> tuple:
             return [collapse(item, depth + 1, keep) for item in node]
         return node
 
+    def clip(node, limit: int):
+        """Cut every string to ``limit``: the last resort for a wide, flat answer."""
+        if isinstance(node, str):
+            text, note = truncate(node, limit, hint)
+            if note:
+                cut_strings[0] += 1
+            return text
+        if isinstance(node, list):
+            return [clip(item, limit) for item in node]
+        if isinstance(node, dict):
+            return {key: clip(value, limit) for key, value in node.items()}
+        return node
+
     shortened = walk(result)
     collapsed_below = 0
+    string_limit = PREVIEW_CHARS
     if size(shortened) > RAW_BUDGET_CHARS:
         for keep in (4, 3, 2, 1):
             candidate = collapse(shortened, 0, keep)
             if candidate != shortened:
                 collapsed_below = keep
             if size(candidate) <= RAW_BUDGET_CHARS or keep == 1:
+                shortened = candidate
+                break
+    if size(shortened) > RAW_BUDGET_CHARS:
+        # Nothing left to collapse: a few keys, each a long string that sits
+        # under the per-string limit. Bring that limit down until it fits.
+        cut_strings[0] = 0
+        for string_limit in (RAW_STRING_CHARS, RAW_STRING_CHARS // 4):
+            candidate = clip(walk(result) if not collapsed_below else shortened, string_limit)
+            if size(candidate) <= RAW_BUDGET_CHARS or string_limit == RAW_STRING_CHARS // 4:
                 shortened = candidate
                 break
     if not cut_lists and not cut_objects and not cut_strings[0] and not collapsed_below:
@@ -705,7 +695,7 @@ def shorten(result, hint: str) -> tuple:
             f"(the largest holds {max(cut_objects)})"
         )
     if cut_strings[0]:
-        parts.append(f"{plural(cut_strings[0], 'string')} cut to {PREVIEW_CHARS} chars")
+        parts.append(f"{plural(cut_strings[0], 'string')} cut to {string_limit} chars")
     if collapsed_below:
         parts.append(f"values nested more than {collapsed_below} deep shown as counts")
     total = size(result)
