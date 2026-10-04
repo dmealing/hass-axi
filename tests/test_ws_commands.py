@@ -69,7 +69,7 @@ def test_entity_list_filters_by_domain_and_platform_and_search(run_cli, ws_env):
 def test_entity_list_states_the_zero_explicitly(run_cli, ws_env):
     code, out = run_cli(["entity", "list", "--domain", "vacuum"], ws_env)
     assert code == 0
-    assert "entities: 0 registry entries found in domain vacuum" in out
+    assert "count: 0 registry entries found in domain vacuum" in out
 
 
 def test_entity_get_shows_where_the_area_came_from(run_cli, ws_env):
@@ -92,6 +92,7 @@ def test_entity_update_sets_the_name_and_the_area(run_cli, ws_env, ws_server):
         [
             "entity",
             "update",
+            "--write",
             "light.example_ceiling",
             "--name",
             "Reading Lamp",
@@ -114,7 +115,7 @@ def test_entity_update_reports_the_area_inherited_from_the_device(run_cli, ws_en
     # entity still needs placing, so an empty area here reads as "unassigned"
     # and invites a helpful reassignment of an entity that was never homeless.
     code, out = run_cli(
-        ["entity", "update", "light.example_ceiling", "--name", "Reading Lamp"], ws_env
+        ["entity", "update", "--write", "light.example_ceiling", "--name", "Reading Lamp"], ws_env
     )
     assert code == 0
     assert "updated[1]: name" in out
@@ -127,7 +128,7 @@ def test_entity_update_reports_the_area_inherited_from_the_device(run_cli, ws_en
 def test_entity_update_and_entity_get_agree_about_the_area(run_cli, ws_env):
     """The two views are built from the same row, so they cannot drift apart."""
     _, updated = run_cli(
-        ["entity", "update", "light.example_ceiling", "--icon", "mdi:lamp"], ws_env
+        ["entity", "update", "--write", "light.example_ceiling", "--icon", "mdi:lamp"], ws_env
     )
     _, fetched = run_cli(["entity", "get", "light.example_ceiling"], ws_env)
 
@@ -146,7 +147,16 @@ def test_entity_update_reports_the_inherited_area_in_json_too(run_cli, ws_env):
     import json
 
     code, out = run_cli(
-        ["--json", "entity", "update", "light.example_ceiling", "--name", "Reading Lamp"], ws_env
+        [
+            "--json",
+            "entity",
+            "update",
+            "--write",
+            "light.example_ceiling",
+            "--name",
+            "Reading Lamp",
+        ],
+        ws_env,
     )
     assert code == 0
     doc = json.loads(out)
@@ -157,7 +167,9 @@ def test_entity_update_reports_the_inherited_area_in_json_too(run_cli, ws_env):
 def test_a_no_op_update_reports_the_inherited_area_as_well(run_cli, ws_env, ws_server):
     # --clear-name on an entity that has no name override changes nothing, so
     # this takes the no-op branch, which made the same wrong area claim.
-    code, out = run_cli(["entity", "update", "light.example_ceiling", "--clear-name"], ws_env)
+    code, out = run_cli(
+        ["entity", "update", "--write", "light.example_ceiling", "--clear-name"], ws_env
+    )
     assert code == 0
     assert "no change made" in out
     assert "area: Example Hall" in out
@@ -170,7 +182,8 @@ def test_entity_update_reports_no_area_when_there_genuinely_is_none(run_cli, ws_
     # sensor.example_temperature has neither an area nor a device, so an empty
     # area is the truth here rather than a lost inheritance.
     code, out = run_cli(
-        ["entity", "update", "sensor.example_temperature", "--name", "Hall Sensor"], ws_env
+        ["entity", "update", "--write", "sensor.example_temperature", "--name", "Hall Sensor"],
+        ws_env,
     )
     assert code == 0
     assert 'area: ""' in out
@@ -230,7 +243,7 @@ def test_the_double_rejects_a_key_the_api_does_not_declare(run_cli, ws_env):
 
 def test_entity_update_is_idempotent(run_cli, ws_env, ws_server):
     code, out = run_cli(
-        ["entity", "update", "light.example_lamp", "--name", "Example Lamp"], ws_env
+        ["entity", "update", "--write", "light.example_lamp", "--name", "Example Lamp"], ws_env
     )
     assert code == 0
     assert "no change made" in out
@@ -239,7 +252,8 @@ def test_entity_update_is_idempotent(run_cli, ws_env, ws_server):
 
 def test_entity_update_can_clear_the_name_and_the_area(run_cli, ws_env, ws_server):
     code, _ = run_cli(
-        ["entity", "update", "light.example_lamp", "--clear-name", "--clear-area"], ws_env
+        ["entity", "update", "--write", "light.example_lamp", "--clear-name", "--clear-area"],
+        ws_env,
     )
     assert code == 0
     update = next(c for c in ws_server.received if c["type"] == "config/entity_registry/update")
@@ -247,14 +261,23 @@ def test_entity_update_can_clear_the_name_and_the_area(run_cli, ws_env, ws_serve
 
 
 def test_entity_update_needs_something_to_change(run_cli, ws_env):
-    code, out = run_cli(["entity", "update", "light.example_lamp"], ws_env)
+    code, out = run_cli(["entity", "update", "--write", "light.example_lamp"], ws_env)
     assert code == 2
     assert "nothing to update" in out
 
 
 def test_entity_update_rejects_conflicting_area_flags(run_cli, ws_env):
     code, out = run_cli(
-        ["entity", "update", "light.example_lamp", "--area", "example_room", "--clear-area"], ws_env
+        [
+            "entity",
+            "update",
+            "--write",
+            "light.example_lamp",
+            "--area",
+            "example_room",
+            "--clear-area",
+        ],
+        ws_env,
     )
     assert code == 2
     assert "mutually exclusive" in out
@@ -263,12 +286,20 @@ def test_entity_update_rejects_conflicting_area_flags(run_cli, ws_env):
 @pytest.mark.parametrize(
     "argv",
     [
-        ["entity", "update", "light.example_lamp", "--name", "Reading Lamp", "--clear-name"],
-        ["entity", "update", "light.example_lamp", "--icon", "mdi:lamp", "--clear-icon"],
-        ["area", "update", "example_room", "--icon", "mdi:sofa", "--clear-icon"],
-        ["area", "update", "example_room", "--floor", "ground", "--clear-floor"],
-        ["device", "update", "device_two", "--name", "Renamed", "--clear-name"],
-        ["device", "update", "device_two", "--area", "example_room", "--clear-area"],
+        [
+            "entity",
+            "update",
+            "--write",
+            "light.example_lamp",
+            "--name",
+            "Reading Lamp",
+            "--clear-name",
+        ],
+        ["entity", "update", "--write", "light.example_lamp", "--icon", "mdi:lamp", "--clear-icon"],
+        ["area", "update", "--write", "example_room", "--icon", "mdi:sofa", "--clear-icon"],
+        ["area", "update", "--write", "example_room", "--floor", "ground", "--clear-floor"],
+        ["device", "update", "--write", "device_two", "--name", "Renamed", "--clear-name"],
+        ["device", "update", "--write", "device_two", "--area", "example_room", "--clear-area"],
     ],
 )
 def test_update_rejects_a_set_flag_paired_with_its_clear(run_cli, ws_env, argv):
@@ -294,41 +325,45 @@ def test_area_get_accepts_a_name_as_well_as_an_id(run_cli, ws_env):
 
 
 def test_area_create_makes_a_new_area(run_cli, ws_env, ws_server):
-    code, out = run_cli(["area", "create", "--name", "Example Study"], ws_env)
+    code, out = run_cli(["area", "create", "--write", "--name", "Example Study"], ws_env)
     assert code == 0
     assert "area_id: example_study" in out
     assert any(a["name"] == "Example Study" for a in ws_server.areas)
 
 
 def test_area_create_is_idempotent(run_cli, ws_env, ws_server):
-    code, out = run_cli(["area", "create", "--name", "Example Room"], ws_env)
+    code, out = run_cli(["area", "create", "--write", "--name", "Example Room"], ws_env)
     assert code == 0
     assert "already exists" in out
     assert [c for c in ws_server.received if c["type"] == "config/area_registry/create"] == []
 
 
 def test_area_create_requires_a_name(run_cli, ws_env):
-    code, out = run_cli(["area", "create"], ws_env)
+    code, out = run_cli(["area", "create", "--write"], ws_env)
     assert code == 2
     assert "--name is required" in out
 
 
 def test_area_update_renames(run_cli, ws_env, ws_server):
-    code, out = run_cli(["area", "update", "Example Room", "--name", "Example Study"], ws_env)
+    code, out = run_cli(
+        ["area", "update", "--write", "Example Room", "--name", "Example Study"], ws_env
+    )
     assert code == 0
     assert "updated[1]: name" in out
     assert ws_server.areas[0]["name"] == "Example Study"
 
 
 def test_area_update_is_idempotent(run_cli, ws_env, ws_server):
-    code, out = run_cli(["area", "update", "example_room", "--name", "Example Room"], ws_env)
+    code, out = run_cli(
+        ["area", "update", "--write", "example_room", "--name", "Example Room"], ws_env
+    )
     assert code == 0
     assert "no change made" in out
     assert [c for c in ws_server.received if c["type"] == "config/area_registry/update"] == []
 
 
 def test_area_update_needs_something_to_change(run_cli, ws_env):
-    code, out = run_cli(["area", "update", "example_room"], ws_env)
+    code, out = run_cli(["area", "update", "--write", "example_room"], ws_env)
     assert code == 2
     assert "nothing to update" in out
 
@@ -441,7 +476,7 @@ def test_a_socket_closed_between_commands_reports_the_transport_not_a_traceback(
     # whatever the client does next has to fail as structured output.
     ws_server.close_after = 2
     code, out = run_cli(
-        ["entity", "update", "light.example_lamp", "--name", "Renamed Lamp"], ws_env
+        ["entity", "update", "--write", "light.example_lamp", "--name", "Renamed Lamp"], ws_env
     )
     assert code == 1
     assert "error:" in out
@@ -586,7 +621,7 @@ def test_device_get_on_a_missing_device_offers_a_way_to_find_it(run_cli, ws_env)
     assert code == 1
     assert "no device with id or name 'Example Absent'" in out
     assert "NO_SUCH_DEVICE" in out
-    assert 'Run `hass-axi device list --search "Example Absent"` to find it' in out
+    assert "Run `hass-axi device list --search 'Example Absent'` to search by name" in out
     assert "Traceback" not in out
 
 
@@ -630,7 +665,16 @@ def test_an_id_wins_over_a_name_that_happens_to_look_like_one(run_cli, ws_env, w
 
 def test_device_update_sets_name_by_user_and_the_area(run_cli, ws_env, ws_server):
     code, out = run_cli(
-        ["device", "update", "device_two", "--name", "Hall Ceiling", "--area", "Example Room"],
+        [
+            "device",
+            "update",
+            "--write",
+            "device_two",
+            "--name",
+            "Hall Ceiling",
+            "--area",
+            "Example Room",
+        ],
         ws_env,
     )
     assert code == 0
@@ -646,7 +690,12 @@ def test_device_update_sets_name_by_user_and_the_area(run_cli, ws_env, ws_server
 
 
 def test_device_update_is_visible_in_a_following_device_get(run_cli, ws_env):
-    assert run_cli(["device", "update", "device_one", "--name", "Reading Fitting"], ws_env)[0] == 0
+    assert (
+        run_cli(["device", "update", "--write", "device_one", "--name", "Reading Fitting"], ws_env)[
+            0
+        ]
+        == 0
+    )
     code, out = run_cli(["device", "get", "device_one"], ws_env)
     assert code == 0
     assert "name: Reading Fitting" in out
@@ -656,7 +705,9 @@ def test_device_update_is_visible_in_a_following_device_get(run_cli, ws_env):
 
 def test_device_update_and_device_get_agree_about_the_area(run_cli, ws_env):
     """The two views are built from the same row, so they cannot drift apart."""
-    _, updated = run_cli(["device", "update", "device_three", "--area", "Example Hall"], ws_env)
+    _, updated = run_cli(
+        ["device", "update", "--write", "device_three", "--area", "Example Hall"], ws_env
+    )
     _, fetched = run_cli(["device", "get", "device_three"], ws_env)
 
     def area_lines(text):
@@ -671,7 +722,9 @@ def test_device_update_and_device_get_agree_about_the_area(run_cli, ws_env):
 
 
 def test_device_update_accepts_the_displayed_name_as_the_subject(run_cli, ws_env, ws_server):
-    code, out = run_cli(["device", "update", "Example Doorway", "--area", "Example Hall"], ws_env)
+    code, out = run_cli(
+        ["device", "update", "--write", "Example Doorway", "--area", "Example Hall"], ws_env
+    )
     assert code == 0
     assert "device: device_four" in out
     update = next(c for c in ws_server.received if c["type"] == "config/device_registry/update")
@@ -679,7 +732,9 @@ def test_device_update_accepts_the_displayed_name_as_the_subject(run_cli, ws_env
 
 
 def test_device_update_can_clear_the_name_and_the_area(run_cli, ws_env, ws_server):
-    code, out = run_cli(["device", "update", "device_two", "--clear-name", "--clear-area"], ws_env)
+    code, out = run_cli(
+        ["device", "update", "--write", "device_two", "--clear-name", "--clear-area"], ws_env
+    )
     assert code == 0
     update = next(c for c in ws_server.received if c["type"] == "config/device_registry/update")
     assert update["name_by_user"] is None and update["area_id"] is None
@@ -690,7 +745,9 @@ def test_device_update_can_clear_the_name_and_the_area(run_cli, ws_env, ws_serve
 
 
 def test_device_update_is_idempotent(run_cli, ws_env, ws_server):
-    code, out = run_cli(["device", "update", "device_two", "--name", "Example Ceiling"], ws_env)
+    code, out = run_cli(
+        ["device", "update", "--write", "device_two", "--name", "Example Ceiling"], ws_env
+    )
     assert code == 0
     assert "no change made" in out
     assert "name: Example Ceiling" in out
@@ -698,7 +755,7 @@ def test_device_update_is_idempotent(run_cli, ws_env, ws_server):
 
 
 def test_device_update_needs_something_to_change(run_cli, ws_env, ws_server):
-    code, out = run_cli(["device", "update", "device_two"], ws_env)
+    code, out = run_cli(["device", "update", "--write", "device_two"], ws_env)
     assert code == 2
     assert "nothing to update" in out
     assert "NO_CHANGES" in out
@@ -706,7 +763,9 @@ def test_device_update_needs_something_to_change(run_cli, ws_env, ws_server):
 
 
 def test_device_update_rejects_an_unknown_device(run_cli, ws_env, ws_server):
-    code, out = run_cli(["device", "update", "Example Absent", "--name", "Renamed"], ws_env)
+    code, out = run_cli(
+        ["device", "update", "--write", "Example Absent", "--name", "Renamed"], ws_env
+    )
     assert code == 1
     assert "no device with id or name 'Example Absent'" in out
     assert "NO_SUCH_DEVICE" in out
@@ -714,7 +773,7 @@ def test_device_update_rejects_an_unknown_device(run_cli, ws_env, ws_server):
 
 
 def test_device_update_rejects_an_unknown_area_with_a_way_forward(run_cli, ws_env, ws_server):
-    code, out = run_cli(["device", "update", "device_two", "--area", "Nowhere"], ws_env)
+    code, out = run_cli(["device", "update", "--write", "device_two", "--area", "Nowhere"], ws_env)
     assert code == 1
     assert "no area with id or name 'Nowhere'" in out
     assert "NO_SUCH_AREA" in out
@@ -732,7 +791,7 @@ def test_device_update_answers_from_the_stored_entry_not_from_the_request(run_cl
     import json
 
     code, out = run_cli(
-        ["--json", "device", "update", "device_two", "--name", "Hall Ceiling"], ws_env
+        ["--json", "device", "update", "--write", "device_two", "--name", "Hall Ceiling"], ws_env
     )
     assert code == 0
     doc = json.loads(out)
@@ -752,7 +811,10 @@ def test_a_device_rename_reaches_every_entity_the_device_names(run_cli, ws_env):
     _, before = run_cli(["entity", "list", "--domain", "light"], ws_env)
     assert "light.example_ceiling,Example Ceiling," in before
 
-    assert run_cli(["device", "update", "device_two", "--name", "Hall Ceiling"], ws_env)[0] == 0
+    assert (
+        run_cli(["device", "update", "--write", "device_two", "--name", "Hall Ceiling"], ws_env)[0]
+        == 0
+    )
 
     _, after = run_cli(["entity", "list", "--domain", "light"], ws_env)
     assert "light.example_ceiling,Hall Ceiling," in after
@@ -841,13 +903,16 @@ def test_entity_update_reports_the_displayed_name_it_leaves_behind(run_cli, ws_e
     # Setting an icon changes no name, so what comes back has to be the composed
     # one -- the same answer `entity get` gives, from the same row builder.
     code, out = run_cli(
-        ["entity", "update", "binary_sensor.example_doorway", "--icon", "mdi:door"], ws_env
+        ["entity", "update", "--write", "binary_sensor.example_doorway", "--icon", "mdi:door"],
+        ws_env,
     )
     assert code == 0
     assert "name: Example Doorway" in out
 
     # And clearing an override falls back to the composed name, not to blank.
-    code, out = run_cli(["entity", "update", "light.example_lamp", "--clear-name"], ws_env)
+    code, out = run_cli(
+        ["entity", "update", "--write", "light.example_lamp", "--clear-name"], ws_env
+    )
     assert code == 0
     assert "name: Example Lamp Fitting Lamp" in out
 

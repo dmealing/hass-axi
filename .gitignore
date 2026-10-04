@@ -14,3 +14,9 @@ venv/
 # never travels with the repository.
 .claude/
 .codex/
+
+# Hypothesis keeps its example database beside the tests it ran.
+.hypothesis/
+
+# The live suite writes its invocation log and its lab credential here.
+tests/live/.results/

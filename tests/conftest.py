@@ -13,6 +13,7 @@ placeholder, so nothing here describes any particular installation.
 from __future__ import annotations
 
 import json
+import re
 import socket
 import threading
 import time
@@ -555,6 +556,30 @@ AREA_REGISTRY = [
     },
 ]
 
+#: The floor registry, as `config/floor_registry/list` publishes an entry. One
+#: floor holds an area and one holds none, so "a floor that exists" and "a
+#: floor in use" are two cases rather than one.
+FLOOR_REGISTRY = [
+    {
+        "aliases": [],
+        "created_at": 1767225600.0,
+        "floor_id": "ground",
+        "icon": None,
+        "level": 0,
+        "name": "Example Ground Floor",
+        "modified_at": 1767225600.0,
+    },
+    {
+        "aliases": [],
+        "created_at": 1767225600.0,
+        "floor_id": "example_upper_floor",
+        "icon": "mdi:home-floor-1",
+        "level": 1,
+        "name": "Example Upper Floor",
+        "modified_at": 1767225600.0,
+    },
+]
+
 DEVICE_REGISTRY = [
     {
         "id": "device_one",
@@ -969,6 +994,10 @@ WS_COMMAND_KEYS = {
         "labels",
     ),
     "config/floor_registry/list": (),
+    "config/floor_registry/create": ("name", "aliases", "icon", "level"),
+    "config/floor_registry/update": ("floor_id", "aliases", "icon", "level", "name"),
+    "config/floor_registry/delete": ("floor_id",),
+    "config/entity_registry/remove": ("entity_id",),
     "config/label_registry/list": (),
     "get_config": (),
     "get_services": (),
@@ -984,6 +1013,119 @@ WS_COMMAND_KEYS = {
         "types",
     ),
 }
+
+#: What each write command's schema requires and what type it takes, as
+#: `vol.Required` / `vol.Optional` declare them upstream: key -> (required,
+#: types, nullable). A missing required key and a value of the wrong type are
+#: both `invalid_format`, raised by the schema before the handler runs -- so a
+#: write the real server never accepts is not accepted here either. Transcribed
+#: from `components/config/{area,floor,entity,device}_registry.py`, and
+#: deliberately not derived from `hass_axi.ws.REGISTRY`.
+WS_WRITE_SCHEMAS = {
+    "config/area_registry/create": {
+        "name": (True, (str,), False),
+        "icon": (False, (str,), False),
+        "floor_id": (False, (str,), False),
+        "aliases": (False, (list,), False),
+        "labels": (False, (list,), False),
+        "picture": (False, (str,), True),
+    },
+    "config/area_registry/update": {
+        "area_id": (True, (str,), False),
+        "name": (False, (str,), False),
+        "icon": (False, (str,), True),
+        "floor_id": (False, (str,), True),
+        "aliases": (False, (list,), False),
+        "labels": (False, (list,), False),
+        "picture": (False, (str,), True),
+    },
+    "config/area_registry/delete": {"area_id": (True, (str,), False)},
+    "config/floor_registry/create": {
+        "name": (True, (str,), False),
+        "aliases": (False, (list,), False),
+        "icon": (False, (str,), True),
+        "level": (False, (int,), True),
+    },
+    "config/floor_registry/update": {
+        "floor_id": (True, (str,), False),
+        "name": (False, (str,), False),
+        "aliases": (False, (list,), False),
+        "icon": (False, (str,), True),
+        "level": (False, (int,), True),
+    },
+    "config/floor_registry/delete": {"floor_id": (True, (str,), False)},
+    "config/entity_registry/update": {
+        "entity_id": (True, (str,), False),
+        "name": (False, (str,), True),
+        "icon": (False, (str,), True),
+        "area_id": (False, (str,), True),
+        "new_entity_id": (False, (str,), False),
+        "disabled_by": (False, (str,), True),
+        "hidden_by": (False, (str,), True),
+        "labels": (False, (list,), False),
+        "aliases": (False, (list,), False),
+    },
+    "config/entity_registry/remove": {"entity_id": (True, (str,), False)},
+    "config/device_registry/update": {
+        "device_id": (True, (str,), False),
+        "name_by_user": (False, (str,), True),
+        "area_id": (False, (str,), True),
+        "disabled_by": (False, (str,), True),
+        "labels": (False, (list,), False),
+    },
+}
+
+#: `cv.entity_id`, which the entity registry commands validate their subject with.
+_VALID_ENTITY_ID = re.compile(r"^(?!.+__)(?!_)[\da-z_]+(?<!_)\.(?!_)[\da-z_]+(?<!_)$")
+
+
+def schema_fault(type_: str, command: dict) -> str | None:
+    """The `invalid_format` message a write's schema raises, or ``None``."""
+    schema = WS_WRITE_SCHEMAS.get(type_)
+    if schema is None:
+        return None
+    for key, (required, types, nullable) in schema.items():
+        if key not in command:
+            if required:
+                return f"required key not provided @ data['{key}']"
+            continue
+        value = command[key]
+        if value is None:
+            if not nullable:
+                return f"expected {types[0].__name__} for dictionary value @ data['{key}']"
+            continue
+        # `bool` is an `int` to Python and not to voluptuous's `int`.
+        if not isinstance(value, types) or (isinstance(value, bool) and bool not in types):
+            return f"expected {types[0].__name__} for dictionary value @ data['{key}']"
+    if type_.startswith("config/entity_registry/") and not _VALID_ENTITY_ID.match(
+        command["entity_id"]
+    ):
+        return "Entity ID is an invalid entity ID for dictionary value @ data['entity_id']"
+    if command.get("disabled_by") not in (None, "user"):
+        return "value must be one of ['user'] for dictionary value @ data['disabled_by']"
+    if command.get("hidden_by") not in (None, "user"):
+        return "value must be one of ['user'] for dictionary value @ data['hidden_by']"
+    return None
+
+
+def normalized_name(name: str) -> str:
+    """`helpers/normalized_name_base_registry.normalize_name`: casefolded, no spaces.
+
+    The area and floor registries refuse a name whose *normalized* form is
+    taken, so `example room` collides with `Example Room`.
+    """
+    return name.casefold().replace(" ", "")
+
+
+def unique_id_from_name(name: str, taken) -> str:
+    """`BaseRegistryItems.generate_id_from_name`: the slug, suffixed until it is free."""
+    base = slugify(name)
+    candidate, tries = base, 1
+    while candidate in taken:
+        tries += 1
+        candidate = f"{base}_{tries}"
+    return candidate
+
 
 #: The fields `config/entity_registry/update` writes onto the stored entry.
 ENTITY_UPDATE_FIELDS = ("name", "icon", "area_id", "disabled_by", "hidden_by", "labels", "aliases")
@@ -1024,6 +1166,10 @@ def slugify(name: str) -> str:
 
 # ------------------------------------------------------------------ REST double
 
+#: What a camera proxy answers with: the opening of a JPEG, which no text
+#: encoding reads. Synthetic -- four marker bytes and filler, not a picture.
+CAMERA_IMAGE = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + bytes(range(128, 256)) * 4 + b"\xff\xd9"
+
 
 class FakeRestServer:
     """An HTTP server that answers the Home Assistant REST endpoints under test."""
@@ -1058,6 +1204,16 @@ class FakeRestServer:
         self.delay = 0.0
         #: Answer with this raw body and Content-Type: application/json.
         self.malformed_json = None
+        #: The credential this server accepts. A test that needs a token of a
+        #: particular shape -- a JWT, to prove none of its segments is printed
+        #: -- sets it here and in the environment it runs the command with.
+        self.token = FAKE_TOKEN
+        #: `(body, content_type)` answered with a 200 to *every* request, by
+        #: something that is not Home Assistant at all: a router's login page,
+        #: a proxy's own error document, another application on the port. It
+        #: reads no token and routes nothing, which is exactly what makes it a
+        #: 200 -- and a client that takes a 200 for health passes it.
+        self.impostor = None
         #: When set to a URL, the NEXT request answers 302 pointing at it and
         #: the setting clears, so a followed redirect can reach a real handler.
         self.redirect_to = None
@@ -1071,7 +1227,7 @@ class FakeRestServer:
 
             def _authorized(self):
                 header = self.headers.get("Authorization", "")
-                return header == f"Bearer {FAKE_TOKEN}"
+                return header == f"Bearer {outer.token}"
 
             def _send(self, code, payload, content_type="application/json"):
                 if isinstance(payload, bytes):
@@ -1102,6 +1258,9 @@ class FakeRestServer:
 
                 if outer.delay:
                     time.sleep(outer.delay)
+                if outer.impostor is not None:
+                    body, content_type = outer.impostor
+                    return self._send(200, body, content_type=content_type)
                 if outer.malformed_json is not None:
                     return self._send(200, outer.malformed_json, content_type="application/json")
                 if outer.redirect_to is not None:
@@ -1155,6 +1314,10 @@ class FakeRestServer:
                     return self._call_service(name[0], name[1], body, urlparse(self.path).query)
                 if path == "/api/template" and method == "POST":
                     return self._render_template(body)
+                if path.startswith("/api/camera_proxy/") and method == "GET":
+                    # `CameraImageView` answers with the image itself: bytes
+                    # that are not text in any encoding, typed as what they are.
+                    return self._send(200, CAMERA_IMAGE, content_type="image/jpeg")
                 query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
                 if path.startswith("/api/history/period") and method == "GET":
                     return self._history(path[len("/api/history/period") :], query)
@@ -1344,6 +1507,15 @@ class FakeRestServer:
                 for name, field in fields.items():
                     if field.get("required") and name not in data:
                         return self._bad_request()
+                # An entity service is registered with
+                # `cv.has_at_least_one_key(*ENTITY_SERVICE_FIELDS)`, so one
+                # called with no target at all is one more `vol.Invalid` and one
+                # more empty 400. Accepting it here answered 200 with an empty
+                # list to a call a real instance refuses.
+                if description.get("target") is not None and not any(
+                    key in data for key in TARGET_KEYS
+                ):
+                    return self._bad_request()
 
                 override = outer.state["service_result"]
                 if override is not None:
@@ -1443,19 +1615,38 @@ class FakeRestServer:
 # ------------------------------------------------------------- WebSocket double
 
 
-def _roll_up_daily(rows: list) -> list:
-    """Hourly rows compiled into UTC days, as the recorder compiles a daily period."""
-    days: dict = {}
+def _period_bounds(moment: datetime, period: str) -> tuple:
+    """The start and end of the day, week or month ``moment`` falls in.
+
+    `_statistics_during_period_with_session` aligns with the installation's
+    local time; this double's time zone is UTC. A week starts on Monday.
+    """
+    day = moment.replace(hour=0, minute=0, second=0, microsecond=0)
+    if period == "day":
+        return day, day + timedelta(days=1)
+    if period == "week":
+        monday = day - timedelta(days=day.weekday())
+        return monday, monday + timedelta(days=7)
+    first = day.replace(day=1)
+    following = (first + timedelta(days=32)).replace(day=1)
+    return first, following
+
+
+def _roll_up(rows: list, period: str) -> list:
+    """Hourly rows compiled into days, weeks or months, as the recorder compiles them."""
+    groups: dict = {}
     for row in rows:
-        days.setdefault(row["start"] // 86_400_000, []).append(row)
+        moment = datetime.fromtimestamp(row["start"] / 1000, tz=timezone.utc)
+        start, end = _period_bounds(moment, period)
+        groups.setdefault((start.timestamp() * 1000, end.timestamp() * 1000), []).append(row)
     rolled = []
-    for day, hours in sorted(days.items()):
+    for (start_ms, end_ms), hours in sorted(groups.items()):
         means = [h["mean"] for h in hours if h.get("mean") is not None]
         changes = [h["change"] for h in hours if h.get("change") is not None]
         rolled.append(
             {
-                "start": day * 86_400_000,
-                "end": (day + 1) * 86_400_000,
+                "start": int(start_ms),
+                "end": int(end_ms),
                 "mean": sum(means) / len(means) if means else None,
                 "min": min((h["min"] for h in hours if h.get("min") is not None), default=None),
                 "max": max((h["max"] for h in hours if h.get("max") is not None), default=None),
@@ -1476,6 +1667,9 @@ class FakeWsServer:
         self.entities = [json.loads(json.dumps(e)) for e in ENTITY_REGISTRY]
         self.areas = [json.loads(json.dumps(a)) for a in AREA_REGISTRY]
         self.devices = [json.loads(json.dumps(d)) for d in DEVICE_REGISTRY]
+        self.floors = [json.loads(json.dumps(f)) for f in FLOOR_REGISTRY]
+        #: The credential this server accepts; see `FakeRestServer.token`.
+        self.token = FAKE_TOKEN
         self.statistics_meta = [json.loads(json.dumps(m)) for m in STATISTICS_METADATA]
         #: Stored hourly rows per statistic. A test reshapes one to model a
         #: meter that resets, goes backwards or stops reporting for a while.
@@ -1510,7 +1704,7 @@ class FakeWsServer:
             return
         websocket.send(json.dumps({"type": "auth_required", "ha_version": "2026.1.0"}))
         message = json.loads(websocket.recv())
-        if message.get("type") != "auth" or message.get("access_token") != FAKE_TOKEN:
+        if message.get("type") != "auth" or message.get("access_token") != self.token:
             websocket.send(json.dumps({"type": "auth_invalid", "message": "Invalid access token"}))
             return
         if self.reject_auth:
@@ -1586,6 +1780,19 @@ class FakeWsServer:
             if extra:
                 return fail("invalid_format", f"extra keys not allowed @ data[{extra[0]!r}]")
 
+        # The schema runs before the handler, so a write with a missing key or
+        # a value of the wrong type is refused without touching anything.
+        fault = schema_fault(type_, command)
+        if fault is not None:
+            return fail("invalid_format", fault)
+
+        def unhandled():
+            # A handler that raises anything but the error it catches reaches
+            # `connection.async_handle_exception`, which answers with a fixed
+            # `unknown_error` and logs the cause. Updating an area, a floor or
+            # a device that does not exist is a `KeyError` nobody catches.
+            return fail("unknown_error", "Unknown error")
+
         if type_ == "config/entity_registry/list":
             return ok(self.entities)
         if type_ == "config/area_registry/list":
@@ -1593,7 +1800,73 @@ class FakeWsServer:
         if type_ == "config/device_registry/list":
             return ok(self.devices)
         if type_ == "config/floor_registry/list":
-            return ok([])
+            return ok(self.floors)
+        if type_ == "config/floor_registry/create":
+            taken = next(
+                (
+                    f
+                    for f in self.floors
+                    if normalized_name(f["name"]) == normalized_name(command["name"])
+                ),
+                None,
+            )
+            if taken is not None:
+                return fail(
+                    "invalid_info",
+                    f"The name {command['name']} ({normalized_name(taken['name'])}) "
+                    "is already in use",
+                )
+            floor = {
+                "aliases": [a.strip() for a in command.get("aliases") or [] if a.strip()],
+                "created_at": 1767312000.0,
+                "floor_id": unique_id_from_name(
+                    command["name"], {f["floor_id"] for f in self.floors}
+                ),
+                "icon": command.get("icon"),
+                "level": command.get("level"),
+                "name": command["name"],
+                "modified_at": 1767312000.0,
+            }
+            self.floors.append(floor)
+            return ok(floor)
+        if type_ == "config/floor_registry/update":
+            for floor in self.floors:
+                if floor["floor_id"] != command["floor_id"]:
+                    continue
+                if "name" in command and any(
+                    other is not floor
+                    and normalized_name(other["name"]) == normalized_name(command["name"])
+                    for other in self.floors
+                ):
+                    return fail(
+                        "invalid_info",
+                        f"The name {command['name']} ({normalized_name(command['name'])}) "
+                        "is already in use",
+                    )
+                for key in ("name", "icon", "level", "aliases"):
+                    if key in command:
+                        floor[key] = command[key]
+                floor["modified_at"] += 1
+                return ok(floor)
+            return unhandled()
+        if type_ == "config/floor_registry/delete":
+            for index, floor in enumerate(self.floors):
+                if floor["floor_id"] != command["floor_id"]:
+                    continue
+                del self.floors[index]
+                # The area registry listens for the removal and clears the
+                # floor from every area on it, as it does for a deleted area.
+                for area in self.areas:
+                    if area.get("floor_id") == command["floor_id"]:
+                        area["floor_id"] = None
+                return ok(None)
+            return fail("invalid_info", "Floor ID doesn't exist")
+        if type_ == "config/entity_registry/remove":
+            for index, entry in enumerate(self.entities):
+                if entry["entity_id"] == command["entity_id"]:
+                    del self.entities[index]
+                    return ok(None)
+            return fail("not_found", "Entity not found")
         if type_ == "config/entity_registry/get":
             for entry in self.entities:
                 if entry["entity_id"] == command.get("entity_id"):
@@ -1603,11 +1876,32 @@ class FakeWsServer:
             for entry in self.entities:
                 if entry["entity_id"] != command.get("entity_id"):
                     continue
+                if command.get("disabled_by", "") is None and entry.get("device_id"):
+                    # "Don't allow enabling an entity of a disabled device."
+                    device = next((d for d in self.devices if d["id"] == entry["device_id"]), None)
+                    if device is not None and device.get("disabled_by"):
+                        return fail("invalid_info", "Device is disabled")
+                new_id = command.get("new_entity_id")
+                if new_id is not None and new_id != entry["entity_id"]:
+                    # `EntityRegistry._async_update_entity` raises `ValueError`
+                    # for each of these, and the handler turns one into
+                    # `invalid_info` carrying its text.
+                    if not _VALID_ENTITY_ID.match(new_id):
+                        return fail("invalid_info", "Invalid entity ID")
+                    if new_id.split(".", 1)[0] != entry["entity_id"].split(".", 1)[0]:
+                        return fail("invalid_info", "New entity ID should be same domain")
+                    if any(other["entity_id"] == new_id for other in self.entities):
+                        return fail("invalid_info", "Entity with this ID is already registered")
+                enabling = "disabled_by" in command and command["disabled_by"] is None
                 for key in ENTITY_UPDATE_FIELDS:
                     if key in command:
                         entry[key] = command[key]
-                if "new_entity_id" in command:
-                    entry["entity_id"] = command["new_entity_id"]
+                if new_id is not None:
+                    entry["entity_id"] = new_id
+                if enabling:
+                    # Enabling needs a reload of the entry that supplies the
+                    # entity, and the answer says so beside the entry.
+                    return ok({"entity_entry": extended_entry(entry), "reload_delay": 30})
                 # Home Assistant answers with the registry entry that now
                 # exists, not with the request that produced it: every stored
                 # field, including the ones the request never mentioned, and an
@@ -1618,8 +1912,25 @@ class FakeWsServer:
                 return ok({"entity_entry": extended_entry(entry)})
             return fail("not_found", "Entity not found")
         if type_ == "config/area_registry/create":
+            taken = next(
+                (
+                    a
+                    for a in self.areas
+                    if normalized_name(a["name"]) == normalized_name(command["name"])
+                ),
+                None,
+            )
+            if taken is not None:
+                # `AreaRegistry.async_create` raises `ValueError`, sent on as
+                # `invalid_info`. Appending a second area of the same name --
+                # which this double did -- is a state no real registry reaches.
+                return fail(
+                    "invalid_info",
+                    f"The name {command['name']} ({normalized_name(taken['name'])}) "
+                    "is already in use",
+                )
             area = {
-                "area_id": slugify(command["name"]),
+                "area_id": unique_id_from_name(command["name"], {a["area_id"] for a in self.areas}),
                 "name": command["name"],
                 "icon": command.get("icon"),
                 "floor_id": command.get("floor_id"),
@@ -1631,11 +1942,24 @@ class FakeWsServer:
             for area in self.areas:
                 if area["area_id"] != command.get("area_id"):
                     continue
+                if "name" in command and any(
+                    other is not area
+                    and normalized_name(other["name"]) == normalized_name(command["name"])
+                    for other in self.areas
+                ):
+                    return fail(
+                        "invalid_info",
+                        f"The name {command['name']} ({normalized_name(command['name'])}) "
+                        "is already in use",
+                    )
+                # `floor_id` is stored as given: the area registry does not ask
+                # the floor registry whether it exists, which is why a client
+                # has to.
                 for key in ("name", "icon", "floor_id"):
                     if key in command:
                         area[key] = command[key]
                 return ok(area)
-            return fail("not_found", "Area not found")
+            return unhandled()
         if type_ == "config/area_registry/delete":
             for index, area in enumerate(self.areas):
                 if area["area_id"] != command.get("area_id"):
@@ -1651,7 +1975,7 @@ class FakeWsServer:
                     if device.get("area_id") == command["area_id"]:
                         device["area_id"] = None
                 return ok(None)
-            return fail("not_found", "Area not found")
+            return fail("invalid_info", "Area ID doesn't exist")
         if type_ == "config/device_registry/update":
             for device in self.devices:
                 if device["id"] != command.get("device_id"):
@@ -1660,7 +1984,7 @@ class FakeWsServer:
                     if key in command:
                         device[key] = command[key]
                 return ok(device)
-            return fail("not_found", "Device not found")
+            return unhandled()
         if type_ == "config/label_registry/list":
             return ok([])
         if type_ == "get_config":
@@ -1705,7 +2029,16 @@ class FakeWsServer:
         comes back `None` rather than as an error -- which is why a client has
         to choose the types by kind -- and a statistic with no rows in the
         window is absent from the answer altogether. Hourly rows are stored;
-        daily ones are rolled up from them the way the recorder compiles them.
+        daily, weekly and monthly ones are rolled up from them the way the
+        recorder compiles them.
+
+        **The window is widened to the period before anything is read.**
+        `_statistics_during_period_with_session` moves `start_time` back to the
+        start of its day, week or month and `end_time` forward to the end of
+        its own, so a coarse bucket covers time before the start that was
+        asked for. A double that filtered on the window as given -- which this
+        one did -- cannot show a client summing a bucket that begins two days
+        early, and a total 4% too high on a real installation passed here.
         """
         for key in ("start_time", "statistic_ids", "period"):
             if key not in command:
@@ -1730,12 +2063,16 @@ class FakeWsServer:
         end_ms = end.timestamp() * 1000 if end else float("inf")
         answer = {}
         for statistic_id in command["statistic_ids"]:
-            rows = [
-                r for r in self.statistics.get(statistic_id, []) if start_ms <= r["start"] < end_ms
-            ]
-            if command["period"] == "day":
-                rows = _roll_up_daily(rows)
-            elif command["period"] != "hour":
+            low, high = start_ms, end_ms
+            period = command["period"]
+            if period in ("day", "week", "month"):
+                low = _period_bounds(start, period)[0].timestamp() * 1000
+                if end is not None:
+                    high = _period_bounds(end, period)[1].timestamp() * 1000
+            rows = [r for r in self.statistics.get(statistic_id, []) if low <= r["start"] < high]
+            if period in ("day", "week", "month"):
+                rows = _roll_up(rows, period)
+            elif period != "hour":
                 rows = []
             if rows:
                 answer[statistic_id] = [

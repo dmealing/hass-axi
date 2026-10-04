@@ -122,7 +122,8 @@ hass-axi statistics get sensor.example_temperature --start 24h
 - a sum statistic (an energy or water meter) reports its total over the window; a mean statistic (power, temperature) reports its average with min and max
 - an entity's statistic_id is its entity_id; Home Assistant keeps statistics only for sensors that declare a state_class
 - the default period is hourly up to 3 days, daily up to 60, monthly beyond; the recorder keeps 5-minute buckets for about 10 days
-- caveats state what the buckets show -- missing buckets, a meter that went backwards or resets -- and the number is never adjusted for them
+- the total, mean, min and max cover the window asked for whatever the period: they are read from the hourly rows inside it, because a daily, weekly or monthly bucket starts before --start
+- caveats state what the buckets show -- missing buckets, a meter that went backwards or resets, one bucket that dwarfs the rest -- and the number is never adjusted for them
 
 ### `hass-axi service`
 
@@ -167,11 +168,13 @@ hass-axi entity list --area none --limit 500
 hass-axi entity list --device <device_id>
 hass-axi entity get light.example_lamp
 hass-axi entity update light.example_lamp --name 'Reading Lamp' --area example_room
+hass-axi entity update light.example_lamp --name 'Reading Lamp' --write
 ```
 
 - an entity's area is inherited from its device until it is set here explicitly
 - name is the name Home Assistant displays: its device's, plus original_name, unless one is set here
 - entity_ids are not stable identity: filter by --area or --search, not by guessing ids
+- update shows what it would change and sends nothing until --write is given
 
 ### `hass-axi area`
 
@@ -181,11 +184,14 @@ Read and update the area registry over the WebSocket API.
 hass-axi area list
 hass-axi area get example_room
 hass-axi area create --name 'Example Room'
+hass-axi area create --name 'Example Room' --write
 hass-axi area update example_room --name 'Example Study'
-hass-axi area update 'Example Room' --icon mdi:sofa
+hass-axi area update 'Example Room' --icon mdi:sofa --write
 ```
 
 - areas accept an area_id or a name anywhere <id|name> appears
+- create and update show what they would do and send nothing until --write is given
+- --floor has to name a floor that exists; run `hass-axi ws floor.list` to see them
 - deleting an area is deliberately not exposed here; use `hass-axi ws area.delete` if you mean it
 
 ### `hass-axi device`
@@ -198,13 +204,14 @@ hass-axi device list --area 'Example Room'
 hass-axi device list --search example --fields device_id,name,model
 hass-axi device get <device_id>
 hass-axi device update 'Example Ceiling' --name 'Hall Ceiling'
-hass-axi device update <device_id> --area 'Example Room' --clear-name
+hass-axi device update <device_id> --area 'Example Room' --clear-name --write
 ```
 
 - an entity with no area of its own inherits the area of its device
 - an entity with no name of its own is named after its device
 - --name writes name_by_user: `name` is the integration's own and Home Assistant does not let anything change it
 - devices accept a device_id or the displayed name anywhere <id|name> appears
+- update shows what it would change and sends nothing until --write is given
 - disabling or deleting a device is deliberately not exposed here; use `hass-axi ws device.update` if you mean it
 
 ### `hass-axi ws`

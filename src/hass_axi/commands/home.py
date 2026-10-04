@@ -241,9 +241,16 @@ def run(ctx, sub: str, parsed):
     if not_reporting:
         doc["not_reporting"] = not_reporting[:ATTENTION_ROWS]
         if len(not_reporting) > ATTENTION_ROWS:
+            down = sum(1 for row in not_reporting if row["state"] == "unavailable")
+            silent = len(not_reporting) - down
+            # The two commands are spelled whole, and the second says what else
+            # it lists: `--state unknown` also returns every button, event and
+            # scene at rest, so the two together are more rows than this count.
             help_lines.append(
                 f"{len(not_reporting)} entities are not reporting; run `hass-axi state list "
-                "--state unavailable` and `--state unknown` to see them"
+                f"--state unavailable` for the {down} unavailable, and `hass-axi state list "
+                f"--state unknown` for the {silent} unknown, which that command lists among "
+                f"all {unknown} entities whose state is unknown"
             )
     low = low_batteries(states)
     if low:

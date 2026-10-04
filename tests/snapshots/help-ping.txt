@@ -1,0 +1,10 @@
+usage: hass-axi ping
+description: Check Home Assistant answers and accepts the token, and how fast
+flags{ping}:
+  (none)
+note:
+  one authenticated REST round-trip, timed; exits non-zero when it fails, so it works as a liveness gate
+note:
+  run `hass-axi doctor` to check the WebSocket API and the environment as well
+examples:
+  hass-axi ping

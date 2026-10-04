@@ -1,0 +1,6 @@
+error: "--start needs an age such as 24h or an ISO 8601 time, got 'soon'"
+code: BAD_TIME
+class: usage
+help[2]:
+  Run the command again with `--start 24h` (ages: s, m, h, d, w)
+  or with `--start 2026-01-01T06:00:00+00:00`

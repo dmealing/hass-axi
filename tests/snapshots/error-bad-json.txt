@@ -1,0 +1,5 @@
+error: "--data-json is not valid JSON: Expecting property name enclosed in double quotes"
+code: BAD_JSON
+class: usage
+help[1]:
+  Run the command again with `--data-json '{"brightness": 180}'`

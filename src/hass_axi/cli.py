@@ -7,7 +7,14 @@ import sys
 
 from . import __version__, errors, output, readonly
 from . import config as config_module
-from .argspec import GLOBAL_FLAGS, Command, invocation, parse, render_command_help
+from .argspec import (
+    GLOBAL_FLAGS,
+    Command,
+    command_help_doc,
+    invocation,
+    parse,
+    render_command_help,
+)
 from .commands import api as api_command
 from .commands import area as area_command
 from .commands import context as context_command
@@ -114,7 +121,7 @@ class Context:
             self._config = config_module.load(self.environ, timeout=self.timeout)
             # Registered before any transport runs, so a token can never appear
             # in an error message or a debug line.
-            output.register_secret(self._config.token)
+            config_module.register_token(self._config.token)
             # Chosen once, here, so both transports talk to the same candidate
             # for the whole run rather than each settling on its own.
             self._config = config_module.select_reachable(self._config)
@@ -168,6 +175,41 @@ def render_root_help() -> str:
     return "\n".join(lines)
 
 
+def root_help_doc() -> dict:
+    """The root reference as data, for ``--json``; see `argspec.command_help_doc`."""
+    specs = command_specs()
+    return {
+        "usage": "hass-axi [command] [subcommand] [args] [flags]",
+        "description": home_command.DESCRIPTION,
+        "commands": ["(none)=home", *COMMAND_ORDER],
+        "flags": [
+            "--human (readable output)",
+            "--json (raw JSON output)",
+            "--timeout <seconds> (default 30)",
+            "--debug (diagnostics on stderr)",
+            "--help",
+            "-v/--version",
+        ],
+        "env": {
+            "HA_URL": "Home Assistant base URL (or HASS_SERVER); several, comma-separated, "
+            "are tried in order and the first that answers is used",
+            "HA_TOKEN": "long-lived access token (or HASS_TOKEN); there is deliberately "
+            "no --token flag",
+            readonly.ENV_VAR: "set to any non-empty value to refuse every write, "
+            "on both transports",
+        },
+        "summaries": {name: specs[name].summary for name in COMMAND_ORDER},
+    }
+
+
+def _write_help(text: str, doc: dict, mode: str) -> None:
+    """Print help as text, or as a document when the caller asked for JSON."""
+    if mode == MODE_JSON:
+        output.write(doc, mode)
+    else:
+        output.write_text(text)
+
+
 # ------------------------------------------------------------------ dispatch
 
 
@@ -208,6 +250,9 @@ def _prescan_mode(argv: list) -> str:
     """
     seen: dict = {}
     for token in argv:
+        if token == "--":
+            # Everything after it is a positional, a mode flag included.
+            break
         name = token.partition("=")[0]
         if name in ("--json", "--human"):
             seen[name.lstrip("-")] = True
@@ -402,18 +447,31 @@ def main(argv: list | None = None, *, environ=None) -> int:
 
         if not rest:
             if globals_.get("help") or globals_.get("h"):
-                output.write_text(render_root_help())
+                _write_help(render_root_help(), root_help_doc(), mode)
                 return EXIT_OK
             command = home_command.COMMAND
             sub, sub_name, sub_argv = command.subs[0], "home", []
         else:
             name = rest[0]
+            if name.startswith("-") and name != "-":
+                # `_split_globals` stopped here, so this is a flag in the
+                # globals' position that is not one of them -- not a command.
+                raise UsageError(
+                    f"unknown global flag {name.partition('=')[0]}",
+                    help_lines=[
+                        "global flags: --human, --json, --timeout <seconds>, --debug, --help, "
+                        "--version",
+                        "A command's own flags go after the command, "
+                        "e.g. `hass-axi state list --domain light`",
+                    ],
+                    code="UNKNOWN_FLAG",
+                )
             module = _MODULES.get(name)
             if module is None or name == "home":
                 raise _unknown_command(name)
             command = module.COMMAND
             if globals_.get("help") or globals_.get("h") or _help_requested(command, rest[1:]):
-                output.write_text(render_command_help(command))
+                _write_help(render_command_help(command), command_help_doc(command), mode)
                 return EXIT_OK
             sub, sub_argv = _pick_sub(command, rest[1:])
             sub_name = sub.name

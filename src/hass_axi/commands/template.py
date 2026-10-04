@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from ..argspec import Command, Flag, Sub
-from ..errors import UsageError
+from ..errors import ApiError, UsageError
 from ..output import HelpBlock, truncate
 from ..readonly import READ
 from ._common import PREVIEW_CHARS
@@ -25,7 +25,7 @@ COMMAND = Command(
             access=READ,
             summary="Render a template and print the result",
             flags=(
-                Flag("--template", "<text>"),
+                Flag("--template", "<text>", free_text=True),
                 Flag("--template-file", "<path>", note="use - for stdin"),
                 Flag("--full", boolean=True, note="do not truncate the result"),
             ),
@@ -45,7 +45,23 @@ COMMAND = Command(
 
 def run(ctx, sub: str, parsed):
     template = _source(parsed)
-    result = ctx.rest().render_template(template)
+    try:
+        result = ctx.rest().render_template(template)
+    except ApiError as exc:
+        if exc.code != "BAD_REQUEST":
+            raise
+        # REST answers a template that does not compile or render with a 400
+        # carrying the reason; over the WebSocket the same fault is already
+        # `TEMPLATE_ERROR`. One fault, one code, and a next step.
+        raise ApiError(
+            exc.message.replace("Home Assistant refused the request (HTTP 400)", "template error"),
+            help_lines=[
+                "Fix the template; the message above is Home Assistant's own",
+                "Run `hass-axi template render --template '{{ states(\"light.example_lamp\") }}'` "
+                "for a form that works",
+            ],
+            code="TEMPLATE_ERROR",
+        ) from None
     text, hint = ("", "")
     if parsed.get("full", False):
         text = result

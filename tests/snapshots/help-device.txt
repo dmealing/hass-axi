@@ -1,0 +1,29 @@
+usage: hass-axi device <subcommand> [flags]
+description: Read and update the device registry over the WebSocket API
+subcommands[3]:
+  list, get <id|name>, update <id|name>
+flags{list}:
+  --area <id|name> ('none' selects unassigned devices), --search <text> (matches name, manufacturer and model), --limit <n> (default 100), --fields <a,b,c> (from device_id|name|area|area_id|manufacturer|model|entities)
+flags{get}:
+  (none)
+flags{update}:
+  --name <text> (writes name_by_user; see the note below), --area <id|name>, --clear-name (fall back to the integration's name), --clear-area, --write (send it; without this the command shows what would be sent and sends nothing)
+note:
+  an entity with no area of its own inherits the area of its device
+note:
+  an entity with no name of its own is named after its device
+note:
+  --name writes name_by_user: `name` is the integration's own and Home Assistant does not let anything change it
+note:
+  devices accept a device_id or the displayed name anywhere <id|name> appears
+note:
+  update shows what it would change and sends nothing until --write is given
+note:
+  disabling or deleting a device is deliberately not exposed here; use `hass-axi ws device.update` if you mean it
+examples:
+  hass-axi device list
+  hass-axi device list --area 'Example Room'
+  hass-axi device list --search example --fields device_id,name,model
+  hass-axi device get <device_id>
+  hass-axi device update 'Example Ceiling' --name 'Hall Ceiling'
+  hass-axi device update <device_id> --area 'Example Room' --clear-name --write

@@ -1,0 +1,5 @@
+error: "unknown field: nope"
+code: UNKNOWN_FIELD
+class: usage
+help[1]:
+  available fields: entity_id, name, state, domain, last_changed, last_updated, last_reported, age

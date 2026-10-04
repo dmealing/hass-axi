@@ -28,10 +28,10 @@ anywhere.
 ## The registries REST does not expose
 
 One command renames an entity and moves it to a room, over the WebSocket API, resolving the area by
-name or by id:
+name or by id. Without `--write` it shows what it would change and sends nothing; with it:
 
 ```
-$ hass-axi entity update light.example_lamp --name 'Reading Lamp' --area 'Example Room'
+$ hass-axi entity update light.example_lamp --name 'Reading Lamp' --area 'Example Room' --write
 entity: light.example_lamp
 updated[2]: area_id,name
 name: Reading Lamp
@@ -82,8 +82,8 @@ entities[3]{entity_id,name,area,platform}:
   sensor.example_bridge_dusk,Example Bridge Next dusk,Example Hall,sun
 help[3]:
   Run `hass-axi entity get <entity_id>` for one entry in full
-  Run `hass-axi entity list --limit 9` to see all 9
-  Run `hass-axi entity update <entity_id> --name "<name>" --area <id|name>` to change one
+  Run `hass-axi entity list --area 'Example Hall' --limit 9` to see all 9
+  Run `hass-axi entity update <entity_id> --name "<name>" --area <id|name>` to preview a change, and add --write to send it
 ```
 
 ```
@@ -94,8 +94,8 @@ entities[2]{entity_id,name,original_name}:
   binary_sensor.example_bridge_rising,Example Bridge Solar rising,Solar rising
 help[3]:
   Run `hass-axi entity get <entity_id>` for one entry in full
-  Run `hass-axi entity list --limit 9` to see all 9
-  Run `hass-axi entity update <entity_id> --name "<name>" --area <id|name>` to change one
+  Run `hass-axi entity list --search 'Example Bridge' --limit 9` to see all 9
+  Run `hass-axi entity update <entity_id> --name "<name>" --area <id|name>` to preview a change, and add --write to send it
 ```
 
 `--search` matches the composed name, which is why searching for the name a user reads finds the
@@ -115,7 +115,7 @@ areas[3]{area_id,name,entities,devices,floor_id}:
   example_study,Example Study,0,0,""
 help[3]:
   Run `hass-axi entity list --area <id|name>` to see what one area holds
-  Run `hass-axi area update <id|name> --name '<name>'` to rename one
+  Run `hass-axi area update <id|name> --name '<name>'` to preview a rename, and add --write to send it
   Run `hass-axi entity list --area none` to find entities with no area
 ```
 
@@ -123,7 +123,10 @@ help[3]:
 area, search by name, or list what one device supplies with `entity list --device <device_id>` —
 the only route from an opaque device id to its entities, because that id is not searchable and
 should not be. Areas accept a name or an id anywhere `<id|name>` appears, and an ambiguous name is
-an error rather than a guess. `entity get` and `area get` show one entry in full; `area get` also
+an error rather than a guess. A name is compared the way it is typed: case and a typographic
+apostrophe (`’`, which a phone writes into its own name) do not matter, so `--search "example's"`
+finds it. A name that matches nothing is answered with the nearest ones that exist — `did you mean`
+— rather than with an offer to create what was mistyped. `entity get` and `area get` show one entry in full; `area get` also
 reports the icon, floor and aliases that `area list` leaves out.
 
 The typed write surface is `entity update` — `--name`, `--area` and `--icon`, each with a matching
@@ -132,6 +135,14 @@ The typed write surface is `entity update` — `--name`, `--area` and `--icon`, 
 `device update` on the registry behind them. Deleting an area is deliberately not given a typed
 command; `hass-axi ws area.delete --write` is there if you mean it, and the same goes for disabling or
 deleting a device.
+
+**Every one of those writes is a preview until `--write`.** `entity update`, `area create`,
+`area update` and `device update` read the registry, resolve what was named, and print the fields
+they would change with the value stored now beside the value asked for — and send nothing. Adding
+`--write` sends exactly that. A request for what is already stored answers `already matches` either
+way, because there is nothing to send. What a write resolves, the preview resolves too: an area
+that does not exist fails there, and so does a `--floor` no floor answers to, which Home Assistant
+itself would store without complaint.
 
 **The device is usually the level a name or an area is wrong at**, which is why `device update`
 exists rather than a loop over entities: an entity with no area of its own inherits its device's,
@@ -154,7 +165,8 @@ published service, resolves the target, runs the capability pre-check and prints
 would make, the entities it would reach and what the check found — and sends nothing. It fails, as
 the call would, for a service that does not exist or a target that reaches nothing, so every
 refusal below is the same answer with or without the flag. `--write` sends it. The same flag, with
-the same meaning, gates a write-method `hass-axi api` request and a write `hass-axi ws` command.
+the same meaning, gates the typed registry writes, a write-method `hass-axi api` request and a write
+`hass-axi ws` command: nothing in this tool changes Home Assistant without it.
 
 **An entity that cannot do the thing is dropped in silence** when it was reached through an area or
 a device. `hass-axi` reads the capability the service publishes and says so before sending:
@@ -352,10 +364,18 @@ hass-axi logbook get --entity light.example_lamp --start 2h
   and maximum; a bearing reports a circular mean. The kind comes from the recorder's own metadata,
   never from a device class or a name — asking for the wrong kind is not an error upstream, the
   buckets just come back empty.
+- **The number covers the window that was asked for, whatever the period.** The recorder widens a
+  daily, weekly or monthly request to whole periods before it reads — `--start 7d` in daily buckets
+  is eight buckets, and in monthly ones the whole month — so summing the buckets counts time before
+  `--start`. The total, mean, minimum and maximum are therefore read from the hourly rows that begin
+  inside the window; `--period` decides only how the buckets are counted and where the caveats
+  look. Past 400 days the buckets are summed as they come and a caveat says what they cover.
 - **Data-quality problems are stated, not corrected.** When the buckets show something a reader
   should know before trusting the number, a `caveats` line says so beside it: buckets missing from
   the window, a meter that went backwards, a meter that resets about once a day (so its live state
-  is a since-reset reading, not a running total). The number is always what the recorder holds.
+  is a since-reset reading, not a running total), one bucket that holds more than half of
+  everything and is twenty times the median — a sensor that briefly reported a lifetime figure as a
+  daily one, or a single genuinely heavy day; the buckets cannot say which. The number is always what the recorder holds.
   Every check is a rule about the buckets' shape, nothing about any particular integration.
 - **`history get` summarises a timeline** — the range of a reading, or how long anything else
   spent in each state — counting the state the entity was already in when the window opened.
@@ -383,7 +403,7 @@ Every write is then refused **before it is sent**, and the refusal does not care
 write took. A typed command:
 
 ```
-$ hass-axi entity update light.example_lamp --name 'Something Else'
+$ hass-axi entity update light.example_lamp --name 'Something Else' --write
 error: "`hass-axi entity update` is a write, and this session is read-only"
 code: READ_ONLY
 class: usage
@@ -412,7 +432,7 @@ code: READ_ONLY
 Each of those last two prints the same three `help` lines as the first; only the head of the output
 is reproduced here. All three exit `2`, and the area registry is unchanged afterwards: the refusal
 is reached before either transport is opened, and before the token is even read. Without
-`--write` the last two are previews, which send nothing and are therefore still allowed: a
+`--write` all three are previews, which send nothing and are therefore still allowed: a
 read-only session can see what a request would have been, and is told the write would be refused.
 
 Four things about it are deliberate, and the first two are why it is worth having at all.
@@ -613,19 +633,23 @@ The whole vocabulary, which is closed:
 - `usage` — `UNKNOWN_COMMAND`, `UNKNOWN_SUBCOMMAND`, `MISSING_SUBCOMMAND`, `UNKNOWN_FLAG`,
   `MISSING_VALUE`, `MISSING_ARGUMENT`, `UNEXPECTED_ARGUMENT`, `CONFLICTING_FLAGS`, `UNKNOWN_FIELD`,
   `BAD_LIMIT`, `BAD_TIMEOUT`, `BAD_TIME`, `BAD_WINDOW`, `BAD_PERIOD`, `BAD_KIND`, `BAD_JSON`,
+  `BAD_ICON`,
   `BAD_PAIR`, `BAD_SERVICE`, `MISSING_PATH`, `MISSING_NAME`, `MISSING_TEMPLATE`, `MISSING_COMMAND`, `MISSING_PARAM`, `NO_CHANGES`, `NO_SUCH_COMMAND`,
   `UNREADABLE`, `UNREADABLE_FILE`, `UNWRITABLE`, `READ_ONLY`
-- `config` — `NOT_CONFIGURED`, `BAD_URL`, `BAD_TOKEN`, `MISSING_DEPENDENCY`, `REDIRECT_REFUSED`
+- `config` — `NOT_CONFIGURED`, `BAD_URL`, `BAD_TOKEN`, `MISSING_DEPENDENCY`, `REDIRECT_REFUSED`,
+  `NOT_HOME_ASSISTANT`
 - `transport` — `UNREACHABLE`, `TIMEOUT`, `TLS_ERROR`, `CONNECTION_DROPPED`, `UNAVAILABLE`,
   `WS_HANDSHAKE`, `WS_CLOSED`, `WS_PROTOCOL`
 - `auth` — `UNAUTHORIZED`
 - `permission` — `FORBIDDEN`
-- `not_found` — `NOT_FOUND`, `NO_SUCH_ENTITY`, `NO_SUCH_AREA`, `AMBIGUOUS_AREA`, `NO_SUCH_DEVICE`,
+- `not_found` — `NOT_FOUND`, `NO_SUCH_ENTITY`, `NO_SUCH_AREA`, `AMBIGUOUS_AREA`, `NO_SUCH_FLOOR`,
+  `AMBIGUOUS_FLOOR`, `NO_SUCH_DEVICE`,
   `AMBIGUOUS_DEVICE`, `NO_SUCH_DOMAIN`, `NO_SUCH_SERVICE`, `NO_SUCH_STATISTIC`,
   `NO_ENTITIES_TARGETED`, `NO_SUCH_WS_COMMAND`, `NO_WEBSOCKET_API`
 - `refused` — `BAD_REQUEST`, `METHOD_NOT_ALLOWED`, `SERVER_ERROR`, `API_ERROR`, `INVALID_FORMAT`,
   `NOT_ALLOWED`, `NOT_SUPPORTED`, `HOME_ASSISTANT_ERROR`, `SERVICE_VALIDATION_ERROR`,
-  `TEMPLATE_ERROR`, `UNKNOWN_SERVICE_FIELD`, `MISSING_SERVICE_FIELD`, `UNSUPPORTED_CAPABILITY`,
+  `TEMPLATE_ERROR`, `UNKNOWN_SERVICE_FIELD`, `MISSING_SERVICE_FIELD`, `MISSING_TARGET`,
+  `UNSUPPORTED_CAPABILITY`,
   `RESPONSE_REQUIRED`, `RESPONSE_NOT_SUPPORTED`
 - `internal` — `INTERNAL_ERROR`, `ID_REUSE`
 
@@ -858,7 +882,8 @@ scripts/dev-setup.sh                    # creates .venv; see Install for why it 
 
 **No live installation and no live token are needed, which is the point.** The suite runs against
 real local servers on loopback: an `http.server` for REST, and a real `websockets` server that
-performs the same `auth_required` / `auth` / `auth_ok` handshake Home Assistant does.
+performs the same `auth_required` / `auth` / `auth_ok` handshake Home Assistant does. A second
+suite does talk to a real Home Assistant, and is opt-in: see "The live suite" below.
 
 Covered by tests:
 
@@ -882,6 +907,23 @@ Covered by tests:
   **stderr asserted clean and redacted** — the gap that let two escapes ship;
 - flag validation, renamed-flag hints, exit codes, `--help` in every position (and never stolen
   from a flag value), and `--help` for every command without any configuration present;
+- **the exit-code contract as a table** (`tests/test_exit_codes.py`): exit 2 is a usage error and is
+  decided without the installation, so every static fault is run reachable, unreachable and
+  unconfigured and has to be the same error in all three — swept over every value-taking flag of
+  every subcommand from the dispatch table, so a flag added later is held to it;
+- **the encoder, read back by a decoder this project did not write** (`tests/test_toon_roundtrip.py`):
+  the specification's fixtures, and every command's TOON against its own `--json`, through
+  `toon-format`. Nothing there compares the tool with itself;
+- **properties, with generated input** (`tests/test_properties.py`): any JSON value round-trips, and
+  any argument vector ends in exit 0, 1 or 2 with a parseable document whose class is `usage`
+  exactly when the exit is 2;
+- **golden snapshots of the text an agent reads** (`tests/test_snapshots.py`): `--help` for every
+  command, one of each kind of error document, and the `context` document. Text this tool writes
+  from its own declarations only — never live data;
+- **destructive registry cases, offline** (`tests/test_registry_writes.py`): an area, a floor, an
+  entity and a device created, renamed, collided, moved and deleted against a double that refuses
+  the way Home Assistant's own handlers do — duplicate names, an id of another domain, a delete of
+  what is not there — and every typed write as a preview that sends nothing;
 - the leak scanner adversarially: every rule against the shape it claims, every rule against
   content that must not trip it, the split/concatenated/percent-encoded evasions, the scoped allow
   marker, and both git hooks end to end through a real `git commit`;
@@ -890,11 +932,10 @@ Covered by tests:
   the Codex features flag can already hold — including the ones that used to make the tool append a
   duplicate TOML key its parser refuses.
 
-**Would need a live installation to confirm:** that a real Home Assistant accepts the exact request
-bodies built here — `config/entity_registry/update` field names, `return_response` behaviour, and
-the service-data keys individual integrations validate — how a very large registry behaves in
-practice, and whether an integration's published `supported_features` requirement agrees with the
-one its Python actually enforces. The doubles implement the documented protocol and enforce the
+**What only a live installation can confirm** — that a real Home Assistant accepts the exact request
+bodies built here, `return_response` behaviour, how a very large registry behaves in practice, and
+whether a published `supported_features` requirement agrees with the one enforced — is what the
+live suite below is for. The doubles implement the documented protocol and enforce the
 parts of it that are known: the REST double rejects a nested service-call `target` the way Home
 Assistant does, refuses an unknown service with the same empty `400` and no body, and drops an
 `unavailable` or incapable entity in the same silence. So they verify this client against the
@@ -906,6 +947,45 @@ only their own half, a `has_entity_name` of each setting, a disabled entry with 
 `unknown` state as well as an `unavailable` one, services and fields that publish no prose — and
 `tests/test_double_fidelity.py` asserts each of those shapes is still present. Every one of them was
 absent once, and each absence cost a defect that a green suite could not see.
+
+### The live suite
+
+`tests/live/` runs this build against a real Home Assistant and compares every answer with
+something the tool did not produce: the raw REST and WebSocket APIs read by the harness itself, an
+independent TOON decoder, and the recorder's own rows. It is **opt-in twice** — `pyproject.toml`
+deselects the `live` marker, so `pytest`, `scripts/ci-local.sh` and the gate never collect it, and
+every test in it skips without `HASS_AXI_LIVE=1` — and it is run by hand:
+
+```sh
+scripts/live-test.sh --house           # reads, previews and loopback faults
+scripts/live-test.sh --house-writes    # the same, plus writes that undo themselves
+scripts/live-test.sh --lab             # rejected credentials and destructive writes, in a container
+scripts/live-test.sh --house --env-file <path>   # HA_URL and HA_TOKEN from a file, never printed
+```
+
+| tier | what runs | where |
+| --- | --- | --- |
+| A | reads, swept over every domain and area and checked against the raw API | the installation in `HA_URL` |
+| B | a preview of every write shape, with a fingerprint of the registries before and after | the same |
+| C | writes that reverse themselves and are read back: a notification created and dismissed, a stored value set to itself, one scratch area created and deleted | the same, only with `--house-writes` |
+| D | faults — a closed port, a bad certificate, a redirect, a 200 from something that is not Home Assistant — from loopback stubs with a synthetic token | this machine |
+| E | rejected credentials, and an entity, area, floor and device really renamed, moved and deleted | a disposable container, removed afterwards |
+
+Three rules keep it safe to point at a house. **Targets are chosen by shape at run time** — "a light
+that is on or off", "an entity whose area comes from its device" — so the suite holds no entity id,
+area name or address, and a shape an installation lacks skips rather than fails. **Nothing in tiers
+A to D** sends an invalid credential to the installation, calls a service on a real device, or
+renames or moves anything real; a rejected credential raises a notification and can ban an address
+on a real server, so those cases run only in the container. And **the token is never kept**: it is
+scrubbed from every result, an invocation that prints it or any segment of it fails, and the log
+records commands, exits and timings but not output, because the output of a real installation is
+that installation's data.
+
+The lab tier needs `docker`. It creates a container from a pinned image
+(`HASS_AXI_LAB_IMAGE` selects another release), onboards it, mints a credential that exists only in
+that process, and removes the container whether the tests passed or not. Nothing in the suite makes
+an LLM call or uses a paid API, and nothing is scheduled: there is no cron entry, timer or workflow
+that runs it, by design.
 
 ## Continuous integration
 

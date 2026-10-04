@@ -1,0 +1,6 @@
+error: "--template or --template-file is required"
+code: MISSING_TEMPLATE
+class: usage
+help[2]:
+  Run `hass-axi template render --template '{{ states("light.example_lamp") }}'`
+  Run `hass-axi template render --template-file <path>` to read one from disk

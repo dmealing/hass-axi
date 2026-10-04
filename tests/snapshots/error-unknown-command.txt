@@ -1,0 +1,6 @@
+error: "unknown command: nosuchcommand"
+code: UNKNOWN_COMMAND
+class: usage
+help[2]:
+  commands: state, sensor, history, logbook, statistics, service, template, entity, area, device, ws, api, ping, doctor, setup, context
+  Run `hass-axi --help` for the full reference

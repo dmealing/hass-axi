@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import re
+import shlex
 from typing import Any
 
 from .. import readonly
 from ..argspec import Flag
 from ..errors import AxiError, NotFound, UsageError
+from ..names import MAX_CANDIDATES, close_matches, fold
 from ..output import truncate
+from ..shapes import is_entity_id
 from . import _window
 
 #: Preview length for long free-text values before `--full` is needed.
@@ -174,6 +178,70 @@ def select_fields(raw: str | None, available: list, default: list) -> list:
     return wanted
 
 
+def listing_args(parsed, available: list, default: list, *, default_limit: int) -> tuple:
+    """``(limit, fields)`` for a list view, validated before anything is fetched.
+
+    A mistyped `--limit` or `--fields` is a static fault: it is decided here,
+    ahead of the first request, so the answer is the same `usage` error whether
+    or not the installation is reachable -- and not `UNREACHABLE` for a typo.
+    """
+    limit = parse_limit(parsed.get("limit"), default=default_limit)
+    fields = select_fields(parsed.get("fields"), available, default)
+    return limit, fields
+
+
+def quote(value) -> str:
+    """One argument as a suggested command line has to spell it."""
+    return shlex.quote(str(value))
+
+
+def search_term(identifier: str) -> str:
+    """What to search for when ``identifier`` named nothing, quoted to be run.
+
+    The object id of something shaped like an entity id, and otherwise the
+    whole value -- never a slice taken at the last dot, which hands back one
+    segment of anything dotted, a credential included.
+    """
+    if is_entity_id(identifier):
+        return quote(identifier.split(".", 1)[1])
+    return quote(identifier)
+
+
+def filter_args(parsed, names) -> str:
+    """The filters an invocation carried, spelled back as arguments.
+
+    A "see all N" suggestion that drops them answers with a different set of N
+    rows, so every list view repeats them through here.
+    """
+    parts: list = []
+    for name in names:
+        value = parsed.get(name)
+        if isinstance(value, list):
+            for item in value:
+                parts.extend([name, quote(item)])
+        elif value is True:
+            parts.append(name)
+        elif value not in (None, False, ""):
+            parts.extend([name, quote(value)])
+    return " ".join(parts)
+
+
+def see_all_line(command: str, parsed, names, matched: int) -> str:
+    """The suggestion that lists every matching row, filters included."""
+    args = filter_args(parsed, names)
+    return f"Run `hass-axi {command}{' ' + args if args else ''} --limit {matched}` to see all {matched}"
+
+
+def empty_listing(key: str, sentence: str) -> dict:
+    """The start of a list view that matched nothing.
+
+    The rows key stays a list in every mode, so a caller that iterates it walks
+    no rows instead of the characters of a sentence; the sentence goes in
+    `count`, where a view with rows reports how many it has.
+    """
+    return {"count": sentence, key: []}
+
+
 def project(rows: list, fields: list) -> list:
     """Reduce rows to the requested fields, preserving field order."""
     return [{name: row.get(name) for name in fields} for row in rows]
@@ -225,13 +293,32 @@ def parse_json_flag(raw: str | None, *, flag: str) -> dict:
     return parsed
 
 
-def resolve_area(areas: list, needle: str) -> dict:
-    """Find an area by ``area_id`` or by name, case-insensitively."""
+def _area_candidates(areas: list, needle: str) -> list:
+    labelled = []
+    for area in areas:
+        rendering = f"{quote(area.get('name') or '')} (id {area.get('area_id', '')})"
+        labelled.append((area.get("name") or "", rendering))
+        labelled.append((area.get("area_id") or "", rendering))
+    seen: list = []
+    for rendering in close_matches(needle, labelled):
+        if rendering not in seen:
+            seen.append(rendering)
+    return seen
+
+
+def resolve_area(areas: list, needle: str, *, offer_create: bool = False) -> dict:
+    """Find an area by ``area_id`` or by name, however the name was typed.
+
+    A name that matches nothing is answered with the areas nearest it. Creating
+    one is offered only where the caller asked for an area by itself
+    (``offer_create``), last, and as what it is: a filter that mistyped
+    `Kitchn` wanted the kitchen, not a second area called `Kitchn`.
+    """
     for area in areas:
         if area.get("area_id") == needle:
             return area
-    lowered = needle.strip().lower()
-    matches = [a for a in areas if (a.get("name") or "").strip().lower() == lowered]
+    lowered = fold(needle)
+    matches = [a for a in areas if fold(a.get("name")) == lowered]
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
@@ -246,14 +333,77 @@ def resolve_area(areas: list, needle: str) -> dict:
             ],
             code="AMBIGUOUS_AREA",
         )
+    help_lines = []
+    candidates = _area_candidates(areas, needle)
+    if candidates:
+        help_lines.append(f"did you mean: {', '.join(candidates)}")
+    help_lines.append("Run `hass-axi area list` to see the areas that exist")
+    if offer_create:
+        help_lines.append(
+            f"Run `hass-axi area create --name {quote(needle)}` only if you mean to add "
+            "a new area with this name"
+        )
     raise NotFound(
         f"no area with id or name {needle!r}",
-        help_lines=[
-            "Run `hass-axi area list` to see the areas that exist",
-            f'Run `hass-axi area create --name "{needle}"` to add it',
-        ],
+        help_lines=help_lines,
         code="NO_SUCH_AREA",
     )
+
+
+def resolve_floor(floors: list, needle: str) -> dict:
+    """Find a floor by ``floor_id`` or by name.
+
+    Home Assistant stores whatever `floor_id` an area update carries, existing
+    or not, so the lookup has to happen here: a mistyped floor is otherwise a
+    floor nothing answers to, stored at exit 0.
+    """
+    for floor in floors:
+        if floor.get("floor_id") == needle:
+            return floor
+    wanted = fold(needle)
+    matches = [f for f in floors if fold(f.get("name")) == wanted]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        ids = ", ".join(f.get("floor_id", "") for f in matches)
+        raise AxiError(
+            f"{needle!r} matches more than one floor: {ids}",
+            help_lines=["Pass the floor_id instead of the name"],
+            code="AMBIGUOUS_FLOOR",
+        )
+    labelled = []
+    for floor in floors:
+        rendering = f"{quote(floor.get('name') or '')} (id {floor.get('floor_id', '')})"
+        labelled.append((floor.get("name") or "", rendering))
+        labelled.append((floor.get("floor_id") or "", rendering))
+    help_lines = []
+    candidates = list(dict.fromkeys(close_matches(needle, labelled)))
+    if candidates:
+        help_lines.append(f"did you mean: {', '.join(candidates)}")
+    if floors:
+        known = ", ".join(sorted(f.get("floor_id", "") for f in floors))
+        help_lines.append(f"floors in this installation: {known}")
+    else:
+        help_lines.append("This installation has no floors; create one in Home Assistant first")
+    help_lines.append("Run `hass-axi ws floor.list` to see each floor's id and name")
+    raise NotFound(
+        f"no floor with id or name {needle!r}",
+        help_lines=help_lines,
+        code="NO_SUCH_FLOOR",
+    )
+
+
+_ICON = re.compile(r"^[a-z0-9_-]+:[a-z0-9_-]+$")
+
+
+def check_icon(value) -> None:
+    """Refuse an icon that is not ``prefix:name``, which Home Assistant would store."""
+    if value is not None and not _ICON.match(str(value)):
+        raise UsageError(
+            f"--icon needs the form prefix:name such as mdi:sofa, got {value!r}",
+            help_lines=["Run the command again with `--icon mdi:sofa`"],
+            code="BAD_ICON",
+        )
 
 
 def _device_by_id(devices: list, needle: str) -> dict | None:
@@ -263,7 +413,27 @@ def _device_by_id(devices: list, needle: str) -> dict | None:
     return None
 
 
-def _no_such_device(needle: str, *, by_name: bool) -> NotFound:
+def _device_candidates(devices: list, needle: str) -> list:
+    """Devices a failed lookup most likely meant: an id it begins, or a near name."""
+    found: list = []
+    for device in devices:
+        device_id = device.get("id") or ""
+        if needle and device_id.startswith(needle):
+            found.append(f"{quote(displayed_device_name(device))} (id {device_id})")
+    labelled = [
+        (
+            displayed_device_name(device),
+            f"{quote(displayed_device_name(device))} (id {device.get('id', '')})",
+        )
+        for device in devices
+    ]
+    for rendering in close_matches(needle, labelled):
+        if rendering not in found:
+            found.append(rendering)
+    return found[:MAX_CANDIDATES]
+
+
+def _no_such_device(needle: str, *, by_name: bool, devices: list = ()) -> NotFound:
     """The one failed-device-lookup error, phrased for the handle that was tried.
 
     Exit 1, the same side of the line `resolve_area` puts a missing area on: the
@@ -271,8 +441,13 @@ def _no_such_device(needle: str, *, by_name: bool) -> NotFound:
     not there.
     """
     help_lines = ["Run `hass-axi device list --fields device_id,name` to see each device's id"]
+    candidates = _device_candidates(list(devices), needle)
+    if candidates:
+        # Named outright, because `device list --search` matches names and not
+        # ids: suggesting it for a truncated id suggests a search that finds nothing.
+        help_lines.insert(0, f"did you mean: {', '.join(candidates)}")
     if by_name:
-        help_lines.insert(0, f'Run `hass-axi device list --search "{needle}"` to find it')
+        help_lines.append(f"Run `hass-axi device list --search {quote(needle)}` to search by name")
     return NotFound(
         f"no device with {'id or name' if by_name else 'id'} {needle!r}",
         help_lines=help_lines,
@@ -295,7 +470,7 @@ def resolve_device(devices: list, device_id: str) -> dict:
     device = _device_by_id(devices, needle)
     if device is not None:
         return device
-    raise _no_such_device(needle, by_name=False)
+    raise _no_such_device(needle, by_name=False, devices=devices)
 
 
 def resolve_device_ref(devices: list, needle: str) -> dict:
@@ -313,8 +488,8 @@ def resolve_device_ref(devices: list, needle: str) -> dict:
     device = _device_by_id(devices, text)
     if device is not None:
         return device
-    lowered = text.lower()
-    matches = [d for d in devices if displayed_device_name(d).strip().lower() == lowered]
+    lowered = fold(text)
+    matches = [d for d in devices if fold(displayed_device_name(d)) == lowered]
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
@@ -327,7 +502,7 @@ def resolve_device_ref(devices: list, needle: str) -> dict:
             ],
             code="AMBIGUOUS_DEVICE",
         )
-    raise _no_such_device(text, by_name=True)
+    raise _no_such_device(text, by_name=True, devices=devices)
 
 
 def area_is_placed(area_id: str, areas: list) -> bool:
@@ -351,7 +526,7 @@ def filter_by_area(rows: list, areas: list, area_filter, scope: list) -> list:
     """
     if not area_filter:
         return rows
-    if area_filter.strip().lower() in ("none", "null", ""):
+    if fold(area_filter) in ("none", "null", ""):
         scope.append("with no area")
         return [row for row in rows if not area_is_placed(row["area_id"], areas)]
     area = resolve_area(areas, area_filter)
@@ -373,16 +548,17 @@ def count_line(shown: int, matched: int, total: int, *, filtered: bool) -> str:
 
 
 def matches_search(needle: str, *values) -> bool:
-    lowered = needle.lower()
-    return any(lowered in str(value or "").lower() for value in values)
+    wanted = fold(needle)
+    return any(wanted in fold(value) for value in values)
 
 
 # ------------------------------------------------------------ write previews
 
 #: The one flag that turns a preview into a request, on every command that can
-#: change something through a subject it does not declare: `service call`, a
-#: write-method `api` request and a write `ws` command. One name on all three,
-#: so an agent that learns it once has learnt it everywhere.
+#: change something: `service call`, a write-method `api` request, a write `ws`
+#: command and the typed registry writes. One name on all of them, so an agent
+#: that learns it once has learnt it everywhere -- and nothing in this tool
+#: changes Home Assistant without it.
 WRITE_FLAG_NAME = "--write"
 WRITE_FLAG = Flag(
     WRITE_FLAG_NAME,
@@ -402,6 +578,36 @@ def preview_note(environ) -> str:
     return PREVIEW_LINE
 
 
+def write_access(parsed) -> str:
+    """The read-only verdict for a command that only writes with the write flag.
+
+    Without it the command reads the registry and shows what it would send,
+    which a read-only session is entitled to see.
+    """
+    return readonly.WRITE if parsed.get("write") else readonly.READ
+
+
+def change_rows(current: dict, pending: dict, *, rename: dict | None = None) -> list:
+    """What a registry write would change, one row per field: from, and to.
+
+    Built from the entry as it is stored, so a preview says what the value is
+    now and not only what was asked for. ``rename`` maps a request key to the
+    stored key it replaces (`new_entity_id` replaces `entity_id`).
+    """
+    rename = rename or {}
+    rows = []
+    for key in sorted(pending):
+        stored = current.get(rename.get(key, key))
+        rows.append(
+            {
+                "field": key,
+                "from": "" if stored is None else stored,
+                "to": "" if pending[key] is None else pending[key],
+            }
+        )
+    return rows
+
+
 def preview_help(environ) -> list:
     if readonly.enabled(environ):
         return [f"Unset {readonly.active_var(environ)} to allow writes in this session"]
@@ -410,8 +616,14 @@ def preview_help(environ) -> list:
 
 # ------------------------------------------------- shortening a raw response
 
-#: Items kept from each list in a raw `api` or `ws` response before `--full`.
+#: Items kept from each list, and keys from each object, in a raw `api` or `ws`
+#: response before `--full`.
 RAW_ITEMS = 25
+
+#: What a shortened response may still weigh. Cutting lists and strings bounds
+#: neither an object of objects nor a list of large ones, so anything over this
+#: is summarised from the bottom up until it fits.
+RAW_BUDGET_CHARS = 20_000
 
 
 def shorten(result, hint: str) -> tuple:
@@ -430,6 +642,7 @@ def shorten(result, hint: str) -> tuple:
     only when something was actually withheld.
     """
     cut_lists: list = []
+    cut_objects: list = []
     cut_strings = [0]
 
     def walk(node):
@@ -443,11 +656,37 @@ def shorten(result, hint: str) -> tuple:
                 cut_lists.append(len(node))
             return [walk(item) for item in node[:RAW_ITEMS]]
         if isinstance(node, dict):
-            return {key: walk(value) for key, value in node.items()}
+            if len(node) > RAW_ITEMS:
+                cut_objects.append(len(node))
+            return {key: walk(value) for key, value in list(node.items())[:RAW_ITEMS]}
+        return node
+
+    def size(node) -> int:
+        return len(json.dumps(node, separators=(",", ":"), ensure_ascii=False, default=str))
+
+    def collapse(node, depth: int, keep: int):
+        """Replace every container below ``keep`` levels with a count of what it held."""
+        if isinstance(node, dict):
+            if depth >= keep:
+                return f"{{{plural(len(node), 'key')}}}"
+            return {key: collapse(value, depth + 1, keep) for key, value in node.items()}
+        if isinstance(node, list):
+            if depth >= keep:
+                return f"[{plural(len(node), 'item')}]"
+            return [collapse(item, depth + 1, keep) for item in node]
         return node
 
     shortened = walk(result)
-    if not cut_lists and not cut_strings[0]:
+    collapsed_below = 0
+    if size(shortened) > RAW_BUDGET_CHARS:
+        for keep in (4, 3, 2, 1):
+            candidate = collapse(shortened, 0, keep)
+            if candidate != shortened:
+                collapsed_below = keep
+            if size(candidate) <= RAW_BUDGET_CHARS or keep == 1:
+                shortened = candidate
+                break
+    if not cut_lists and not cut_objects and not cut_strings[0] and not collapsed_below:
         return result, "", ""
 
     parts = []
@@ -460,7 +699,14 @@ def shorten(result, hint: str) -> tuple:
                 f"{len(cut_lists)} lists cut to their first {RAW_ITEMS} items "
                 f"(the largest holds {largest})"
             )
+    if cut_objects:
+        parts.append(
+            f"{plural(len(cut_objects), 'object')} cut to the first {RAW_ITEMS} keys "
+            f"(the largest holds {max(cut_objects)})"
+        )
     if cut_strings[0]:
         parts.append(f"{plural(cut_strings[0], 'string')} cut to {PREVIEW_CHARS} chars")
-    total = len(json.dumps(result, separators=(",", ":"), ensure_ascii=False, default=str))
+    if collapsed_below:
+        parts.append(f"values nested more than {collapsed_below} deep shown as counts")
+    total = size(result)
     return shortened, f"{'; '.join(parts)} (truncated, {total} chars total)", hint

@@ -12,8 +12,9 @@ from __future__ import annotations
 from ..argspec import Command, Flag, Sub
 from ..output import HelpBlock
 from ..readonly import READ
+from ..rest import require_entity_id
 from . import _window
-from ._common import count_line, matches_search, parse_limit, project, select_fields
+from ._common import count_line, empty_listing, listing_args, matches_search, project
 
 DEFAULT_LIMIT = 50
 LIST_FIELDS = ["when", "name", "entity_id", "event", "cause", "domain", "state"]
@@ -59,7 +60,12 @@ COMMAND = Command(
 
 def run(ctx, sub: str, parsed):
     start, end = _window.window(parsed)
+    limit, fields = listing_args(
+        parsed, LIST_FIELDS, DEFAULT_LIST_FIELDS, default_limit=DEFAULT_LIMIT
+    )
     ids = [entity_id.strip() for entity_id in parsed.get("entity", []) if entity_id.strip()]
+    for entity_id in ids:
+        require_entity_id(entity_id)
     entries = ctx.rest().logbook(_window.iso(start), _window.iso(end), ids or None)
     rows = [_row(entry) for entry in entries if isinstance(entry, dict)]
     total = len(rows)
@@ -68,8 +74,6 @@ def run(ctx, sub: str, parsed):
     if search:
         rows = [r for r in rows if matches_search(search, r["name"], r["entity_id"], r["event"])]
 
-    limit = parse_limit(parsed.get("limit"), default=DEFAULT_LIMIT)
-    fields = select_fields(parsed.get("fields"), LIST_FIELDS, DEFAULT_LIST_FIELDS)
     shown = rows[-limit:]
     window = _window.describe(start, end)
 
@@ -78,7 +82,7 @@ def run(ctx, sub: str, parsed):
         matching = f" matching {search!r}" if search else ""
         return {
             "window": window,
-            "entries": f"0 logbook entries{scope}{matching} in this window",
+            **empty_listing("entries", f"0 logbook entries{scope}{matching} in this window"),
             "help": HelpBlock(
                 [
                     "Run `hass-axi logbook get --start 7d` to widen the window",

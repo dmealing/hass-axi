@@ -167,11 +167,16 @@ def test_history_keeps_the_latest_rows_and_says_how_to_see_the_rest(run_cli, res
     assert any("--limit" in line for line in doc["help"])
 
 
-def test_a_malformed_entity_id_is_refused_by_home_assistant_with_its_reason(run_cli, rest_env):
+def test_a_malformed_entity_id_is_answered_here_rather_than_by_a_bare_400(
+    run_cli, rest_env, rest_server
+):
+    """Home Assistant's own answer is `Invalid filter_entity_id` and nothing to act on."""
+    before = len(rest_server.requests)
     code, out = run_cli(["history", "get", "nodot"], rest_env)
     assert code == 1
-    assert "Invalid filter_entity_id" in out
-    assert "code: BAD_REQUEST" in out
+    assert "code: NO_SUCH_ENTITY" in out
+    assert "hass-axi state list --search nodot" in out
+    assert len(rest_server.requests) == before
 
 
 # ------------------------------------------------------------------- logbook
@@ -242,12 +247,19 @@ def test_statistics_list_reads_the_kind_from_the_recorders_metadata(run_cli, ins
     assert kinds["example:grid_import"] == ("sum", "kWh", "Example Grid Import")
 
 
-def test_statistics_list_filters_by_kind_upstream(run_cli, ws_env, ws_server):
+def test_statistics_list_filters_by_kind_and_still_reports_the_whole_total(
+    run_cli, ws_env, ws_server
+):
+    code, everything = as_json(run_cli, ["statistics", "list"], ws_env)
+    assert code == 0
     code, doc = as_json(run_cli, ["statistics", "list", "--kind", "mean"], ws_env)
     assert code == 0
     assert [row["statistic_id"] for row in doc["statistics"]] == ["sensor.example_temperature"]
+    # The total is the installation's, not the size of the filtered answer:
+    # `(1 total)` beside one row said every statistic was a mean.
+    assert doc["count"] == f"1 of 1 matched ({len(everything['statistics'])} total)"
     sent = [c for c in ws_server.received if c["type"] == "recorder/list_statistic_ids"]
-    assert sent[-1]["statistic_type"] == "mean"
+    assert "statistic_type" not in sent[-1]
 
 
 def test_an_unknown_kind_is_refused_before_anything_is_sent(run_cli, ws_env, ws_server):
@@ -297,7 +309,8 @@ def test_a_long_window_defaults_to_daily_buckets(run_cli, ws_env, ws_server):
     assert "daily buckets" in doc["window"]
     assert doc["statistics"][0]["total"] == 12.0
     sent = [c for c in ws_server.received if c["type"] == "recorder/statistics_during_period"]
-    assert sent[-1]["period"] == "day"
+    # The buckets shown are daily; the total is read from the hourly rows inside the window.
+    assert [c["period"] for c in sent] == ["day", "hour"]
 
 
 def test_an_unknown_period_is_refused(run_cli, ws_env):
@@ -333,7 +346,7 @@ def test_a_meter_that_went_backwards_is_reported_and_not_corrected(run_cli, ws_e
     assert code == 0
     row = doc["statistics"][0]
     assert row["total"] == 9.5  # 23 * 0.5 - 2, exactly what the buckets hold
-    assert row["caveats"] == ["1 bucket went backwards by 2.0 kWh in all; the total includes them"]
+    assert row["caveats"] == ["1 bucket went backwards by 2 kWh in all; the total includes them"]
 
 
 def test_a_meter_that_resets_every_day_is_called_out(run_cli, ws_env, ws_server):
@@ -486,7 +499,8 @@ def test_sensor_rows_carry_value_unit_area_from_the_device_and_age(run_cli, inst
 def test_the_unit_filter_is_exact_including_case(run_cli, installation_env):
     code, doc = as_json(run_cli, ["sensor", "list", "--unit", "kwh"], installation_env)
     assert code == 0
-    assert doc["sensors"] == "0 sensors found with unit kwh"
+    assert doc["sensors"] == []
+    assert doc["count"] == "0 sensors found with unit kwh"
     # What is here, so the next attempt is not another guess.
     assert "kWh" in doc["units"]
     assert "energy" in doc["device_classes"]

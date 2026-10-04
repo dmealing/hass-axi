@@ -1,0 +1,5 @@
+error: unknown flag --format for `sensor`; use --json instead
+code: UNKNOWN_FLAG
+class: usage
+help[1]:
+  Run `hass-axi sensor --json`

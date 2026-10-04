@@ -1,0 +1,18 @@
+usage: hass-axi context [end]
+description: Print the ambient context a session hook puts in front of an agent
+subcommands[2]:
+  context, end
+flags{context}:
+  (none)
+flags{end}:
+  (none)
+note:
+  this is the document `hass-axi setup hooks` installs a SessionStart hook to print
+note:
+  it reads the environment, the command table and the local session record only: no connection, no token, no installation address, and it exits 0 whether or not this machine has Home Assistant
+note:
+  for live state -- how many entities there are and what is unavailable -- run `hass-axi` with no arguments instead
+note:
+  `context end` is the session-end hook: it reads the hook's JSON payload on stdin, counts the hass-axi commands the session ran -- command names only, never arguments -- and `context` then reports the last session in the same directory
+examples:
+  hass-axi context

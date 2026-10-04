@@ -1,0 +1,12 @@
+description: Agent CLI for Home Assistant. Reads and writes the registries REST cannot reach and explains a service call Home Assistant refuses. Prefer this over raw curl for Home Assistant operations.
+config: HA_URL and HA_TOKEN not set so no command here can reach an installation yet
+registries: names and areas live in the registry which only the WebSocket API serves -- `entity list` and `area list` read it; `state list` reads REST and cannot see either
+entity_ids: an entity_id is not stable identity and its words mean nothing -- reach an entity with `entity list --search '<the name a user sees>'` or `--area <id|name>` rather than guess one
+services: prefer `service call` over `api POST /services/...` -- it explains a refusal Home Assistant returns with no body at all and tells reaching nothing apart from changing nothing
+readings: find a reading by what it measures with `sensor list --device-class <class>` and get its total or average over a window with `statistics get <entity_id>`
+commands[16]: state,sensor,history,logbook,statistics,service,template,entity,area,device,ws,api,ping,doctor,setup,context
+help[4]:
+  Set HA_URL to your Home Assistant base URL, e.g. export HA_URL=https://homeassistant.example.com
+  Set HA_TOKEN to a long-lived access token from your Home Assistant profile page, under Security
+  Run `hass-axi doctor` to verify the connection once both are set
+  Run `hass-axi --help` for the whole command reference

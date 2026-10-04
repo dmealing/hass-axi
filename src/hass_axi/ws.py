@@ -576,7 +576,15 @@ class WsClient:
                 code="NO_SUCH_WS_COMMAND",
             )
         if code == "NOT_FOUND":
-            return NotFound(message, code="NOT_FOUND")
+            return NotFound(
+                f"{type_}: {message}",
+                help_lines=[
+                    "The id passed names nothing in this installation",
+                    "Run `hass-axi entity list --search <text>`, `hass-axi device list` or "
+                    "`hass-axi area list` to find the id",
+                ],
+                code="NOT_FOUND",
+            )
         if code == "INVALID_FORMAT":
             return ApiError(
                 f"{type_} rejected the arguments: {message}",
@@ -598,9 +606,15 @@ class WsClient:
                 ],
                 code="ID_REUSE",
             )
+        refused = [
+            "Home Assistant reached the command and refused it; change the arguments "
+            "rather than retrying",
+            "Run `hass-axi ws --list` to see each command's parameters",
+        ]
         if code is not None:
-            return ApiError(f"{type_} failed: {message}", code=code)
+            return ApiError(f"{type_} failed: {message}", help_lines=refused, code=code)
         return ApiError(
             f"{type_} failed with an error Home Assistant named `{reported}`: {message}",
+            help_lines=refused,
             code="API_ERROR",
         )

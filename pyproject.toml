@@ -28,6 +28,12 @@ dev = [
   "pytest>=7.4",
   "pyyaml>=6",
   "ruff>=0.5",
+  # An independent TOON decoder, so "the output round-trips" is checked by
+  # something other than the encoder under test. Pinned: it is a second
+  # opinion, and a second opinion that moves is not one. Both this and
+  # hypothesis need Python 3.10; the tests that use them skip on 3.9.
+  "toon-format==1.0.0; python_version >= '3.10'",
+  "hypothesis>=6.100; python_version >= '3.10'",
 ]
 
 [project.scripts]
@@ -50,9 +56,15 @@ select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"]
+"tests/*" = ["S101", "RUF001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# The live suite under tests/live/ talks to a real Home Assistant and is opt-in
+# twice over: deselected here, and skipped without HASS_AXI_LIVE=1. Run it with
+# scripts/live-test.sh, never from CI.
+addopts = "-q -m 'not live'"
+markers = [
+  "live: talks to a real Home Assistant; deselected by default, run by scripts/live-test.sh",
+]
 filterwarnings = ["error::DeprecationWarning:hass_axi.*"]

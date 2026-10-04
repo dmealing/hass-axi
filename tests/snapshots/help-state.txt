@@ -1,0 +1,20 @@
+usage: hass-axi state <subcommand> [flags]
+description: Read entity states from the Home Assistant REST API
+subcommands[2]:
+  list, get <entity_id>
+flags{list}:
+  --area <id|name> ('none' selects entities with no area), --domain <name> (repeatable, repeat to widen), --state <value> (exact match), --search <text> (matches entity_id and name), --stale <age> (not reported for at least this long, e.g. 24h), --limit <n> (default 100), --fields <a,b,c> (from entity_id|name|state|domain|last_changed|last_updated|last_reported|age)
+flags{get}:
+  --full (do not truncate long attributes)
+note:
+  state is the runtime view; run `hass-axi entity list` for registry names and areas
+note:
+  --area reads the WebSocket registry, where areas live; it costs one extra round-trip
+examples:
+  hass-axi state list --domain light
+  hass-axi state list --area 'Example Room' --domain light
+  hass-axi state list --search lamp --limit 20
+  hass-axi state list --domain sensor --state unavailable
+  hass-axi state list --stale 24h --fields entity_id,name,age
+  hass-axi state get light.example_lamp
+  hass-axi state get media_player.example_speaker --full

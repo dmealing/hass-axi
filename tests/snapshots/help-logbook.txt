@@ -1,0 +1,14 @@
+usage: hass-axi logbook get [flags]
+description: Read the logbook: what changed, when, and what caused it
+subcommands[1]:
+  get
+flags{get}:
+  --entity <entity_id> (repeatable, repeat for several), --start <age|time> (default 24h, e.g. 24h, 7d, ISO), --end <age|time> (default now), --search <text> (matches name, entity_id and event), --limit <n> (default 50, latest entries), --fields <a,b,c> (from when|name|entity_id|event|cause|domain|state)
+note:
+  entries are oldest first; --limit keeps the most recent
+note:
+  cause is the automation, script, service or entity Home Assistant recorded as the context of the entry, when it recorded one
+examples:
+  hass-axi logbook get --start 2h
+  hass-axi logbook get --entity light.example_lamp --start 7d
+  hass-axi logbook get --search automation --limit 20

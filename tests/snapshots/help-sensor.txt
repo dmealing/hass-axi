@@ -1,0 +1,16 @@
+usage: hass-axi sensor [list] [flags]
+description: Find sensors by device class, unit, area or name, with value, unit, area and age
+subcommands[1]:
+  list
+flags{list}:
+  --device-class <class> (repeatable, e.g. power, energy; repeat), --unit <unit> (repeatable, exact, e.g. W or kWh; repeat), --area <id|name> ('none' selects sensors with no area), --search <text> (matches entity_id and the displayed name), --all (include diagnostic, config and hidden sensors), --limit <n> (default 100), --fields <a,b,c> (from entity_id|name|value|unit|area|area_id|age|device_class|state_class|last_reported|entity_category)
+note:
+  age is the time since the integration last reported a value; a sensor on an idle circuit can be old and healthy, so it is a fact about recency and not a fault
+note:
+  an area is inherited from the sensor's device unless the entity sets its own
+note:
+  run `hass-axi statistics get <entity_id>` for a total or an average over a window
+examples:
+  hass-axi sensor list --device-class power
+  hass-axi sensor list --area 'Example Room' --unit kWh
+  hass-axi sensor list --search temperature --fields entity_id,name,value,unit,age

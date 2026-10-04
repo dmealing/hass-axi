@@ -1,0 +1,6 @@
+error: unknown flag --nosuch for `state list`
+code: UNKNOWN_FLAG
+class: usage
+help[2]:
+  valid flags for `state list`: --area, --domain, --state, --search, --stale, --limit, --fields (--help always allowed)
+  Run `hass-axi state --help` for the full reference

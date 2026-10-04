@@ -1,0 +1,5 @@
+error: "--domain needs a value"
+code: MISSING_VALUE
+class: usage
+help[1]:
+  Run `hass-axi state list --domain <name>`

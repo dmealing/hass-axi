@@ -1,0 +1,7 @@
+error: HA_URL and HA_TOKEN are not set in the environment
+code: NOT_CONFIGURED
+class: config
+help[3]:
+  Set HA_URL to your Home Assistant base URL, e.g. export HA_URL=https://homeassistant.example.com
+  Set HA_TOKEN to a long-lived access token from your Home Assistant profile page, under Security
+  Run `hass-axi doctor` to verify the connection once both are set

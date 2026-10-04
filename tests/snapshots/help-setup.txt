@@ -1,0 +1,24 @@
+usage: hass-axi setup <subcommand> [flags]
+description: Install, check or remove the agent integrations for hass-axi
+subcommands[2]:
+  hooks [install|status|remove], skill
+flags{hooks}:
+  --home <path> (act under a different home directory)
+flags{skill}:
+  --path <dir> (default ., repository root), --check (exit non-zero when the committed copy is stale)
+note:
+  hooks give ambient context every session; the skill loads on demand instead -- install either
+note:
+  hook installation is idempotent and repairs the path after a reinstall or a move
+note:
+  `setup hooks status` reports each hook as installed, stale or missing and writes nothing
+note:
+  `setup hooks remove` takes out only the entries this tool wrote, and leaves Codex's `[features] hooks = true` on because other tools' Codex hooks depend on it
+note:
+  a session-end hook, `hass-axi context end`, records which hass-axi commands a session ran -- names and counts, never arguments -- so the next session's context in that directory can say so; OpenCode has no session-end event, so its plugin records when a session goes idle
+examples:
+  hass-axi setup hooks
+  hass-axi setup hooks status
+  hass-axi setup hooks remove
+  hass-axi setup skill
+  hass-axi setup skill --check

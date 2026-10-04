@@ -175,15 +175,26 @@ def test_an_area_that_does_not_exist_is_reported_rather_than_accepted(run_cli, i
     assert "hass-axi area list" in out
 
 
-def test_an_area_name_passed_where_an_id_belongs_is_diagnosed(run_cli, installation_env):
-    """`--target-area` is an area_id; a name silently matches nothing upstream."""
-    code, out = run_cli(
+def test_an_area_name_passed_as_a_target_is_resolved_to_its_id(
+    run_cli, installation_env, rest_server
+):
+    """Every other `--area` takes a name; Home Assistant takes only the id, so it is resolved."""
+    code, _ = run_cli(
         ["service", "call", "light.turn_on", "--target-area", "Example Room", "--write"],
         installation_env,
     )
-    assert code == 1
-    assert "example_room" in out
-    assert "area name" in out
+    assert code == 0
+    posted = [r for r in rest_server.requests if r["path"] == "/api/services/light/turn_on"]
+    assert posted[-1]["body"]["area_id"] == ["example_room"]
+
+
+def test_an_area_id_as_a_target_costs_no_registry_read(run_cli, rest_env, rest_server):
+    """An id is sent as written, with no WebSocket round-trip to confirm it."""
+    code, _ = run_cli(
+        ["service", "call", "light.turn_on", "--target-entity", "light.example_lamp", "--write"],
+        rest_env,
+    )
+    assert code == 0
 
 
 def test_a_target_that_matched_but_changed_nothing_says_so(run_cli, installation_env):
@@ -279,7 +290,7 @@ def test_service_get_reports_the_response_mode(run_cli, rest_env):
 def test_service_get_states_an_empty_field_list_definitively(run_cli, rest_env):
     code, out = run_cli(["service", "get", "light.turn_off"], rest_env)
     assert code == 0
-    assert "fields: 0 fields declared on light.turn_off" in out
+    assert "field_count: 0 fields declared on light.turn_off" in out
 
 
 def test_service_get_rejects_an_unknown_service_with_the_near_misses(run_cli, rest_env):

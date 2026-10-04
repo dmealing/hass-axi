@@ -60,7 +60,7 @@ def test_state_list_area_combines_with_the_other_filters(run_cli, installation_e
         ["state", "list", "--area", "Example Room", "--domain", "climate"], installation_env
     )
     assert code == 0
-    assert "states: 0 entity states found in area Example Room in domain climate" in out
+    assert "count: 0 entity states found in area Example Room in domain climate" in out
 
 
 def test_state_list_rejects_an_unknown_area_the_way_entity_list_does(run_cli, installation_env):

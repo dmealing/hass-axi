@@ -1,0 +1,6 @@
+error: unexpected argument 'Example Annex' for `area create`
+code: UNEXPECTED_ARGUMENT
+class: usage
+help[2]:
+  `area create` takes no positional argument; pass it with --name
+  Run `hass-axi area create --name 'Example Annex'`

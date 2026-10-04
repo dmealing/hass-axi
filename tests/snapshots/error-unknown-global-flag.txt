@@ -1,0 +1,6 @@
+error: unknown global flag --nosuchglobal
+code: UNKNOWN_FLAG
+class: usage
+help[2]:
+  global flags: --human, --json, --timeout <seconds>, --debug, --help, --version
+  A command's own flags go after the command, e.g. `hass-axi state list --domain light`

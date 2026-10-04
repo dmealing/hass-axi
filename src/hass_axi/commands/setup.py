@@ -95,6 +95,17 @@ def run(ctx, sub: str, parsed):
             return _hooks_status(home)
         if action == "remove":
             return _hooks_remove(ctx, home)
+        if home is not None and not Path(home).is_dir():
+            # Created on demand, a mistyped home is a tree of hooks no agent
+            # will ever read, reported `installed`.
+            raise UsageError(
+                f"--home {home} is not an existing directory",
+                help_lines=[
+                    "Pass the home directory the agents read their settings from",
+                    "Run `hass-axi setup hooks` with no --home to use this user's own",
+                ],
+                code="UNWRITABLE",
+            )
         return _hooks(home)
     return _skill(ctx, parsed)
 

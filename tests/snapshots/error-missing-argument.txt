@@ -1,0 +1,5 @@
+error: hass-axi state get needs <entity_id>
+code: MISSING_ARGUMENT
+class: usage
+help[1]:
+  Run `hass-axi state get <entity_id>`

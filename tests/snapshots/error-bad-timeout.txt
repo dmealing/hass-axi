@@ -1,0 +1,5 @@
+error: "--timeout needs a number of seconds, got 'abc'"
+code: BAD_TIMEOUT
+class: usage
+help[1]:
+  Run `hass-axi --timeout 60 <command>`

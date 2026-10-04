@@ -5,14 +5,23 @@ from __future__ import annotations
 from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
 from ..output import HelpBlock
-from ..readonly import READ, WRITE
+from ..readonly import DYNAMIC, READ
 from ._common import (
+    WRITE_FLAG,
     area_is_placed,
+    change_rows,
+    check_icon,
     device_area_map,
     effective_area_id,
+    empty_listing,
+    fold,
     plural,
+    preview_help,
+    preview_note,
     reject_conflicting_flags,
     resolve_area,
+    resolve_floor,
+    write_access,
 )
 
 COMMAND = Command(
@@ -26,40 +35,50 @@ COMMAND = Command(
         ),
         Sub(
             name="create",
-            access=WRITE,
-            summary="Create an area",
+            access=DYNAMIC,
+            summary="Create an area (a preview unless --write is given)",
             flags=(
-                Flag("--name", "<text>", note="required"),
+                Flag("--name", "<text>", note="required", free_text=True),
                 Flag("--icon", "<mdi:name>"),
-                Flag("--floor", "<floor_id>"),
+                Flag("--floor", "<id|name>"),
+                WRITE_FLAG,
             ),
         ),
         Sub(
             name="update",
-            access=WRITE,
+            access=DYNAMIC,
             args=("<id|name>",),
-            summary="Rename an area or change its icon or floor",
+            summary="Rename an area or change its icon or floor (a preview unless --write is given)",
             flags=(
-                Flag("--name", "<text>"),
+                Flag("--name", "<text>", free_text=True),
                 Flag("--icon", "<mdi:name>"),
-                Flag("--floor", "<floor_id>"),
+                Flag("--floor", "<id|name>"),
                 Flag("--clear-icon", boolean=True),
                 Flag("--clear-floor", boolean=True),
+                WRITE_FLAG,
             ),
         ),
     ),
     notes=(
         "areas accept an area_id or a name anywhere <id|name> appears",
+        "create and update show what they would do and send nothing until --write is given",
+        "--floor has to name a floor that exists; run `hass-axi ws floor.list` to see them",
         "deleting an area is deliberately not exposed here; use `hass-axi ws area.delete` if you mean it",
     ),
     examples=(
         "hass-axi area list",
         "hass-axi area get example_room",
         "hass-axi area create --name 'Example Room'",
+        "hass-axi area create --name 'Example Room' --write",
         "hass-axi area update example_room --name 'Example Study'",
-        "hass-axi area update 'Example Room' --icon mdi:sofa",
+        "hass-axi area update 'Example Room' --icon mdi:sofa --write",
     ),
 )
+
+
+def access(sub: str, parsed) -> str:
+    """`area create` and `area update` write only when told to; a preview only reads."""
+    return write_access(parsed) if sub in ("create", "update") else READ
 
 
 def run(ctx, sub: str, parsed):
@@ -101,8 +120,8 @@ def _list(ctx, parsed):
 
     if not areas:
         return {
-            "areas": "0 areas defined in this installation",
-            "help": HelpBlock(["Run `hass-axi area create --name '<name>'` to add one"]),
+            **empty_listing("areas", "0 areas defined in this installation"),
+            "help": HelpBlock(["Run `hass-axi area create --name '<name>' --write` to add one"]),
         }
 
     counts, unassigned = _entity_counts(entities, devices, areas)
@@ -130,7 +149,8 @@ def _list(ctx, parsed):
         "help": HelpBlock(
             [
                 "Run `hass-axi entity list --area <id|name>` to see what one area holds",
-                "Run `hass-axi area update <id|name> --name '<name>'` to rename one",
+                "Run `hass-axi area update <id|name> --name '<name>'` to preview a rename, "
+                "and add --write to send it",
                 "Run `hass-axi entity list --area none` to find entities with no area",
             ]
         ),
@@ -144,7 +164,7 @@ def _get(ctx, parsed):
         entities = client.run("entity.list") or []
         devices = client.run("device.list") or []
 
-    area = resolve_area(areas, needle)
+    area = resolve_area(areas, needle, offer_create=True)
     area_id = area.get("area_id", "")
     counts, _ = _entity_counts(entities, devices, areas)
     return {
@@ -161,6 +181,12 @@ def _get(ctx, parsed):
     }
 
 
+def _floor_id(client, raw) -> str:
+    """The id of the floor ``raw`` names, read from the floor registry."""
+    floors = client.run("floor.list") or []
+    return resolve_floor(floors, raw).get("floor_id", "")
+
+
 def _create(ctx, parsed):
     name = parsed.get("name")
     if not name:
@@ -169,18 +195,14 @@ def _create(ctx, parsed):
             help_lines=["Run `hass-axi area create --name 'Example Room'`"],
             code="MISSING_NAME",
         )
+    check_icon(parsed.get("icon"))
     params = {"name": name}
     if parsed.get("icon") is not None:
         params["icon"] = parsed.get("icon")
-    if parsed.get("floor") is not None:
-        params["floor_id"] = parsed.get("floor")
 
     with ctx.ws() as client:
         areas = client.run("area.list") or []
-        existing = next(
-            (a for a in areas if (a.get("name") or "").strip().lower() == name.strip().lower()),
-            None,
-        )
+        existing = next((a for a in areas if fold(a.get("name")) == fold(name)), None)
         # Idempotent: creating an area that already exists reports the existing one.
         if existing is not None:
             return {
@@ -190,6 +212,15 @@ def _create(ctx, parsed):
                 },
                 "created": "an area with this name already exists, no change made",
             }
+        if parsed.get("floor") is not None:
+            params["floor_id"] = _floor_id(client, parsed.get("floor"))
+        if not parsed.get("write"):
+            return {
+                "area": {"name": name},
+                "preview": preview_note(ctx.environ),
+                "would_create": params,
+                "help": HelpBlock(preview_help(ctx.environ)),
+            }
         result = client.run("area.create", params) or {}
 
     return {
@@ -197,7 +228,8 @@ def _create(ctx, parsed):
         "created": True,
         "help": HelpBlock(
             [
-                f"Run `hass-axi entity update <entity_id> --area {result.get('area_id', '')}` to fill it"
+                f"Run `hass-axi entity update <entity_id> --area {result.get('area_id', '')} "
+                "--write` to fill it"
             ]
         ),
     }
@@ -211,6 +243,7 @@ def _update(ctx, parsed):
         ("--floor", "--clear-floor"),
         invocation=f"hass-axi area update {needle}",
     )
+    check_icon(parsed.get("icon"))
 
     changes: dict = {}
     if parsed.get("name") is not None:
@@ -221,10 +254,9 @@ def _update(ctx, parsed):
         changes["icon"] = parsed.get("icon")
     if parsed.get("clear_floor"):
         changes["floor_id"] = None
-    if parsed.get("floor") is not None:
-        changes["floor_id"] = parsed.get("floor")
+    floor_arg = parsed.get("floor")
 
-    if not changes:
+    if not changes and floor_arg is None:
         raise UsageError(
             "nothing to update",
             help_lines=[
@@ -238,11 +270,23 @@ def _update(ctx, parsed):
         areas = client.run("area.list") or []
         area = resolve_area(areas, needle)
         area_id = area.get("area_id", "")
+        if floor_arg is not None:
+            # Resolved against the floor registry: Home Assistant stores any
+            # `floor_id` it is handed, so a typo is otherwise a floor nothing
+            # answers to, stored at exit 0.
+            changes["floor_id"] = _floor_id(client, floor_arg)
         pending = {k: v for k, v in changes.items() if (area.get(k) or None) != (v or None)}
         if not pending:
             return {
                 "area": {"area_id": area_id, "name": area.get("name") or ""},
                 "updated": "already matches the requested values, no change made",
+            }
+        if not parsed.get("write"):
+            return {
+                "area": {"area_id": area_id, "name": area.get("name") or ""},
+                "preview": preview_note(ctx.environ),
+                "would_change": change_rows(area, pending),
+                "help": HelpBlock(preview_help(ctx.environ)),
             }
         result = client.run("area.update", {"area_id": area_id, **pending}) or {}
 

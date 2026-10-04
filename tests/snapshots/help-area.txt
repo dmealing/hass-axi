@@ -1,0 +1,27 @@
+usage: hass-axi area <subcommand> [flags]
+description: Read and update the area registry over the WebSocket API
+subcommands[4]:
+  list, get <id|name>, create, update <id|name>
+flags{list}:
+  (none)
+flags{get}:
+  (none)
+flags{create}:
+  --name <text> (required), --icon <mdi:name>, --floor <id|name>, --write (send it; without this the command shows what would be sent and sends nothing)
+flags{update}:
+  --name <text>, --icon <mdi:name>, --floor <id|name>, --clear-icon, --clear-floor, --write (send it; without this the command shows what would be sent and sends nothing)
+note:
+  areas accept an area_id or a name anywhere <id|name> appears
+note:
+  create and update show what they would do and send nothing until --write is given
+note:
+  --floor has to name a floor that exists; run `hass-axi ws floor.list` to see them
+note:
+  deleting an area is deliberately not exposed here; use `hass-axi ws area.delete` if you mean it
+examples:
+  hass-axi area list
+  hass-axi area get example_room
+  hass-axi area create --name 'Example Room'
+  hass-axi area create --name 'Example Room' --write
+  hass-axi area update example_room --name 'Example Study'
+  hass-axi area update 'Example Room' --icon mdi:sofa --write

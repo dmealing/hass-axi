@@ -123,7 +123,7 @@ def test_a_renamed_flag_points_at_its_replacement(run_cli):
 def test_flags_are_validated_per_subcommand(run_cli):
     # --search exists on `entity list` but not on `entity update`.
     assert run_cli(["entity", "list", "--search", "x"], {})[0] != 2
-    code, out = run_cli(["entity", "update", "light.example_lamp", "--search", "x"], {})
+    code, out = run_cli(["entity", "update", "--write", "light.example_lamp", "--search", "x"], {})
     assert code == 2
     assert "unknown flag --search for `entity update`" in out
 
