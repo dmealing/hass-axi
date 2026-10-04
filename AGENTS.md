@@ -150,10 +150,18 @@ that are neither JWT-shaped nor bearer-prefixed, and anything inside a binary.
   `commands/service.py` under the local alias `model`. No I/O and no cache: the caller fetches,
   and decides whether the answer is worth the round-trip. It is **not in this repository**; see
   "The service model is a dependency now" below.
-- `commands/context.py` — the ambient document a session hook prints, and the only command whose
-  contract is *when* it runs rather than what it answers. It reaches no transport and reads no
-  credential, so it cannot fail; `hooks.py` is its only intended caller and a human running it is
-  reading what their agents were told. See "The session-hook installer" below.
+- `commands/context.py` — the document a session hook prints, in both halves of a session's
+  lifecycle, and the only command whose contract is *when* it runs rather than what it answers:
+  `context` describes the installation without connecting to it, and `context end` records what
+  the ended session ran. Neither reaches a transport or reads a credential, so neither can fail;
+  `hooks.py` is their only intended caller and a human running them is reading what their agents
+  were told. See "The session-hook installer" below.
+- `sessionlog.py` — the session record `context end` writes and `context` reads back: one entry
+  per session holding command names and counts, never an argument, in one file under
+  `$XDG_STATE_HOME/hass-axi/`, and read back strictly because that file is one anything on the
+  machine could have edited. Arguments are where entity ids, area names and a typed token would
+  live, and the line lands in an agent's context, a wider surface than the terminal the command
+  was typed in. See "The session-hook installer" below.
 - `errors.py` — the error types, the eight fault classes, and `CODES`: the closed vocabulary of
   every code this tool can print, each mapped to its class. It imports nothing at all, so every
   other module can depend on it. See "The error taxonomy" below; the short version is that the class
@@ -772,6 +780,28 @@ held to, and `test_the_context_document_never_pays_for_a_quoted_scalar` is what 
 **The two views are not redundant and the split is the point.** `context` is what an agent is *told*
 at session start, from the environment alone; the home view is what an agent *asks* once it has a
 reason to. A fact that needs a connection belongs in the home view and nowhere near this one.
+
+**Status and removal reuse the install rules in reverse, and every subcommand reports the same
+rows.** `status` writes nothing: each JSON target is `installed` (current), `stale` (this tool's
+entry recording another executable, a duplicate, or one an earlier release wrote — what `setup
+hooks` repairs), `missing`, or `unmanaged` for an OpenCode plugin at this tool's path that this
+tool did not write. `remove` deletes only what the ownership rules above claim — a marked entry,
+or one of the two adopted shapes — and reports rather than deletes an unmanaged plugin, and it
+leaves Codex's `[features] hooks = true` on because every other tool's Codex hooks depend on it:
+the key is not this tool's to switch off. One settings file holds both of an agent's hooks and is
+rewritten once, and install, status and remove each report **both** rows for it, so a missing row
+reads as a fault rather than as nothing installed.
+
+**The session-end capture is the same boundary with the same rules.** `hass-axi context end`
+records one entry per session — the directory, the date, and how many times each command ran,
+with a count of the ones that carried `--write` — and `context` reads the entry for its own
+directory back into the document it prints; `sessionlog.py` is the module and its Architecture
+bullet above carries the privacy rule. A read-only session records nothing and says so: the
+switch says this tool does not write, and the record is a write, so `context end` is classified
+`READ` and honours the switch inside instead — the one arrangement under which a read-only
+session still closes cleanly. Every failure — no payload, an unreadable transcript, an
+unwritable state file — records nothing and says so, because a hook that failed would be
+reported as the session failing to close. `setup hooks remove` deletes the file with the hooks.
 
 ## The command contract
 
