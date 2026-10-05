@@ -241,6 +241,12 @@ def _help_requested(command: Command, argv: list) -> bool:
     return False
 
 
+def _is_global_flag_token(token: str) -> bool:
+    """Whether ``token`` is a global flag."""
+    name = token.partition("=")[0]
+    return name in _VALUELESS_GLOBALS or name == "--timeout"
+
+
 def _prescan_mode(argv: list) -> str:
     """Decide the output mode from the whole invocation, before parsing.
 
@@ -273,9 +279,11 @@ def _split_globals(argv: list) -> tuple:
             index += 1
             if sep:
                 globals_["timeout"] = inline
-            elif index < len(argv):
+            elif index < len(argv) and not _is_global_flag_token(argv[index]):
                 globals_["timeout"] = argv[index]
                 index += 1
+            elif index < len(argv):
+                globals_["timeout"] = _MISSING_VALUE
             else:
                 globals_["timeout"] = _MISSING_VALUE
             continue

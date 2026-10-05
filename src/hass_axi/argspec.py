@@ -173,9 +173,16 @@ def parse(sub: Sub, argv: list, *, command: Command) -> Parsed:
             if name == "--timeout":
                 if has_inline:
                     result.globals["timeout"] = inline
-                elif index < len(argv):
+                elif index < len(argv) and not _is_flag_token(argv[index], declared):
                     result.globals["timeout"] = argv[index]
                     index += 1
+                elif index < len(argv):
+                    # Next token is a flag; --timeout has no value
+                    raise UsageError(
+                        "--timeout needs a value",
+                        help_lines=["Run `hass-axi --timeout 60 <command>`"],
+                        code="BAD_TIMEOUT",
+                    )
                 else:
                     raise UsageError(
                         "--timeout needs a value",
