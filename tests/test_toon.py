@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from hass_axi import toon
 from hass_axi.toon import encode
 
 
@@ -185,6 +186,24 @@ def test_keys_are_quoted_only_when_required():
     assert encode({"ok_key.dotted": 1}) == "ok_key.dotted: 1"
     assert encode({"needs-quote": 1}) == '"needs-quote": 1'
     assert encode({"9lead": 1}) == '"9lead": 1'
+
+
+def test_a_key_ending_in_a_newline_is_quoted():
+    """`$` also matches just before a trailing newline, so it let this key through bare.
+
+    Unquoted, the newline ends the line and the document reads back as a
+    different one.
+    """
+    assert encode({"name\n": 1}) == '"name\\n": 1'
+    assert encode({"name\n": [1, 2]}) == '"name\\n"[2]: 1,2'
+    assert encode([{"name\n": 1}, {"name\n": 2}]) == '[2]{"name\\n"}:\n  1\n  2'
+
+
+def test_a_numeric_looking_value_ending_in_a_newline_is_a_string_not_a_number():
+    """The numeric pattern carried the same anchor; the control-character rule hid it."""
+    assert toon._NUMERIC_LIKE.match("1\n") is None
+    assert toon._BARE_KEY.match("name\n") is None
+    assert encode({"a": "1\n"}) == 'a: "1\\n"'
 
 
 def test_array_header_keys_are_quoted_too():
