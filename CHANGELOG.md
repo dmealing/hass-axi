@@ -4,6 +4,17 @@ This project was published as `ha-axi` up to and including 0.7.1, and as `hass-a
 release after it. The entries below 0.7.1 describe `ha-axi`; their links point at the repository's
 old name, which GitHub redirects.
 
+## [0.10.0](https://github.com/dmealing/hass-axi/compare/v0.9.0...v0.10.0) (2026-10-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** `-v`, `-V` and `--version` print the bare version string in every output mode; `--version --json` no longer returns a JSON document. `area list` prints four default columns; pass `--fields` for the rest.
+
+### Bug Fixes
+
+* **cli:** print the bare version on a fast path and default area list to four fields ([9ba19c0](https://github.com/dmealing/hass-axi/commit/9ba19c0e5de0f6d7a1bd59e72ac5e502a6363718))
+
 ## [0.9.0](https://github.com/dmealing/hass-axi/compare/v0.8.0...v0.9.0) (2026-10-05)
 
 
