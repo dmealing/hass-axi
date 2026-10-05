@@ -3,7 +3,7 @@ description: List Home Assistant services, read one's fields, and call them
 subcommands[3]:
   list, get <domain.service>, call <domain.service>
 flags{list}:
-  --domain <name> (show the services in one domain)
+  --domain <name> (show the services in one domain), --fields <a,b,c> (from domain|services, or with --domain from service|name|fields|response|target)
 flags{get}:
   --fields <a,b,c> (from field|required|type|description|options|example|section), --full (do not truncate field descriptions)
 flags{call}:

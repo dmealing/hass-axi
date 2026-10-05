@@ -58,7 +58,6 @@ def reads(snapshot) -> dict:
         "api services full": ["api", "/services", "--full"],
         "doctor": ["doctor"],
         "context": ["context"],
-        "version": ["--version"],
     }
     return shapes
 
@@ -77,6 +76,21 @@ def test_every_read_agrees_with_itself_across_the_modes(house, snapshot):
         if human.code != 0 or not human.out.strip() or human.err:
             failures.append(f"{name} (human)")
     assert not failures, f"TOON and JSON disagree, or --human failed, for: {failures}"
+
+
+def test_the_version_is_the_same_bare_line_in_every_mode(house):
+    """It is not a document, so it is not in `reads`: a version probe compares
+    the line, and `--json` and `--human` must not dress it."""
+    lines = set()
+    for flag in ("-v", "-V", "--version"):
+        for mode in ([], ["--json"], ["--human"]):
+            result = house.run(flag, *mode)
+            assert result.code == 0 and result.err == "", result.cmd
+            lines.add(result.out)
+    assert len(lines) == 1, f"the version is spelled differently by flag or mode: {sorted(lines)}"
+    (line,) = lines
+    assert line.endswith("\n") and line.strip() == line[:-1]
+    assert all(part.isdigit() for part in line.strip().split(".")), line
 
 
 def test_the_mode_flag_works_wherever_it_is_put(house, snapshot):

@@ -18,18 +18,30 @@ from ._common import (
     plural,
     preview_help,
     preview_note,
+    project,
     reject_conflicting_flags,
     resolve_area,
     resolve_floor,
+    select_fields,
     write_access,
 )
+
+LIST_FIELDS = ["area_id", "name", "entities", "devices", "floor_id"]
+#: What an area is and how much it holds. The floor is one `--fields` away, and
+#: `area get` reports it with the icon and aliases.
+DEFAULT_LIST_FIELDS = ["area_id", "name", "entities", "devices"]
 
 COMMAND = Command(
     name="area",
     summary="Read and update the area registry over the WebSocket API",
     usage="usage: hass-axi area <subcommand> [flags]",
     subs=(
-        Sub(name="list", summary="List areas with their entity counts", access=READ),
+        Sub(
+            name="list",
+            access=READ,
+            summary="List areas with their entity and device counts",
+            flags=(Flag("--fields", "<a,b,c>", note=f"from {'|'.join(LIST_FIELDS)}"),),
+        ),
         Sub(
             name="get", args=("<id|name>",), summary="Show one area and what it holds", access=READ
         ),
@@ -67,6 +79,7 @@ COMMAND = Command(
     ),
     examples=(
         "hass-axi area list",
+        "hass-axi area list --fields area_id,name,floor_id",
         "hass-axi area get example_room",
         "hass-axi area create --name 'Example Room'",
         "hass-axi area create --name 'Example Room' --write",
@@ -113,6 +126,9 @@ def _entity_counts(entities: list, devices: list, areas: list) -> tuple:
 
 
 def _list(ctx, parsed):
+    # Before the first request: a mistyped field is a usage error whether or
+    # not the installation answers.
+    fields = select_fields(parsed.get("fields"), LIST_FIELDS, DEFAULT_LIST_FIELDS)
     with ctx.ws() as client:
         areas = client.run("area.list") or []
         entities = client.run("entity.list") or []
@@ -145,7 +161,7 @@ def _list(ctx, parsed):
     return {
         "count": plural(len(rows), "area"),
         "unassigned_entities": unassigned,
-        "areas": rows,
+        "areas": project(rows, fields),
         "help": HelpBlock(
             [
                 "Run `hass-axi entity list --area <id|name>` to see what one area holds",

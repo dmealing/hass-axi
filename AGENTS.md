@@ -132,7 +132,8 @@ that are neither JWT-shaped nor bearer-prefixed, and anything inside a binary.
   score. A rule nobody thought to write a test for reads as passing, which is how 0.3.0 shipped
   two failing cases while the README claimed strictness.
 - `output.py` — the single place anything reaches stdout, and therefore the only place redaction
-  has to hold. `HelpBlock` is the one deliberate departure from strict TOON: `help[N]:` blocks
+  has to hold. The one exception is `entry.py`, which answers a bare version flag before anything
+  else is imported and writes the package's version constant and nothing else. `HelpBlock` is the one deliberate departure from strict TOON: `help[N]:` blocks
   render one suggestion per line, matching the AXI standard and the sibling AXI CLIs, because the
   suggestions are command lines full of commas. Data structures stay strict TOON.
 - `rest.py` — REST over the standard library. `ws.py` — WebSocket over `websockets`' sync client,

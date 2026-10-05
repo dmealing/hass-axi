@@ -3,7 +3,7 @@ description: Read and update the area registry over the WebSocket API
 subcommands[4]:
   list, get <id|name>, create, update <id|name>
 flags{list}:
-  (none)
+  --fields <a,b,c> (from area_id|name|entities|devices|floor_id)
 flags{get}:
   (none)
 flags{create}:
@@ -20,6 +20,7 @@ note:
   deleting an area is deliberately not exposed here; use `hass-axi ws area.delete` if you mean it
 examples:
   hass-axi area list
+  hass-axi area list --fields area_id,name,floor_id
   hass-axi area get example_room
   hass-axi area create --name 'Example Room'
   hass-axi area create --name 'Example Room' --write

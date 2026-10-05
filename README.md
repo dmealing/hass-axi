@@ -109,10 +109,10 @@ really in, and the per-area counts plus `unassigned_entities` sum to the size of
 $ hass-axi area list
 count: 3 areas
 unassigned_entities: 12
-areas[3]{area_id,name,entities,devices,floor_id}:
-  example_hall,Example Hall,9,1,""
-  example_room,Example Room,2,0,""
-  example_study,Example Study,0,0,""
+areas[3]{area_id,name,entities,devices}:
+  example_hall,Example Hall,9,1
+  example_room,Example Room,2,0
+  example_study,Example Study,0,0
 help[3]:
   Run `hass-axi entity list --area <id|name>` to see what one area holds
   Run `hass-axi area update <id|name> --name '<name>'` to preview a rename, and add --write to send it
@@ -127,7 +127,8 @@ an error rather than a guess. A name is compared the way it is typed: case and a
 apostrophe (`’`, which a phone writes into its own name) do not matter, so `--search "example's"`
 finds it. A name that matches nothing is answered with the nearest ones that exist — `did you mean`
 — rather than with an offer to create what was mistyped. `entity get` and `area get` show one entry in full; `area get` also
-reports the icon, floor and aliases that `area list` leaves out.
+reports the icon, floor and aliases that `area list` leaves out by default — `area list --fields
+area_id,name,floor_id` adds the floor to the list.
 
 The typed write surface is `entity update` — `--name`, `--area` and `--icon`, each with a matching
 `--clear-*` that falls back to what the integration supplies, plus `--new-id` to rename the
@@ -481,7 +482,9 @@ what `hass-axi` is for.
   its attributes, with `--domain`, `--state`, `--search`, `--fields` and `--limit`, plus `--stale
   <age>` — entities of any domain not reported for at least that long, the generic form of the home
   view's stale-sensor count.
-- **`service list` / `service get`** — discover what an installation can be asked to do.
+- **`service list` / `service get`** — discover what an installation can be asked to do. `service
+  list --domain <name> --fields service,response,target` adds whether each service answers with a
+  payload and whether it takes a target.
 - **`template render`** — render a Jinja template server-side, from `--template`, `--template-file`
   or stdin. It sees every entity Home Assistant knows about.
 - **`api`** — any authenticated REST path, with `--field`, `--body` and `--query`. The escape hatch
@@ -603,6 +606,9 @@ help[1]:
 
 - `--human` renders aligned tables for a person.
 - `--json` emits raw JSON.
+- `-v`, `-V` and `--version` each print the bare version — the number and nothing else — and exit 0, in
+  every output mode. The bare flag is answered before the rest of the tool is loaded, so probing it
+  costs about what starting Python costs.
 - **Errors go to stdout too**, in the same structured shape, and carry the command that fixes
   them. stderr carries only diagnostics (`--debug`), which agents do not read.
 - Exit codes: `0` success — including idempotent no-ops — `1` error, `2` usage error. A read-only
@@ -1031,7 +1037,7 @@ GitHub Actions is disabled on this repository, so none of these workflows runs t
 | --- | --- | --- | --- |
 | `ci.yml` | self-hosted | push to `main`, nightly, manual | each section of `scripts/ci-local.sh`: leak scan, commit audit, lint, `pytest` on 3.9–3.12, generated-skill check |
 | `hygiene.yml` | `ubuntu-latest` | `pull_request`, including `edited` | the leak scan of the tree, and the two checks that read the pull request's own title and body |
-| `release.yml` | `ubuntu-latest` | push to `main`, manual | release-please, and the OIDC publish when a release PR merges |
+| `release.yml` | `ubuntu-latest` | push to `main`, manual | release-please, and an OIDC publish when a release PR merges |
 
 With Actions enabled, a pull request shows **one** hosted check, and that is deliberate. The leak scan is the
 gate that has to run before a human reads a diff; everything heavier runs on the maintainer's own
@@ -1044,18 +1050,21 @@ personal workstation, so a pull-request trigger would give any contributor code 
 ## Releasing
 
 Version bumps and the changelog are driven from conventional commits by
-[release-please](https://github.com/googleapis/release-please), which opens a release PR when a
-push to `main` carries user-facing commits. Merging that PR builds the distribution, smoke-tests
-the built wheel, and publishes to PyPI through
-[trusted publishing](https://docs.pypi.org/trusted-publishers/) — an OIDC exchange, so **no
-long-lived PyPI token exists in this repository or anywhere else**.
+[release-please](https://github.com/googleapis/release-please), which prepares a release PR when
+`main` carries user-facing commits.
 
-Trusted publishing requires a one-time configuration on PyPI by the repository owner (project
-`hass-axi`, owner `dmealing`, workflow `release.yml`, environment `pypi`) before the first publish
-succeeds. `hass-axi` is a new PyPI project, so that configuration is a *pending* publisher created
-before the first release; the trusted publisher registered for `ha-axi` does not carry over. The
-transitional `ha-axi` package under `legacy/ha-axi/` is not built by the workflow — see
-[Moving from `ha-axi`](#moving-from-ha-axi).
+**Releases are published by hand today.** GitHub Actions is disabled on this repository, so
+`release.yml` does not run: 0.8.0 and 0.9.0 were built, smoke-tested and uploaded to PyPI from the
+maintainer's workstation, authenticated with a PyPI API token. That token is held on that
+workstation and is in no file in this repository.
+
+`release.yml` describes the other route, which is not in use: with Actions enabled, merging the
+release PR builds the distribution, smoke-tests the built wheel, and publishes through
+[trusted publishing](https://docs.pypi.org/trusted-publishers/) — an OIDC exchange that needs no
+stored token. It requires a one-time configuration on PyPI by the repository owner (project
+`hass-axi`, owner `dmealing`, workflow `release.yml`, environment `pypi`); the trusted publisher
+registered for `ha-axi` does not carry over. The transitional `ha-axi` package under
+`legacy/ha-axi/` is not built by the workflow — see [Moving from `ha-axi`](#moving-from-ha-axi).
 
 ## Moving from `ha-axi`
 
