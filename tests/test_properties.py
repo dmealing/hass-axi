@@ -21,12 +21,12 @@ import pytest
 hypothesis = pytest.importorskip("hypothesis")
 toon_format = pytest.importorskip("toon_format")
 
+from axi_toolkit.toon import encode  # noqa: E402
 from hypothesis import HealthCheck, given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 from conftest import FAKE_TOKEN, FakeInstallation, FakeRestServer, FakeWsServer  # noqa: E402
 from hass_axi import cli, errors  # noqa: E402
-from hass_axi.toon import encode  # noqa: E402
 
 # --------------------------------------------------------------- the encoder
 

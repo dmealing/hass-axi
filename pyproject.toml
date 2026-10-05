@@ -19,7 +19,7 @@ classifiers = [
   "Topic :: Home Automation",
 ]
 dependencies = [
-  "axi-toolkit>=0.3.0",
+  "axi-toolkit>=0.4.2",
   "websockets>=13.0",
 ]
 

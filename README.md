@@ -927,10 +927,11 @@ suite does talk to a real Home Assistant, and is opt-in: see "The live suite" be
 
 Covered by tests:
 
-- the TOON encoder against the specification's rules — tabular, keyed tabular, list and inline
-  forms, quoting, escaping, delimiters, root forms — **and against the specification's own encode
-  fixtures**, every one of them, vendored byte-for-byte from
-  [`toon-format/spec`](https://github.com/toon-format/spec) and run on every `pytest`. The case
+- the TOON encoder **against the specification's own encode fixtures**, every one of them,
+  published by [`toon-format/spec`](https://github.com/toon-format/spec) and run on every
+  `pytest`. The encoder is the shared `axi-toolkit` library's, which also carries the fixtures
+  and the encoder's own rule-by-rule suite — tabular, keyed tabular, list and inline forms,
+  quoting, escaping, delimiters, root forms. The case
   count is asserted too, so a fixture that stops being collected fails the suite instead of
   quietly lowering the score;
 - every command's output shape, filters, field selection, limits and empty states;
@@ -1098,7 +1099,3 @@ name for the other tool.
 ## License
 
 MIT.
-
-`tests/fixtures/toon-spec/` vendors the TOON specification's conformance fixtures, which are MIT
-licensed and copyright their authors; the upstream licence, the commit they came from and the
-refresh recipe are recorded beside them in `PROVENANCE.md`.

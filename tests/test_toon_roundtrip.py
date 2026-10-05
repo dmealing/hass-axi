@@ -1,6 +1,6 @@
 """The encoder, read back by a decoder this project did not write.
 
-`tests/test_toon.py` and the conformance fixtures both state what the encoder
+The encoder's own suite and the conformance fixtures both state what the encoder
 should produce, which is the encoder's own account of itself. This file asks a
 different question -- does an independent implementation of the same
 specification read the output back to the value that went in -- on the
@@ -15,15 +15,14 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 
 import pytest
 
 toon_format = pytest.importorskip("toon_format")
 
-from hass_axi.toon import encode  # noqa: E402
+from axi_toolkit import toon_spec  # noqa: E402
+from axi_toolkit.toon import encode  # noqa: E402
 
-FIXTURES = Path(__file__).parent / "fixtures" / "toon-spec" / "encode"
 _HELP = re.compile(r"^(\s*)help\[(\d+)\]:\s*$")
 
 
@@ -52,12 +51,11 @@ def decode_document(text: str):
 
 
 def fixture_cases():
-    for path in sorted(FIXTURES.glob("*.json")):
-        for case in json.loads(path.read_text(encoding="utf-8"))["tests"]:
-            # Default options only: the tool never encodes with any other.
-            if case.get("shouldError") or case.get("options"):
-                continue
-            yield pytest.param(case["input"], id=f"{path.stem}:{case['name']}")
+    for case in toon_spec.cases():
+        # Default options only: the tool never encodes with any other.
+        if case.options:
+            continue
+        yield pytest.param(case.input, id=f"{case.file[:-5]}:{case.name}")
 
 
 @pytest.mark.parametrize("value", list(fixture_cases()))

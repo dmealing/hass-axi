@@ -1193,14 +1193,27 @@ def audit_range(rev_range, *, engine, root=".", stream=None, pull_requests="auto
     commits while commits were waiting, so the count is printed either way. The
     healthy no-op -- nothing since the tag -- and the broken one now read
     differently instead of both reading as success.
+
+    The other green failure is quieter still: a body whose unclosed override
+    block *parses*, so every count here reads healthy while the changelog entry
+    is an accidental paragraph. ``check`` cannot see that -- the parse is fine --
+    which is why the body is faulted wherever it is read, here as on the pull
+    request.
     """
     stream = sys.stdout if stream is None else stream
     commits = commits_since(rev_range, root=root)
     bodies, notes = resolve_bodies(commits, mode=pull_requests, root=root, slug=slug, stream=stream)
     dropped = []
     allowed = []
+    hijacked = []
     for sha, message in commits:
-        problems = check(message, engine=engine, pull_request_body=bodies.get(sha))
+        body = bodies.get(sha)
+        problems = check(message, engine=engine, pull_request_body=body)
+        faults = override_faults(body)
+        if faults:
+            # KNOWN_UNPARSEABLE says a lost *message* was accounted for
+            # elsewhere; it never granted a body permission to replace one.
+            hijacked.append((sha, message, faults))
         if not problems:
             continue
         if sha in KNOWN_UNPARSEABLE:
@@ -1214,12 +1227,14 @@ def audit_range(rev_range, *, engine, root=".", stream=None, pull_requests="auto
         print(f"  {note}", file=stream)
     print(f"  release-please would consider: {considered}", file=stream)
     print(f"  silently dropped:              {len(dropped)}", file=stream)
+    if hijacked:
+        print(f"  messages replaced by an unclosed override block: {len(hijacked)}", file=stream)
     if allowed:
         print(f"  known-unparseable, accounted for: {len(allowed)}", file=stream)
         for sha in allowed:
             print(f"    {sha[:12]} {KNOWN_UNPARSEABLE[sha].splitlines()[0]}", file=stream)
 
-    if not dropped:
+    if not dropped and not hijacked:
         if commits and considered == 0:
             print(
                 "  Nothing here for release-please to read: every commit in the range is one of\n"
@@ -1236,6 +1251,14 @@ def audit_range(rev_range, *, engine, root=".", stream=None, pull_requests="auto
             "nothing, and a merged fix left unpublished.",
             file=stream,
         )
+    for sha, message, faults in hijacked:
+        subject = message.splitlines()[0] if message.splitlines() else "(empty)"
+        print(
+            f"\ncommitcheck: {sha[:12]} {subject} -- the body silently replaced this message",
+            file=stream,
+        )
+        for line in faults:
+            print(f"  {line}", file=stream)
     for sha, message, problems in dropped:
         subject = message.splitlines()[0] if message.splitlines() else "(empty)"
         report(problems, f"{sha[:12]} {subject}", stream=stream)
@@ -1275,10 +1298,15 @@ def audit_commit(sha, *, engine, root=".", stream=None, pull_requests="auto", sl
     print(f"  release-please parses: {source}", file=stream)
     print(f"  which starts:          {subject[:76]}", file=stream)
     problems = check(message, engine=engine, pull_request_body=body)
-    if not problems:
+    faults = override_faults(body)
+    if not problems and not faults:
         print("  verdict: readable", file=stream)
         return 0
-    return report(problems, f"{resolved_sha[:12]} {message.splitlines()[0]}", stream=stream)
+    for line in faults:
+        print(f"  {line}", file=stream)
+    if problems:
+        return report(problems, f"{resolved_sha[:12]} {message.splitlines()[0]}", stream=stream)
+    return 1
 
 
 def audit_pull_request(number, *, engine, root=".", stream=None, slug=None):

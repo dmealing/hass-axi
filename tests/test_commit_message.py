@@ -704,6 +704,82 @@ def test_the_audit_fails_on_a_perfect_message_whose_body_replaces_it(tmp_path, c
     assert "release-please would consider: 0" in out
 
 
+def test_the_audit_fails_when_the_replacing_text_parses(tmp_path, capsys, monkeypatch):
+    """The quiet variant of the hijack, which the parse cannot see at all.
+
+    An unclosed block whose text happens to parse leaves every count healthy --
+    release-please really can read *something* -- and the something is an
+    accidental paragraph. The fault lives in the body, not the parse, so the
+    post-merge audit applies the same rule the pull request check does.
+    """
+    root = _repo(tmp_path, ["fix: a real fix\n\nbody text\n"])
+    head = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    body = (
+        "A paragraph explaining that a body naming "
+        f"{commitcheck.OVERRIDE_START}\n"
+        "\n"
+        "fix: the paragraph after the mention, which parses\n"
+    )
+    _with_bodies(monkeypatch, {head: body})
+    assert not commitcheck.check("fix: a real fix\n\nbody text\n", pull_request_body=body)
+    assert commitcheck.audit_range("v1.0.0..HEAD", engine="python", root=root) == 1
+    out = capsys.readouterr().out
+    assert "silently dropped:              0" in out
+    assert "messages replaced by an unclosed override block: 1" in out
+    assert "the body silently replaced this message" in out
+
+
+def test_an_allowance_never_covers_a_replaced_message(tmp_path, capsys, monkeypatch):
+    """KNOWN_UNPARSEABLE exempts a loss that is accounted for, and nothing else.
+
+    The entry says the *message's* content was restated elsewhere. A body that
+    replaces the message with an accidental paragraph is a different,
+    unaccounted loss, and honouring the allowance for it would put the blind
+    spot back one layer up.
+    """
+    root = _repo(tmp_path, ["fix: a real fix\n\nbody text\n"])
+    head = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    _with_bodies(monkeypatch, {head: f"prose {commitcheck.OVERRIDE_START} block from the body"})
+    original = commitcheck.KNOWN_UNPARSEABLE.copy()
+    try:
+        commitcheck.KNOWN_UNPARSEABLE[head] = "the message is accounted for elsewhere"
+        assert commitcheck.audit_range("v1.0.0..HEAD", engine="python", root=root) == 1
+    finally:
+        commitcheck.KNOWN_UNPARSEABLE.clear()
+        commitcheck.KNOWN_UNPARSEABLE.update(original)
+    out = capsys.readouterr().out
+    assert "known-unparseable, accounted for: 1" in out
+    assert "the body silently replaced this message" in out
+
+
+def test_commit_audit_reports_a_replacement_even_when_it_parses(tmp_path, capsys, monkeypatch):
+    """`--commit` answers the factual question, so an allowance is not the whole answer.
+
+    The single-commit audit honours no allowances at all, and the replacement
+    fault is not a parse question: a readable block that was never meant to be
+    the message is still the wrong string becoming the changelog entry.
+    """
+    root = _repo(tmp_path, ["fix: a real fix\n\nbody text\n"])
+    head = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    body = (
+        "A paragraph explaining that a body naming "
+        f"{commitcheck.OVERRIDE_START}\n"
+        "\n"
+        "fix: the paragraph after the mention, which parses\n"
+    )
+    _with_bodies(monkeypatch, {head: body})
+    assert commitcheck.audit_commit(head, engine="python", root=root) == 1
+    out = capsys.readouterr().out
+    assert "verdict: readable" not in out
+    assert "closes the block" in out
+
+
 def test_the_audit_says_so_when_it_could_not_read_the_bodies(tmp_path, capsys, offline):
     """A reduced check that reads as a full one is how this failed the first time."""
     root = _repo(tmp_path, ["fix: a real fix\n\nbody text\n"])

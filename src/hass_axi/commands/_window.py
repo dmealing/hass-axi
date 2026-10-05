@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from ..errors import UsageError
 
 #: `30m`, `24h`, `7d`, `2w`, optionally with a decimal: `1.5h`.
-_AGE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([smhdw])\s*$", re.IGNORECASE)
+_AGE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([smhdw])\s*\Z", re.IGNORECASE)
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
 
 DEFAULT_START = "24h"

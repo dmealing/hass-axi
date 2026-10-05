@@ -391,7 +391,7 @@ def compute_codex_config_update(content: str) -> tuple:
     saw_features_array = False
 
     for index, line in enumerate(lines):
-        section = re.match(r"^\s*(\[{1,2})([^\]]+)(\]{1,2})\s*(?:#.*)?$", line)
+        section = re.match(r"^\s*(\[{1,2})([^\]]+)(\]{1,2})\s*(?:#.*)?\Z", line)
         if section:
             opener, name, closer = section.group(1), section.group(2).strip(), section.group(3)
             if len(opener) != len(closer):
@@ -408,7 +408,7 @@ def compute_codex_config_update(content: str) -> tuple:
             continue
         if not in_features:
             continue
-        if re.match(r"^\s*hooks\s*=\s*true\s*(?:#.*)?$", line):
+        if re.match(r"^\s*hooks\s*=\s*true\s*(?:#.*)?\Z", line):
             return content, False, None
         if re.match(r"^\s*hooks\s*=", line):
             lines[index] = "hooks = true"

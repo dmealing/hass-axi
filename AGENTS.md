@@ -56,11 +56,11 @@ anything fails the check rather than passing silently. If the scanner flags a li
 `leakcheck: allow=<rule>` on that line — scoped to that one rule, never blanket. Do not weaken a
 rule to make a commit pass, and do not bypass the hooks.
 
-**A file that cannot carry a marker** — JSON has no comment syntax, and vendored third-party data
-must stay byte-for-byte — is exempted in `PATH_ALLOWANCES` in `scripts/leakcheck.py` instead, per
+**A file that cannot carry a marker** — a commit message kept byte-for-byte as evidence stops
+being the message once it is edited — is exempted in `PATH_ALLOWANCES` in `scripts/leakcheck.py` instead, per
 path *and* per rule, and `--rules` prints the table so the exemption is visible where the rules
-are. There is one entry today: the vendored TOON fixture whose backslash-escaping case is a
-synthetic Windows drive path. `tests/test_leakcheck.py` re-scans each exempted file with the table
+are. The entries today are the vendored commit messages under `tests/fixtures/commit-messages/`,
+each for the no-reply address in its co-author trailer. `tests/test_leakcheck.py` re-scans each exempted file with the table
 switched off and asserts the rules that fire are exactly the ones the entry names — an entry that
 has outlived its cause fails the suite rather than quietly covering something new.
 
@@ -112,8 +112,8 @@ Three things about that scan are load-bearing:
 
 `leakcheck.py` borrows `commitcheck.py`'s GitHub reader rather than growing its own — same token
 resolution, same slug resolution, same error taxonomy — and imports it at the point of use so the
-hooks never pay for it. `commitcheck.py` is byte-identical with the sibling project's copy and must
-stay that way: this reuse deliberately runs one way only.
+hooks never pay for it. `commitcheck.py` is byte-identical with the sibling project's copy apart from
+`KNOWN_UNPARSEABLE` and must stay that way: this reuse deliberately runs one way only.
 
 **Coverage is bounded, and the README says so.** Do not restore any claim that the guard makes
 review unnecessary: it narrows how a leak can happen, and misses generic public hostnames, secrets
@@ -121,16 +121,17 @@ that are neither JWT-shaped nor bearer-prefixed, and anything inside a binary.
 
 ## Architecture
 
-- `toon.py` — a strict TOON encoder (spec v4.1). Encoding happens **only** at the output boundary;
-  command modules return plain JSON-shaped dicts. Do not loosen it to make output prettier. Two
-  suites cover it and they are not interchangeable: `tests/test_toon.py` states the behaviour in
-  this project's words, and `tests/test_toon_conformance.py` runs the specification's own encode
-  fixtures — every one of them, vendored byte-for-byte from `toon-format/spec` under
-  `tests/fixtures/toon-spec/` (MIT; provenance, checksums and the refresh recipe live in
-  `PROVENANCE.md` beside them). `CASE_COUNT` there is the only place the case count is written,
-  and it is asserted, so a fixture that stops being collected fails instead of shrinking the
-  score. A rule nobody thought to write a test for reads as passing, which is how 0.3.0 shipped
-  two failing cases while the README claimed strictness.
+- `axi_toolkit.toon` — a strict TOON encoder (spec v4.1), imported by `output.py` and **not in this
+  repository**: this project's own copy was deleted, because three byte-identical copies across the
+  two AXI CLIs and the shared library is how one regular-expression defect lived in all three.
+  Encoding happens **only** at the output boundary; command modules return plain JSON-shaped dicts.
+  Do not loosen it to make output prettier, and fix it in the library rather than around it here.
+  The encoder's own suite lives in the library's repository and the specification's encode
+  fixtures ship inside the package; `tests/test_toon_conformance.py` runs them through its rig
+  (`toon_spec.run`) against the encoder `output.py` actually imports. `CASE_COUNT` there is the
+  only place the case count is written, and it is asserted, so a fixture that stops being
+  collected fails instead of shrinking the score. A rule nobody thought to write a test for reads
+  as passing, which is how 0.3.0 shipped two failing cases while the README claimed strictness.
 - `output.py` — the single place anything reaches stdout, and therefore the only place redaction
   has to hold. The one exception is `entry.py`, which answers a bare version flag before anything
   else is imported and writes the package's version constant and nothing else. `HelpBlock` is the one deliberate departure from strict TOON: `help[N]:` blocks
@@ -229,9 +230,9 @@ double are this repository's own and stay — they are the evidence that the swa
 behaviour, and the capability rule that matters most to this tool is still exercised end to end by
 `test_a_service_with_an_upstream_fallback_is_not_gated`.
 
-**The floor is `>=0.3.0` because that is the first release containing the module.** It is a floor
-and not a pin, so the command-path suite is what checks the reader still reads the way this tool
-needs it to.
+**The floor is `>=0.4.2` because that is the first release whose encoder quotes a key ending in a
+newline**; the reader itself arrived in 0.3.0. It is a floor and not a pin, so the command-path
+suite is what checks the reader still reads the way this tool needs it to.
 
 **Two direct dependencies, one added to the installed closure, and that is measured rather than
 asserted.** `axi-toolkit` declares no runtime dependency of its own — its `ha` extra is empty,
@@ -1043,9 +1044,9 @@ the job.
 machine. The cost is that the prose here cannot quote the dangerous command literally — describe
 it, the way this paragraph does.
 
-**Do not edit a vendored conformance fixture.** If one fails, the encoder is wrong until proven
-otherwise; the checksum test will catch the edit anyway. Refreshing them from upstream is its own
-commit, separate from any encoder change made to satisfy it, and `PROVENANCE.md` carries the recipe.
+**The conformance fixtures are the shared library's, not this repository's.** If one fails, the
+encoder is wrong until proven otherwise, and both the fixtures and the encoder are fixed there;
+the checksum test here reports a fixture that no longer matches what the library recorded.
 
 **Tests never need a live installation or a live token, and must not start to** — the opt-in
 `tests/live/` suite, deselected by default and run only by `scripts/live-test.sh`, is the one
@@ -1435,7 +1436,8 @@ worth the history.
 
 **`scripts/commitcheck.py` and `vendor/conventional-commits-parser/` are shared with the sibling AXI
 project, and are byte-identical apart from `KNOWN_UNPARSEABLE`.** Two copies that behave differently
-are worse than one that is wrong — the same rule `toon.py` is held to. A change to the grammar
+are worse than one that is wrong, and no check compares them: this copy once fell behind the
+sibling's audit paths while this paragraph said otherwise. A change to the grammar
 transcription, the engines or the audit belongs in both repositories in the same sitting.
 
 ## Maintaining this file

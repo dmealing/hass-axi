@@ -414,7 +414,7 @@ def resolve_floor(floors: list, needle: str) -> dict:
     )
 
 
-_ICON = re.compile(r"^[a-z0-9_-]+:[a-z0-9_-]+$")
+_ICON = re.compile(r"^[a-z0-9_-]+:[a-z0-9_-]+\Z")
 
 
 def check_icon(value) -> None:
