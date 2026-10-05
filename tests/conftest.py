@@ -13,6 +13,7 @@ placeholder, so nothing here describes any particular installation.
 from __future__ import annotations
 
 import json
+import os
 import re
 import socket
 import threading
@@ -2094,6 +2095,22 @@ class FakeWsServer:
     def stop(self):
         if self._server is not None:
             self._server.shutdown()
+            if self._thread is not None:
+                self._thread.join(timeout=5)
+            # The sync Server owns an os.pipe() pair used to interrupt
+            # accept() on shutdown; shutdown() does not close it, and
+            # leaking two descriptors per start/stop cycle exhausts the
+            # suite's file-descriptor budget over ~2,200 tests.
+            for attr in ("shutdown_watcher", "shutdown_notifier"):
+                fd = getattr(self._server, attr, None)
+                if fd is not None:
+                    try:
+                        if hasattr(fd, "close"):
+                            fd.close()
+                        else:
+                            os.close(fd)
+                    except OSError:
+                        pass
 
     @property
     def port(self):
