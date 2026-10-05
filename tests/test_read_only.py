@@ -240,7 +240,7 @@ def test_a_write_over_the_websocket_is_refused_and_nothing_reaches_the_installat
     guard proven on one says nothing about the other.
     """
     code, out = run_cli(
-        ["entity", "update", "light.example_ceiling", "--name", "Reading Lamp"],
+        ["entity", "update", "--write", "light.example_ceiling", "--name", "Reading Lamp"],
         enabled(ws_env),
     )
     assert code == 2
@@ -261,7 +261,7 @@ def test_the_same_rest_write_succeeds_with_the_variable_unset(run_cli, rest_env,
 
 def test_the_same_websocket_write_succeeds_with_the_variable_unset(run_cli, ws_env, ws_server):
     code, _ = run_cli(
-        ["entity", "update", "light.example_ceiling", "--name", "Reading Lamp"], ws_env
+        ["entity", "update", "--write", "light.example_ceiling", "--name", "Reading Lamp"], ws_env
     )
     assert code == 0
     assert [c for c in ws_server.received if c["type"] == "config/entity_registry/update"]
@@ -278,7 +278,7 @@ def test_a_device_registry_write_is_refused_before_it_reaches_the_installation(
     it is invisible from the declaration alone.
     """
     code, out = run_cli(
-        ["device", "update", "device_two", "--name", "Hall Ceiling"], enabled(ws_env)
+        ["device", "update", "--write", "device_two", "--name", "Hall Ceiling"], enabled(ws_env)
     )
     assert code == 2
     assert f"code: {CODE}" in out
@@ -288,7 +288,9 @@ def test_a_device_registry_write_is_refused_before_it_reaches_the_installation(
 
 
 def test_the_same_device_write_succeeds_with_the_variable_unset(run_cli, ws_env, ws_server):
-    code, _ = run_cli(["device", "update", "device_two", "--name", "Hall Ceiling"], ws_env)
+    code, _ = run_cli(
+        ["device", "update", "--write", "device_two", "--name", "Hall Ceiling"], ws_env
+    )
     assert code == 0
     assert [c for c in ws_server.received if c["type"] == "config/device_registry/update"]
 
@@ -296,7 +298,7 @@ def test_the_same_device_write_succeeds_with_the_variable_unset(run_cli, ws_env,
 def test_clearing_a_device_field_is_a_write_too(run_cli, ws_env, ws_server):
     """`--clear-name` and `--clear-area` remove data, so neither is a read."""
     for flag in ("--clear-name", "--clear-area"):
-        code, out = run_cli(["device", "update", "device_two", flag], enabled(ws_env))
+        code, out = run_cli(["device", "update", "--write", "device_two", flag], enabled(ws_env))
         assert code == 2, flag
         assert f"code: {CODE}" in out
     assert ws_server.received == []
@@ -535,7 +537,7 @@ def test_any_non_empty_value_enables_the_gate(run_cli, ws_env, ws_server, value)
     house writable while an operator believes it is not.
     """
     code, _ = run_cli(
-        ["entity", "update", "light.example_ceiling", "--name", "Reading Lamp"],
+        ["entity", "update", "--write", "light.example_ceiling", "--name", "Reading Lamp"],
         {**ws_env, ENV_VAR: value},
     )
     assert code == 2
@@ -545,7 +547,7 @@ def test_any_non_empty_value_enables_the_gate(run_cli, ws_env, ws_server, value)
 @pytest.mark.parametrize("value", ["", "   ", "\t"])
 def test_an_empty_value_is_the_same_as_unset(run_cli, ws_env, value):
     code, _ = run_cli(
-        ["entity", "update", "light.example_ceiling", "--name", "Reading Lamp"],
+        ["entity", "update", "--write", "light.example_ceiling", "--name", "Reading Lamp"],
         {**ws_env, ENV_VAR: value},
     )
     assert code == 0
@@ -556,7 +558,8 @@ def test_an_empty_value_is_the_same_as_unset(run_cli, ws_env, value):
 
 def test_the_refusal_names_the_command_the_variable_and_a_way_forward(run_cli, ws_env):
     code, out = run_cli(
-        ["entity", "update", "light.example_ceiling", "--name", "Reading Lamp"], enabled(ws_env)
+        ["entity", "update", "--write", "light.example_ceiling", "--name", "Reading Lamp"],
+        enabled(ws_env),
     )
     assert code == 2
     assert "hass-axi entity update" in out
@@ -578,7 +581,8 @@ def test_a_refusal_is_distinguishable_from_a_rejected_token(run_cli, rest_env, r
 
 def test_the_refusal_is_reported_on_stdout_and_stderr_stays_clean(run_cli, ws_env, capsys):
     run_cli(
-        ["entity", "update", "light.example_ceiling", "--name", "Reading Lamp"], enabled(ws_env)
+        ["entity", "update", "--write", "light.example_ceiling", "--name", "Reading Lamp"],
+        enabled(ws_env),
     )
     assert capsys.readouterr().err == ""
 
@@ -622,7 +626,7 @@ def test_the_pre_rename_variable_still_enables_the_gate(run_cli, ws_env, ws_serv
     from hass_axi.cli import main
 
     code = main(
-        ["entity", "update", "light.example_ceiling", "--name", "Renamed"],
+        ["entity", "update", "--write", "light.example_ceiling", "--name", "Renamed"],
         environ={**ws_env, LEGACY_VAR: "1"},
     )
     captured = capsys.readouterr()

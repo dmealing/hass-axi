@@ -711,8 +711,11 @@ def test_remove_takes_out_what_install_wrote_and_is_idempotent(tmp_path):
         "codex-features": "kept",
         "opencode": "removed",
     }
-    assert read(tmp_path / ".claude" / "settings.json") == {}
-    assert read(tmp_path / ".codex" / "hooks.json") == {}
+    # Nothing but this tool's hooks was in either file, so neither stays behind
+    # as an empty object: a home that had no files before the install has none
+    # of these after the removal.
+    assert not (tmp_path / ".claude" / "settings.json").exists()
+    assert not (tmp_path / ".codex" / "hooks.json").exists()
     assert not (tmp_path / ".config" / "opencode" / "plugins" / "axi-hass-axi.js").exists()
     # Shared with every other tool that installs a Codex hook, so it stays.
     assert "hooks = true" in (tmp_path / ".codex" / "config.toml").read_text(encoding="utf-8")
@@ -786,7 +789,7 @@ def test_remove_takes_out_an_entry_an_earlier_release_wrote(tmp_path):
         tmp_path, {"hooks": {"SessionStart": [{"matcher": "", "hooks": [unmarked, renamed]}]}}
     )
     assert statuses(hooks.remove(tmp_path))["claude-code"] == "removed"
-    assert read(settings) == {}
+    assert not settings.exists()
 
 
 def test_the_setup_command_installs_reports_and_removes(run_cli, tmp_path):

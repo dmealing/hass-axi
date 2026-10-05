@@ -27,6 +27,15 @@ MODE_JSON = "json"
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}")
 _BEARER = re.compile(r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]{8,}")
 
+#: A credential carried in a URL's query string. Home Assistant signs camera
+#: and media URLs this way (`entity_picture: /api/camera_proxy/...?token=...`).
+_QUERY_TOKEN = re.compile(r"(?i)([?&](?:token|access_token|authsig)=)[^&\s\"'<>]+")
+
+#: Keys whose value is a credential wherever they appear. Home Assistant puts
+#: an `access_token` in every camera's attributes; it is not this tool's
+#: credential, but the output lands in transcripts and logs all the same.
+SECRET_KEYS = frozenset({"access_token", "refresh_token"})
+
 _secrets: set = set()
 
 
@@ -57,7 +66,26 @@ def redact(text: str) -> str:
     for secret in sorted(_secrets, key=len, reverse=True):
         text = text.replace(secret, REDACTED)
     text = _BEARER.sub(lambda m: m.group(1) + REDACTED, text)
+    text = _QUERY_TOKEN.sub(lambda m: m.group(1) + REDACTED, text)
     return _JWT.sub(REDACTED, text)
+
+
+def mask(doc):
+    """Replace the value of every :data:`SECRET_KEYS` key in a document.
+
+    By key rather than by shape, because these values have none: a camera's
+    access token is 64 hex characters, which is also what a hash looks like.
+    """
+    if isinstance(doc, dict):
+        return {
+            key: REDACTED
+            if key in SECRET_KEYS and isinstance(value, str) and value
+            else mask(value)
+            for key, value in doc.items()
+        }
+    if isinstance(doc, list):
+        return [mask(item) for item in doc]
+    return doc
 
 
 class HelpBlock:
@@ -89,6 +117,9 @@ def truncate(text: str, limit: int, hint: str) -> tuple:
     value fits. Large fields are previewed rather than dropped so the agent can
     tell whether fetching the rest is worth a second call.
     """
+    # Redacted before it is cut: a cut that lands inside a credential leaves a
+    # fragment no rule recognises, and the boundary's own pass comes too late.
+    text = redact(text)
     if len(text) <= limit:
         return text, ""
     return f"{text[:limit]}... (truncated, {len(text)} chars total)", hint
@@ -196,7 +227,7 @@ def _scalar(value) -> str:
 def write(doc, mode: str = MODE_TOON, stream=None) -> None:
     """Render, redact and print a document on stdout."""
     stream = sys.stdout if stream is None else stream
-    text = redact(render(doc, mode))
+    text = redact(render(mask(doc), mode))
     if text:
         stream.write(text + "\n")
     stream.flush()

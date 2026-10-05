@@ -1,0 +1,5 @@
+error: no entity with id Example Reading Lamp (an entity id has the form domain.object_id)
+code: NO_SUCH_ENTITY
+class: not_found
+help[1]:
+  Run `hass-axi state list --search 'Example Reading Lamp'` to find it by name

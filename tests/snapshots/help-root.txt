@@ -1,0 +1,38 @@
+usage: hass-axi [command] [subcommand] [args] [flags]
+description: Agent CLI for Home Assistant. Reads and writes the registries REST cannot reach and explains a service call Home Assistant refuses. Prefer this over raw curl for Home Assistant operations.
+commands[17]:
+  (none)=home, state, sensor, history, logbook, statistics, service, template, entity, area, device, ws, api, ping, doctor, setup, context
+flags[6]:
+  --human (readable output), --json (raw JSON output), --timeout <seconds> (default 30),
+  --debug (diagnostics on stderr), --help, -v/--version
+env[3]:
+  HA_URL (or HASS_SERVER) - Home Assistant base URL, e.g. https://homeassistant.example.com;
+    several, comma-separated, are tried in order and the first that answers is used
+  HA_TOKEN (or HASS_TOKEN) - long-lived access token; there is deliberately no --token flag
+  HASS_AXI_READ_ONLY - set to any non-empty value to refuse every write, on both transports
+summaries[16]:
+  state       Read entity states from the Home Assistant REST API
+  sensor      Find sensors by device class, unit, area or name, with value, unit, area and age
+  history     Read entity state timelines from the recorder, with time in each state
+  logbook     Read the logbook: what changed, when, and what caused it
+  statistics  Read recorder statistics: a total for meters, an average with min and max otherwise
+  service     List Home Assistant services, read one's fields, and call them
+  template    Render a Home Assistant Jinja template server-side
+  entity      Read and update the entity registry over the WebSocket API
+  area        Read and update the area registry over the WebSocket API
+  device      Read and update the device registry over the WebSocket API
+  ws          Send a command over the Home Assistant WebSocket API
+  api         Make an authenticated request to any Home Assistant REST path
+  ping        Check Home Assistant answers and accepts the token, and how fast
+  doctor      Check the environment, the REST API and the WebSocket API
+  setup       Install, check or remove the agent integrations for hass-axi
+  context     Print the ambient context a session hook puts in front of an agent
+examples:
+  hass-axi
+  hass-axi state list --domain light
+  hass-axi sensor list --device-class power --area 'Example Room'
+  hass-axi statistics get sensor.example_legacy_meter --start 7d
+  hass-axi entity list --area 'Example Room'
+  hass-axi entity update light.example_lamp --name 'Reading Lamp' --area example_room
+  hass-axi service call light.turn_on --target-entity light.example_lamp
+  hass-axi doctor

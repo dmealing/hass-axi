@@ -7,6 +7,7 @@ that guessed wrong corrects itself in one turn rather than two.
 
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -54,6 +55,10 @@ class Flag:
     default: Any = None
     boolean: bool = False
     note: str = ""
+    #: The value is free text that may itself begin with `--` (a template, a
+    #: display name). Every other flag's value cannot, so a declared flag in
+    #: the value's position is a missing value rather than a value.
+    free_text: bool = False
 
     @property
     def takes_value(self) -> bool:
@@ -168,9 +173,16 @@ def parse(sub: Sub, argv: list, *, command: Command) -> Parsed:
             if name == "--timeout":
                 if has_inline:
                     result.globals["timeout"] = inline
-                elif index < len(argv):
+                elif index < len(argv) and not _is_flag_token(argv[index], declared):
                     result.globals["timeout"] = argv[index]
                     index += 1
+                elif index < len(argv):
+                    # Next token is a flag; --timeout has no value
+                    raise UsageError(
+                        "--timeout needs a value",
+                        help_lines=["Run `hass-axi --timeout 60 <command>`"],
+                        code="BAD_TIMEOUT",
+                    )
                 else:
                     raise UsageError(
                         "--timeout needs a value",
@@ -183,7 +195,8 @@ def parse(sub: Sub, argv: list, *, command: Command) -> Parsed:
 
         flag = declared.get(name)
         if flag is None:
-            raise _unknown_flag(name, sub, command)
+            following = inline if has_inline else (argv[index] if index < len(argv) else "")
+            raise _unknown_flag(name, sub, command, following)
 
         if flag.boolean:
             if has_inline and inline.lower() in ("false", "0", "no"):
@@ -195,12 +208,24 @@ def parse(sub: Sub, argv: list, *, command: Command) -> Parsed:
         if has_inline:
             value = inline
         else:
-            if index >= len(argv):
+            # A value-taking flag followed by another flag has no value: taking
+            # `--json` as a domain name answers "0 found" at exit 0 and eats the
+            # output mode the caller asked for. `--flag=--value` still passes one.
+            swallows_a_flag = (
+                index < len(argv) and not flag.free_text and _is_flag_token(argv[index], declared)
+            )
+            if index >= len(argv) or swallows_a_flag:
+                help_lines = [
+                    f"Run `{invocation(command, sub)} {name} {flag.metavar or '<value>'}`"
+                ]
+                if swallows_a_flag:
+                    help_lines.append(
+                        f"`{argv[index]}` is a flag, so it was not taken as the value; "
+                        f"write `{name}={argv[index]}` if that really is the value"
+                    )
                 raise UsageError(
                     f"{name} needs a value",
-                    help_lines=[
-                        f"Run `{invocation(command, sub)} {name} {flag.metavar or '<value>'}`"
-                    ],
+                    help_lines=help_lines,
                     code="MISSING_VALUE",
                 )
             value = argv[index]
@@ -215,6 +240,12 @@ def parse(sub: Sub, argv: list, *, command: Command) -> Parsed:
     return result
 
 
+def _is_flag_token(token: str, declared: dict) -> bool:
+    """Whether ``token`` is a flag this subcommand would otherwise have parsed."""
+    name = token.partition("=")[0]
+    return name in declared or name in GLOBAL_FLAGS
+
+
 def invocation(command: Command, sub: Sub) -> str:
     """How to spell one subcommand back at the caller.
 
@@ -227,40 +258,86 @@ def invocation(command: Command, sub: Sub) -> str:
     return f"hass-axi {command.name} {sub.name}"
 
 
+def _label(command: Command, sub: Sub) -> str:
+    """One subcommand's name as an error message spells it: `device list`, `ping`."""
+    return invocation(command, sub)[len("hass-axi ") :]
+
+
+def _usage_line(command: Command, sub: Sub) -> str:
+    return " ".join([invocation(command, sub), *sub.args])
+
+
 def _check_positionals(sub: Sub, command: Command, values: list) -> None:
     required = [a for a in sub.args if a.startswith("<")]
     if len(values) < len(required):
         missing = required[len(values)]
         raise UsageError(
             f"{invocation(command, sub)} needs {missing}",
-            help_lines=[f"Run `{invocation(command, sub)} {' '.join(sub.args)}`"],
+            help_lines=[f"Run `{_usage_line(command, sub)}`"],
             code="MISSING_ARGUMENT",
         )
     # A trailing `[name...]` takes any number of further values.
     variadic = bool(sub.args) and sub.args[-1].endswith("...]")
     if len(values) > len(sub.args) and not variadic:
         extra = values[len(sub.args)]
+        help_lines = [f"Run `{_usage_line(command, sub)}`"]
+        # A subcommand that takes its subject through a required flag is the
+        # one where a bare positional is most likely that subject, so name the
+        # flag rather than repeating a usage line with nothing in it.
+        required_flag = next((f for f in sub.flags if f.note == "required"), None)
+        if required_flag is not None and not sub.args:
+            help_lines = [
+                f"`{_label(command, sub)}` takes no positional argument; "
+                f"pass it with {required_flag.name}",
+                f"Run `{invocation(command, sub)} {required_flag.name} {shlex.quote(extra)}`",
+            ]
         raise UsageError(
-            f"unexpected argument {extra!r} for `{command.name} {sub.name}`",
-            help_lines=[f"Run `{invocation(command, sub)} {' '.join(sub.args)}`"],
+            f"unexpected argument {extra!r} for `{_label(command, sub)}`",
+            help_lines=help_lines,
             code="UNEXPECTED_ARGUMENT",
         )
 
 
-def _unknown_flag(name: str, sub: Sub, command: Command):
-    replacement = RENAMED.get(name)
+#: Flags that ask for an output mode under another tool's spelling. The mode is
+#: a global flag here, so the answer depends on the value that came with it.
+_MODE_GUESSES = ("--format", "--output", "-o")
+_MODE_VALUES = {
+    "json": "--json",
+    "human": "--human",
+    "text": "--human",
+    "table": "--human",
+}
+
+
+def _unknown_flag(name: str, sub: Sub, command: Command, following: str = ""):
+    label = _label(command, sub)
     valid = [flag.name for flag in sub.flags]
+    wanted = following.strip().lower()
+    if name in _MODE_GUESSES and (wanted in _MODE_VALUES or wanted == "toon"):
+        if wanted == "toon":
+            return UsageError(
+                f"unknown flag {name} for `{label}`; TOON is already the default output",
+                help_lines=[f"Run `{invocation(command, sub)}` without {name}"],
+                code="UNKNOWN_FLAG",
+            )
+        mode_flag = _MODE_VALUES[wanted]
+        return UsageError(
+            f"unknown flag {name} for `{label}`; use {mode_flag} instead",
+            help_lines=[f"Run `{invocation(command, sub)} {mode_flag}`"],
+            code="UNKNOWN_FLAG",
+        )
+    replacement = RENAMED.get(name)
     if replacement and replacement in valid:
         return UsageError(
-            f"unknown flag {name} for `{command.name} {sub.name}`; use {replacement} instead",
+            f"unknown flag {name} for `{label}`; use {replacement} instead",
             help_lines=[f"Run `{invocation(command, sub)} {replacement} <value>`"],
             code="UNKNOWN_FLAG",
         )
     listing = ", ".join(valid) if valid else "(none)"
     return UsageError(
-        f"unknown flag {name} for `{command.name} {sub.name}`",
+        f"unknown flag {name} for `{label}`",
         help_lines=[
-            f"valid flags for `{command.name} {sub.name}`: {listing} (--help always allowed)",
+            f"valid flags for `{label}`: {listing} (--help always allowed)",
             f"Run `hass-axi {command.name} --help` for the full reference",
         ],
         code="UNKNOWN_FLAG",
@@ -294,3 +371,26 @@ def render_command_help(command: Command) -> str:
         lines.append("examples:")
         lines.extend(f"  {example}" for example in command.examples)
     return "\n".join(lines)
+
+
+def command_help_doc(command: Command) -> dict:
+    """One command's reference as data, for ``--json``.
+
+    The text form above is written for reading and is not a TOON document, so a
+    caller that asked for JSON and parses what comes back gets the same facts
+    in a shape that parses.
+    """
+    doc: dict = {
+        "usage": (command.usage or f"usage: hass-axi {command.name} <subcommand> [flags]")[
+            len("usage: ") :
+        ],
+        "description": command.summary,
+    }
+    if command.subs and not (len(command.subs) == 1 and command.subs[0].name == command.name):
+        doc["subcommands"] = [sub.signature() for sub in command.subs]
+    doc["flags"] = {sub.name: [flag.render() for flag in sub.flags] for sub in command.subs}
+    if command.notes:
+        doc["notes"] = list(command.notes)
+    if command.examples:
+        doc["examples"] = list(command.examples)
+    return doc

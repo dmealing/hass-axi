@@ -1,0 +1,13 @@
+usage: hass-axi template render [flags]
+description: Render a Home Assistant Jinja template server-side
+subcommands[1]:
+  render
+flags{render}:
+  --template <text>, --template-file <path> (use - for stdin), --full (do not truncate the result)
+note:
+  templates run on the Home Assistant instance, so they see every entity it knows about
+examples:
+  hass-axi template render --template '{{ states("light.example_lamp") }}'
+  hass-axi template render --template '{{ states.light | count }}'
+  hass-axi template render --template-file report.j2
+  echo '{{ now() }}' | hass-axi template render --template-file -

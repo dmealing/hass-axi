@@ -13,6 +13,7 @@ from __future__ import annotations
 from ..argspec import Command, Flag, Sub
 from ..output import HelpBlock
 from ..readonly import READ
+from ..rest import require_entity_id
 from . import _window
 from ._common import parse_limit
 
@@ -63,6 +64,8 @@ def run(ctx, sub: str, parsed):
     requested = list(first_spelling.values())
     start, end = _window.window(parsed)
     limit = parse_limit(parsed.get("limit"), default=DEFAULT_LIMIT)
+    for entity_id in requested:
+        require_entity_id(entity_id)
     timelines = ctx.rest().history(requested, _window.iso(start), _window.iso(end))
 
     by_id: dict = {}
@@ -78,7 +81,7 @@ def run(ctx, sub: str, parsed):
         by_id[entity_id.lower()] = timeline
 
     entities = []
-    clipped = False
+    clipped = 0
     for entity_id in requested:
         timeline = by_id.get(entity_id.lower())
         if not timeline:
@@ -88,8 +91,9 @@ def run(ctx, sub: str, parsed):
             continue
         summary = summarize(entity_id, timeline, start, end)
         if len(summary["timeline"]) > limit:
+            clipped = max(clipped, len(summary["timeline"]))
+            summary["rows"] = f"latest {limit} of {len(summary['timeline'])}"
             summary["timeline"] = summary["timeline"][-limit:]
-            clipped = True
         entities.append(summary)
 
     doc = {
@@ -99,7 +103,8 @@ def run(ctx, sub: str, parsed):
     help_lines = []
     if clipped:
         help_lines.append(
-            f"Showing the latest {limit} rows per entity; run with `--limit <n>` to see more"
+            f"Showing the latest {limit} rows per entity; the longest timeline has {clipped}, "
+            f"so run with `--limit {clipped}` to see all of them"
         )
     if any(e.get("changes") == 0 and "note" in e for e in entities):
         help_lines.append("Run `hass-axi state get <entity_id>` to confirm the entity exists")
@@ -139,6 +144,17 @@ def summarize(entity_id: str, timeline: list, start, end) -> dict:
     else:
         summary["time_in_state"] = _durations(points, end)
     summary["timeline"] = [{"at": _window.iso(moment), "state": state} for moment, state in points]
+    # The recorder opens a timeline with the state already held at the start of
+    # the window. When the first row is later than that, nothing was recorded
+    # before it -- a new entity, or one older than the recorder keeps -- and
+    # the durations above cover only the rest. Said, because `1d6h` in a window
+    # labelled `2d` otherwise reads as a sum that does not add up.
+    uncovered = (points[0][0] - start).total_seconds() if points else 0
+    if uncovered >= 1:
+        summary["note"] = (
+            f"no recorded state before {_window.iso(points[0][0])}; "
+            f"{_window.span(uncovered)} of the window is not covered"
+        )
     return summary
 
 

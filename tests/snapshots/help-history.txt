@@ -1,0 +1,16 @@
+usage: hass-axi history get <entity_id>... [flags]
+description: Read entity state timelines from the recorder, with time in each state
+subcommands[1]:
+  get <entity_id> [entity_id...]
+flags{get}:
+  --start <age|time> (default 24h, e.g. 24h, 7d, ISO), --end <age|time> (default now), --limit <n> (default 20, latest rows per entity)
+note:
+  the first row is the state the entity was already in when the window opened
+note:
+  a bound with no offset is read as UTC
+note:
+  run `hass-axi statistics get <entity_id>` for long-term totals and averages; the recorder purges this timeline after its retention period, statistics it keeps
+examples:
+  hass-axi history get light.example_lamp
+  hass-axi history get binary_sensor.example_doorway --start 7d
+  hass-axi history get sensor.example_temperature --start 2026-01-01T00:00:00Z --end 6h

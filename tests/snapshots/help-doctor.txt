@@ -1,0 +1,8 @@
+usage: hass-axi doctor
+description: Check the environment, the REST API and the WebSocket API
+flags{doctor}:
+  (none)
+note:
+  exits non-zero when any check fails, so it works as a CI or hook gate
+examples:
+  hass-axi doctor

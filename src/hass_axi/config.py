@@ -46,6 +46,28 @@ _SETUP_HELP = [
 #: when it finds one -- which is a credential in a traceback.
 _ILLEGAL_TOKEN = re.compile(r"[\s\x00-\x1f\x7f]")
 
+#: Anything a base URL must not contain: no URL holds a space or a control
+#: character, and one that does is a pasted sentence rather than an address.
+_ILLEGAL_URL = re.compile(r"[\s\x00-\x1f\x7f]")
+
+#: A token segment shorter than this is not registered by itself: it would
+#: collide with ordinary words in unrelated output.
+_MIN_SEGMENT = 16
+
+
+def register_token(token: str) -> None:
+    """Register a token, and each segment of it, as a secret.
+
+    A long-lived token is a JWT -- three dot-separated segments -- and code
+    that takes an identifier apart at its dots hands back one segment, which
+    the whole-token match does not recognise and the JWT-shape rule does not
+    either. The signature alone is the secret half, so each segment is
+    registered beside the whole.
+    """
+    register_secret(token)
+    for segment in token.split("."):
+        register_secret(segment, min_length=_MIN_SEGMENT)
+
 
 @dataclass(frozen=True)
 class Config:
@@ -115,18 +137,32 @@ def split_userinfo(netloc: str) -> tuple:
 
 def normalize_base_url(raw: str) -> str:
     """Accept a bare host, add a scheme if missing, and drop any trailing path noise."""
-    value = raw.strip().rstrip("/")
-    if "://" not in value:
+    value = raw.strip()
+    if "://" in value:
+        # Only the path's trailing slashes are noise; stripping them from the
+        # whole value turned `http://` into a bare host named `http:`.
+        scheme, _, remainder = value.partition("://")
+        value = f"{scheme}://{remainder.rstrip('/')}"
+    else:
         # Default to TLS: a bare host that silently became http:// would send
         # the access token in cleartext.
-        value = f"https://{value}"
-    parts = urlsplit(value)
-    if not parts.netloc:
-        raise ConfigError(
-            f"{URL_VARS[0]} is not a usable URL: {value!r}",
-            help_lines=[_SETUP_HELP[0]],
-            code="BAD_URL",
-        )
+        value = f"https://{value.rstrip('/')}"
+    unusable = ConfigError(
+        f"{URL_VARS[0]} is not a usable URL: {value!r}",
+        help_lines=[_SETUP_HELP[0]],
+        code="BAD_URL",
+    )
+    # Decided here rather than at the first request, where `http.client` refuses
+    # the URL with an exception that reads as a dropped connection.
+    if _ILLEGAL_URL.search(value):
+        raise unusable
+    try:
+        parts = urlsplit(value)
+        hostname, _ = parts.hostname, parts.port
+    except ValueError:
+        raise unusable from None
+    if not parts.netloc or not hostname:
+        raise unusable
     if parts.scheme not in ("http", "https"):
         raise ConfigError(
             f"{URL_VARS[0]} must use http or https, got {parts.scheme!r}",
@@ -248,7 +284,7 @@ def load(environ=None, *, timeout: float | None = None) -> Config:
         )
 
     # Registered at the moment it is read, so no later code path can print it.
-    register_secret(token)
+    register_token(token)
     candidates = parse_base_urls(raw_url)
     return Config(
         base_url=candidates[0],

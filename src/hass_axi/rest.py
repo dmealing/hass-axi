@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import shlex
 import socket
 import ssl
 import urllib.error
@@ -20,14 +21,62 @@ from .errors import (
     UNAVAILABLE_STATUSES,
     ApiError,
     AuthFailed,
+    ConfigError,
     ConnectionFailed,
     Forbidden,
     NotFound,
 )
 from .output import debug
 from .readonly import READ, WRITE, guard
+from .toolkit.shapes import describe, health_fault, is_entity_id, is_text, shape_fault
 
 _JSON = "application/json"
+
+#: Characters a request path may carry unescaped. Everything else is
+#: percent-encoded, so a path holding a space is a path Home Assistant does not
+#: have rather than a URL `http.client` refuses to send.
+_PATH_SAFE = "/%:@!$&'()*+,;=~-._"
+
+
+class BinaryResponse:
+    """A response body that is not text: an image, a stream, an archive.
+
+    Decoding one as UTF-8 prints replacement characters at exit 0, which is
+    neither the data nor an error. It is reported by type and size instead.
+    """
+
+    __slots__ = ("content_type", "size")
+
+    def __init__(self, content_type: str, size: int) -> None:
+        self.content_type = content_type
+        self.size = size
+
+
+def not_home_assistant(path: str, found: str) -> ConfigError:
+    """The answer was a 200 that Home Assistant's API does not give.
+
+    A captive portal, a proxy's own error page and another web application on
+    the port all answer 200. Reading any of them as an installation with no
+    entities, or as a healthy one, is a wrong answer at exit 0 -- so the shape
+    is checked and this is raised instead. `config`, because what has to change
+    is where HA_URL points.
+    """
+    return ConfigError(
+        f"{api_path(path)} answered, but not as Home Assistant's API does: {found}",
+        help_lines=[
+            "Check HA_URL points at Home Assistant itself, not at a proxy, a login page "
+            "or another service on that host",
+            "Run `hass-axi doctor` to see what each transport reaches",
+        ],
+        code="NOT_HOME_ASSISTANT",
+    )
+
+
+def _shape(value) -> str:
+    """What a response turned out to be, in words, for the error above."""
+    if isinstance(value, BinaryResponse):
+        return f"{value.size} bytes of {value.content_type or 'untyped binary data'}"
+    return describe(value)
 
 
 #: The methods HTTP itself defines as safe. On a declared command the read-only
@@ -100,6 +149,40 @@ class _SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+def no_such_entity(entity_id: str) -> NotFound:
+    """The one failed-entity lookup, with next steps that can be run as written.
+
+    The search term is quoted, because a name passed where an id belongs is
+    usually several words, and it is the whole argument rather than a slice of
+    it: a slice of an argument that turns out to be a credential is a fragment
+    no redaction rule recognises.
+    """
+    shaped = is_entity_id(entity_id)
+    term = entity_id.split(".", 1)[1] if shaped else entity_id
+    help_lines = [f"Run `hass-axi state list --search {shlex.quote(term)}` to find it by name"]
+    if shaped:
+        help_lines.append(
+            f"Run `hass-axi entity get {entity_id}` if it may be disabled: "
+            "a disabled entity has a registry entry and no state"
+        )
+        help_lines.append("Run `hass-axi state list --domain <domain>` to browse one domain")
+        message = f"no entity with id {entity_id}"
+    else:
+        message = f"no entity with id {entity_id} (an entity id has the form domain.object_id)"
+    return NotFound(message, help_lines=help_lines, code="NO_SUCH_ENTITY")
+
+
+def require_entity_id(value: str) -> None:
+    """Refuse, before anything is sent, a value that cannot be an entity id.
+
+    A display name where an id belongs reaches Home Assistant as a filter it
+    answers with a bare 400 or 500, which says nothing about what was wrong.
+    The answer is the one a missing entity gets, because that is what it is.
+    """
+    if not is_entity_id(value):
+        raise no_such_entity(value)
+
+
 class RestClient:
     """A thin, synchronous wrapper over the Home Assistant REST endpoints."""
 
@@ -119,8 +202,11 @@ class RestClient:
     ) -> Any:
         """Perform one authenticated request and decode the response.
 
-        Returns parsed JSON when the response is JSON, otherwise the response
-        text -- ``/api/template`` answers in ``text/plain``.
+        Returns parsed JSON when the response is JSON, the response text when
+        it is some other text -- ``/api/template`` answers in ``text/plain`` --
+        and a :class:`BinaryResponse` when it is not text at all. Nothing is
+        assumed about the shape here, because `hass-axi api` reaches endpoints
+        this module knows nothing about; the typed endpoints below check theirs.
 
         The read-only gate is applied here, ahead of the request, because this
         is the one place every REST call passes through: a command added later
@@ -141,11 +227,25 @@ class RestClient:
             headers["Content-Type"] = _JSON
 
         debug(f"{method} {url}")
-        request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
+            request = urllib.request.Request(url, data=data, headers=headers, method=method)
             with self._opener.open(request, timeout=self.config.timeout) as response:
-                payload = response.read().decode("utf-8", errors="replace")
+                raw = response.read()
                 content_type = response.headers.get("Content-Type", "")
+        except (http.client.InvalidURL, ValueError) as exc:
+            # Raised before anything is sent: the URL itself cannot be a
+            # request. `InvalidURL` is an `HTTPException`, so without this
+            # branch it was reported as a connection that dropped mid-response,
+            # with advice to retry a command that can never work.
+            raise ConfigError(
+                f"HA_URL does not make a usable request URL: {exc}",
+                help_lines=[
+                    "Set HA_URL to your Home Assistant base URL, "
+                    "e.g. https://homeassistant.example.com",
+                    "Run `hass-axi doctor` to check the environment",
+                ],
+                code="BAD_URL",
+            ) from None
         except urllib.error.HTTPError as exc:
             raise self._http_error(exc, method, path) from None
         except urllib.error.URLError as exc:
@@ -167,20 +267,44 @@ class RestClient:
                 code="CONNECTION_DROPPED",
             ) from None
 
+        if not is_text(content_type, raw):
+            return BinaryResponse(content_type.split(";", 1)[0].strip(), len(raw))
+        payload = raw.decode("utf-8", errors="replace")
         if _JSON in content_type:
+            if not payload.strip():
+                return None
             try:
-                return json.loads(payload) if payload else None
+                return json.loads(payload)
             except json.JSONDecodeError:
+                # Handed back as text: the raw escape hatch shows what arrived,
+                # and every typed endpoint refuses a string through `_json`.
                 return payload
         return payload
 
+    def _json(self, method: str, path: str, kind: type, **kwargs) -> Any:
+        """One request whose answer has a known JSON shape.
+
+        Every typed endpoint goes through here, so "the server answered 200"
+        is never enough by itself: `/api/states` is a list and `/api/config`
+        an object on every Home Assistant there is.
+        """
+        result = self.request(method, path, **kwargs)
+        if shape_fault(result, kind) is not None:
+            raise not_home_assistant(path, _shape(result))
+        return result
+
     def _url(self, path: str, query: dict | None) -> str:
-        path = api_path(path)
+        # A query written into the path itself (`/states?x=y`) stays a query:
+        # only the part before the first `?` is a path to escape.
+        route, mark, embedded = api_path(path).partition("?")
+        path = urllib.parse.quote(route, safe=_PATH_SAFE)
+        if mark:
+            path = f"{path}?{urllib.parse.quote(embedded, safe=_PATH_SAFE + '?')}"
         url = f"{self.config.base_url}{path}"
         if query:
             pairs = [(k, v) for k, v in query.items() if v is not None]
             if pairs:
-                url = f"{url}?{urllib.parse.urlencode(pairs)}"
+                url = f"{url}{'&' if '?' in url else '?'}{urllib.parse.urlencode(pairs)}"
         return url
 
     def _http_error(self, exc, method: str, path: str):
@@ -283,14 +407,30 @@ class RestClient:
         if exc.code == 400:
             return ApiError(
                 f"Home Assistant refused the request (HTTP 400){suffix}",
+                help_lines=[
+                    "The request reached Home Assistant and its arguments were refused; "
+                    "change them rather than retrying",
+                    "Run the command with `--help` to see what it accepts",
+                ],
                 code="BAD_REQUEST",
             )
         if exc.code == 500:
             return ApiError(
                 f"Home Assistant failed while handling the request (HTTP 500){suffix}",
+                help_lines=[
+                    "Home Assistant answers this way for a request it could not carry out, "
+                    "most often an id that names nothing; check the ids passed",
+                    "The reason is in Home Assistant's own log, under Settings > System > Logs",
+                ],
                 code="SERVER_ERROR",
             )
-        return ApiError(f"Home Assistant returned HTTP {exc.code}{suffix}", code="API_ERROR")
+        return ApiError(
+            f"Home Assistant returned HTTP {exc.code}{suffix}",
+            help_lines=[
+                "Run `hass-axi doctor` to check the installation is answering normally",
+            ],
+            code="API_ERROR",
+        )
 
     def _url_error(self, exc):
         """Classify a failure to complete the exchange at all.
@@ -329,38 +469,42 @@ class RestClient:
 
     # ------------------------------------------------------------- endpoints
 
-    def health(self) -> Any:
-        return self.request("GET", "/")
+    def health(self) -> dict:
+        """`GET /api/`, which Home Assistant answers with `{"message": "API running."}`.
 
-    def config_info(self) -> Any:
-        return self.request("GET", "/config")
+        The message is checked, not just the status: this is the liveness probe,
+        and a liveness probe that passes against any web server is not one.
+        """
+        result = self.request("GET", "/")
+        fault = _shape(result) if isinstance(result, BinaryResponse) else health_fault(result)
+        if fault is not None:
+            raise not_home_assistant("/", fault)
+        return result
+
+    def config_info(self) -> dict:
+        return self._json("GET", "/config", dict)
 
     def states(self) -> list:
-        result = self.request("GET", "/states")
-        return result if isinstance(result, list) else []
+        return self._json("GET", "/states", list)
 
     def state(self, entity_id: str) -> dict:
+        require_entity_id(entity_id)
         try:
-            return self.request("GET", f"/states/{urllib.parse.quote(entity_id)}")
+            return self._json("GET", f"/states/{urllib.parse.quote(entity_id, safe='')}", dict)
         except NotFound:
-            raise NotFound(
-                f"no entity with id {entity_id}",
-                help_lines=[
-                    f"Run `hass-axi state list --search {entity_id.split('.')[-1]}` to find it",
-                    "Run `hass-axi state list --domain <domain>` to browse one domain",
-                ],
-                code="NO_SUCH_ENTITY",
-            ) from None
+            raise no_such_entity(entity_id) from None
 
     def services(self) -> list:
-        result = self.request("GET", "/services")
-        return result if isinstance(result, list) else []
+        return self._json("GET", "/services", list)
 
     def call_service(
         self, domain: str, service: str, data: dict, *, return_response: bool = False
     ) -> Any:
         query = {"return_response": ""} if return_response else None
-        return self.request("POST", f"/services/{domain}/{service}", body=data, query=query)
+        result = self.request("POST", f"/services/{domain}/{service}", body=data, query=query)
+        if isinstance(result, (str, BinaryResponse)) and result != "":
+            raise not_home_assistant(f"/services/{domain}/{service}", _shape(result))
+        return result
 
     def history(self, entity_ids: list, start: str, end: str) -> list:
         """State timelines, one list per requested entity, in the order asked.
@@ -380,7 +524,9 @@ class RestClient:
                 "minimal_response": "",
             },
         )
-        return result if isinstance(result, list) else []
+        if not isinstance(result, list):
+            raise not_home_assistant("/history/period", _shape(result))
+        return result
 
     def logbook(self, start: str, end: str, entity_ids: list | None = None) -> list:
         """Logbook entries between two instants, optionally for named entities only."""
@@ -389,8 +535,12 @@ class RestClient:
             f"/logbook/{urllib.parse.quote(start, safe='')}",
             query={"end_time": end, "entity": ",".join(entity_ids) if entity_ids else None},
         )
-        return result if isinstance(result, list) else []
+        if not isinstance(result, list):
+            raise not_home_assistant("/logbook", _shape(result))
+        return result
 
     def render_template(self, template: str) -> str:
         result = self.request("POST", "/template", body={"template": template})
+        if isinstance(result, BinaryResponse):
+            raise not_home_assistant("/template", _shape(result))
         return result if isinstance(result, str) else json.dumps(result)

@@ -10,24 +10,32 @@ from __future__ import annotations
 from ..argspec import Command, Flag, Sub
 from ..errors import NotFound, UsageError
 from ..output import HelpBlock
-from ..readonly import READ, WRITE
+from ..readonly import DYNAMIC, READ
 from ._common import (
+    WRITE_FLAG,
     area_is_placed,
     area_name_map,
+    change_rows,
+    check_icon,
     count_line,
     device_area_map,
     device_name_map,
     domain_of,
     effective_area_id,
+    empty_listing,
     filter_by_area,
+    listing_args,
     matches_search,
-    parse_limit,
+    preview_help,
+    preview_note,
     project,
     registry_name,
     reject_conflicting_flags,
     resolve_area,
     resolve_device,
-    select_fields,
+    search_term,
+    see_all_line,
+    write_access,
 )
 
 DEFAULT_LIMIT = 100
@@ -72,17 +80,18 @@ COMMAND = Command(
         Sub(name="get", args=("<entity_id>",), summary="Show one registry entry", access=READ),
         Sub(
             name="update",
-            access=WRITE,
+            access=DYNAMIC,
             args=("<entity_id>",),
-            summary="Set an entity's name, area or icon",
+            summary="Set an entity's name, area or icon (a preview unless --write is given)",
             flags=(
-                Flag("--name", "<text>"),
+                Flag("--name", "<text>", free_text=True),
                 Flag("--area", "<id|name>"),
                 Flag("--icon", "<mdi:name>"),
                 Flag("--new-id", "<entity_id>", note="rename the entity_id itself"),
                 Flag("--clear-name", boolean=True, note="fall back to the integration's name"),
                 Flag("--clear-area", boolean=True),
                 Flag("--clear-icon", boolean=True),
+                WRITE_FLAG,
             ),
         ),
     ),
@@ -91,6 +100,7 @@ COMMAND = Command(
         "name is the name Home Assistant displays: its device's, plus original_name, "
         "unless one is set here",
         "entity_ids are not stable identity: filter by --area or --search, not by guessing ids",
+        "update shows what it would change and sends nothing until --write is given",
     ),
     examples=(
         "hass-axi entity list --area 'Example Room'",
@@ -99,8 +109,14 @@ COMMAND = Command(
         "hass-axi entity list --device <device_id>",
         "hass-axi entity get light.example_lamp",
         "hass-axi entity update light.example_lamp --name 'Reading Lamp' --area example_room",
+        "hass-axi entity update light.example_lamp --name 'Reading Lamp' --write",
     ),
 )
+
+
+def access(sub: str, parsed) -> str:
+    """`entity update` writes only when it is told to; the preview only reads."""
+    return write_access(parsed) if sub == "update" else READ
 
 
 def run(ctx, sub: str, parsed):
@@ -136,7 +152,14 @@ def _row(entry: dict, area_names: dict, device_areas: dict, device_names: dict) 
     }
 
 
+#: The filters a "see all" suggestion has to carry to list the same rows.
+_FILTERS = ("--area", "--domain", "--platform", "--device", "--search")
+
+
 def _list(ctx, parsed):
+    limit, fields = listing_args(
+        parsed, LIST_FIELDS, DEFAULT_LIST_FIELDS, default_limit=DEFAULT_LIMIT
+    )
     with ctx.ws() as client:
         entities, areas, devices = _snapshot(client)
 
@@ -184,7 +207,7 @@ def _list(ctx, parsed):
     if not rows:
         where = " ".join(scope) or "in this installation"
         return {
-            "entities": f"0 registry entries found {where}",
+            **empty_listing("entities", f"0 registry entries found {where}"),
             "total": f"{total} entries in the entity registry",
             "help": HelpBlock(
                 [
@@ -194,16 +217,15 @@ def _list(ctx, parsed):
             ),
         }
 
-    limit = parse_limit(parsed.get("limit"), default=DEFAULT_LIMIT)
-    fields = select_fields(parsed.get("fields"), LIST_FIELDS, DEFAULT_LIST_FIELDS)
     shown = rows[:limit]
 
     count = count_line(len(shown), matched, total, filtered=bool(scope))
     help_lines = ["Run `hass-axi entity get <entity_id>` for one entry in full"]
     if len(shown) < matched:
-        help_lines.append(f"Run `hass-axi entity list --limit {matched}` to see all {matched}")
+        help_lines.append(see_all_line("entity list", parsed, _FILTERS, matched))
     help_lines.append(
-        'Run `hass-axi entity update <entity_id> --name "<name>" --area <id|name>` to change one'
+        'Run `hass-axi entity update <entity_id> --name "<name>" --area <id|name>` to preview '
+        "a change, and add --write to send it"
     )
 
     return {"count": count, "entities": project(shown, fields), "help": HelpBlock(help_lines)}
@@ -216,7 +238,7 @@ def _find(entities: list, entity_id: str) -> dict:
     raise NotFound(
         f"no registry entry for {entity_id}",
         help_lines=[
-            f"Run `hass-axi entity list --search {entity_id.split('.')[-1]}` to find it",
+            f"Run `hass-axi entity list --search {search_term(entity_id)}` to find it",
             "Run `hass-axi state get <entity_id>` if the entity exists but is not registered",
         ],
         code="NO_SUCH_ENTITY",
@@ -291,6 +313,7 @@ def _update(ctx, parsed):
     if parsed.get("new_id") is not None:
         changes["new_entity_id"] = parsed.get("new_id")
 
+    check_icon(parsed.get("icon"))
     clear_area = parsed.get("clear_area")
     area_arg = parsed.get("area")
 
@@ -319,6 +342,15 @@ def _update(ctx, parsed):
 
         # Idempotent: a request that asks for the state already stored is a no-op.
         pending = {k: v for k, v in changes.items() if _differs(current, k, v)}
+        if pending and not parsed.get("write"):
+            return {
+                "entity": entity_id,
+                "preview": preview_note(ctx.environ),
+                "would_change": change_rows(
+                    current, pending, rename={"new_entity_id": "entity_id"}
+                ),
+                "help": HelpBlock(preview_help(ctx.environ)),
+            }
         if pending:
             result = client.run("entity.update", {"entity_id": entity_id, **pending})
             entry = _resulting_entry(result, current, pending)

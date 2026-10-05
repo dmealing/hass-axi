@@ -1,0 +1,5 @@
+error: "--icon needs the form prefix:name such as mdi:sofa, got 'sofa'"
+code: BAD_ICON
+class: usage
+help[1]:
+  Run the command again with `--icon mdi:sofa`

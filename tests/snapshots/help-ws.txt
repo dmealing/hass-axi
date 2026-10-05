@@ -1,0 +1,18 @@
+usage: hass-axi ws <command> [flags]
+description: Send a command over the Home Assistant WebSocket API
+flags{ws}:
+  --param <key=value> (repeatable, value parsed as JSON when it parses), --params-json <object> (merged over --param), --list (show the declared commands and exit), --raw (treat <command> as a literal API type), --full (do not shorten a long result), --write (send it; without this the command shows what would be sent and sends nothing)
+note:
+  declared names are stable; --raw passes any type straight through to the API
+note:
+  --params-json takes a whole JSON object; --param takes repeated key=value pairs
+note:
+  a command that writes is previewed and not sent until --write is passed; `ws --list` says which do, and a --raw type no declaration names counts as one
+note:
+  a long result is shortened -- lists to their first items and strings to a preview -- with the full size reported; --full prints all of it
+examples:
+  hass-axi ws --list
+  hass-axi ws entity.list
+  hass-axi ws area.update --param area_id=example_room --param name='Example Study'
+  hass-axi ws area.update --param area_id=example_room --param name='Example Study' --write
+  hass-axi ws --raw config/floor_registry/list --write

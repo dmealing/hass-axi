@@ -1,0 +1,18 @@
+usage: hass-axi api [<method>] <path> [flags]
+description: Make an authenticated request to any Home Assistant REST path
+flags{api}:
+  --field <key=value> (repeatable, request body field), --body <object> (raw JSON body, merged over --field), --query <key=value> (repeatable, query string parameter), --full (do not shorten a long response), --write (send it; without this the command shows what would be sent and sends nothing)
+note:
+  methods: GET, POST, PUT, PATCH, DELETE, HEAD; GET is used when no method is given
+note:
+  the registries are not reachable over REST -- use `hass-axi ws` for those
+note:
+  anything but GET and HEAD is previewed and not sent until --write is passed
+note:
+  a long response is shortened -- lists to their first items and strings to a preview -- with the full size reported; --full prints all of it
+examples:
+  hass-axi api /config
+  hass-axi api /states/light.example_lamp
+  hass-axi api POST /services/light/turn_on --field entity_id=light.example_lamp
+  hass-axi api POST /services/light/turn_on --field entity_id=light.example_lamp --write
+  hass-axi api POST /template --body '{"template": "{{ now() }}"}' --write

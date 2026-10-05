@@ -1,0 +1,6 @@
+error: `state` needs a subcommand
+code: MISSING_SUBCOMMAND
+class: usage
+help[2]:
+  subcommands: list, get
+  Run `hass-axi state --help` for the full reference

@@ -486,3 +486,31 @@ def test_a_statistic_asked_for_a_type_it_does_not_keep_answers_empty(ws_server, 
     assert {row["change"] for row in result["sensor.example_temperature"]} == {None}
     # A statistic with no rows in the window is absent, not an empty list.
     assert "example:grid_import" not in result
+
+
+def test_starting_and_stopping_the_websocket_double_does_not_leak_descriptors():
+    # FakeWsServer.stop() used to call only Server.shutdown(), which does not
+    # close the os.pipe() pair the sync Server keeps to interrupt accept().
+    # Twenty cycles leaked ~45 descriptors, enough to exhaust the suite's
+    # file-descriptor budget partway through a full run.
+    import os
+
+    from conftest import FakeWsServer
+
+    fd_dir = "/proc/self/fd"
+    if not os.path.isdir(fd_dir):
+        pytest.skip("no /proc/self/fd on this platform")
+
+    for _ in range(5):
+        server = FakeWsServer()
+        server.start()
+        server.stop()
+
+    before = len(os.listdir(fd_dir))
+    for _ in range(20):
+        server = FakeWsServer()
+        server.start()
+        server.stop()
+    after = len(os.listdir(fd_dir))
+
+    assert after - before <= 4

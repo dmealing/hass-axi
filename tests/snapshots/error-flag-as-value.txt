@@ -1,0 +1,6 @@
+error: "--domain needs a value"
+code: MISSING_VALUE
+class: usage
+help[2]:
+  Run `hass-axi state list --domain <name>`
+  `--limit` is a flag, so it was not taken as the value; write `--domain=--limit` if that really is the value

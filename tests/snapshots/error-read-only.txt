@@ -1,0 +1,7 @@
+error: "`hass-axi entity update` is a write, and this session is read-only"
+code: READ_ONLY
+class: usage
+help[3]:
+  This session is read-only; the command was refused before anything changed
+  Reads still work, e.g. `hass-axi state list`, `hass-axi entity list`, `hass-axi area list`
+  Unset HASS_AXI_READ_ONLY (or HA_AXI_READ_ONLY, its deprecated spelling) to allow writes; it is a switch, so any non-empty value enables it

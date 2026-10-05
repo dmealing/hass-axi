@@ -1,0 +1,26 @@
+usage: hass-axi entity <subcommand> [flags]
+description: Read and update the entity registry over the WebSocket API
+subcommands[3]:
+  list, get <entity_id>, update <entity_id>
+flags{list}:
+  --area <id|name> ('none' selects unassigned entities), --domain <name> (repeatable), --platform <name>, --device <device_id> (the entities one device supplies), --search <text> (matches entity_id, the displayed name and original_name), --limit <n> (default 100), --fields <a,b,c> (from entity_id|name|area|area_id|platform|domain|device_id|original_name|disabled|hidden|entity_category)
+flags{get}:
+  (none)
+flags{update}:
+  --name <text>, --area <id|name>, --icon <mdi:name>, --new-id <entity_id> (rename the entity_id itself), --clear-name (fall back to the integration's name), --clear-area, --clear-icon, --write (send it; without this the command shows what would be sent and sends nothing)
+note:
+  an entity's area is inherited from its device until it is set here explicitly
+note:
+  name is the name Home Assistant displays: its device's, plus original_name, unless one is set here
+note:
+  entity_ids are not stable identity: filter by --area or --search, not by guessing ids
+note:
+  update shows what it would change and sends nothing until --write is given
+examples:
+  hass-axi entity list --area 'Example Room'
+  hass-axi entity list --domain light --fields entity_id,name,area,platform
+  hass-axi entity list --area none --limit 500
+  hass-axi entity list --device <device_id>
+  hass-axi entity get light.example_lamp
+  hass-axi entity update light.example_lamp --name 'Reading Lamp' --area example_room
+  hass-axi entity update light.example_lamp --name 'Reading Lamp' --write

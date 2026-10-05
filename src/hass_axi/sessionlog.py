@@ -35,6 +35,7 @@ rather than failing.
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import json
 import os
@@ -249,15 +250,47 @@ def record(payload: dict, nouns: dict, environ=None, *, today: str | None = None
         **summary,
     }
     try:
-        sessions = [
-            s for s in _load(path) if not entry["session"] or s.get("session") != entry["session"]
-        ]
-        sessions.append(entry)
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_atomic(path, json.dumps(sessions[-KEEP:], indent=2) + "\n")
+        # Held across the read and the write: several sessions end at once on a
+        # machine running several agents, and each one replacing the file with
+        # "what I read, plus mine" kept one record in four.
+        with _locked(path):
+            sessions = [
+                s
+                for s in _load(path)
+                if not entry["session"] or s.get("session") != entry["session"]
+            ]
+            sessions.append(entry)
+            write_atomic(path, json.dumps(sessions[-KEEP:], indent=2) + "\n")
     except OSError as exc:
         return _nothing(f"the state file could not be written ({type(exc).__name__})")
     return {"recorded": f"{total} hass-axi command(s) from this session"}
+
+
+def _lock_path(path: Path) -> Path:
+    return path.with_name(path.name + ".lock")
+
+
+@contextlib.contextmanager
+def _locked(path: Path):
+    """Hold an exclusive lock beside ``path`` for the length of the block.
+
+    A separate lock file, because the state file itself is replaced by rename
+    and a lock on the old inode would guard nothing. Where the platform has no
+    `fcntl` the block runs unlocked, which is what every release before this
+    one did everywhere.
+    """
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover - not POSIX
+        yield
+        return
+    with open(_lock_path(path), "a", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def _nothing(reason: str) -> dict:
@@ -313,6 +346,8 @@ def _count(value) -> int:
 def forget(environ=None) -> bool:
     """Delete the state file. Returns whether there was one to delete."""
     path = state_path(environ)
+    with contextlib.suppress(OSError):
+        _lock_path(path).unlink()
     if not path.is_file():
         return False
     path.unlink()

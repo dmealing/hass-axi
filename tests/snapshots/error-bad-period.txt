@@ -1,0 +1,5 @@
+error: "--period must be one of 5minute, hour, day, week, month, got 'fortnight'"
+code: BAD_PERIOD
+class: usage
+help[1]:
+  Run the command again with `--period hour`

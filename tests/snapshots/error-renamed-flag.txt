@@ -1,0 +1,5 @@
+error: unknown flag --room for `state list`; use --area instead
+code: UNKNOWN_FLAG
+class: usage
+help[1]:
+  Run `hass-axi state list --area <value>`

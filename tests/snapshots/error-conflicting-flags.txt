@@ -1,0 +1,5 @@
+error: "--name and --clear-name are mutually exclusive"
+code: CONFLICTING_FLAGS
+class: usage
+help[1]:
+  Run `hass-axi entity update light.example_lamp --clear-name`

@@ -18,20 +18,26 @@ from __future__ import annotations
 from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
 from ..output import HelpBlock
-from ..readonly import READ, WRITE
+from ..readonly import DYNAMIC, READ
 from ._common import (
+    WRITE_FLAG,
     area_is_placed,
     area_name_map,
+    change_rows,
     count_line,
     displayed_device_name,
+    empty_listing,
     filter_by_area,
+    listing_args,
     matches_search,
-    parse_limit,
+    preview_help,
+    preview_note,
     project,
     reject_conflicting_flags,
     resolve_area,
     resolve_device_ref,
-    select_fields,
+    see_all_line,
+    write_access,
 )
 
 DEFAULT_LIMIT = 100
@@ -71,14 +77,20 @@ COMMAND = Command(
         ),
         Sub(
             name="update",
-            access=WRITE,
+            access=DYNAMIC,
             args=("<id|name>",),
-            summary="Set a device's name or area",
+            summary="Set a device's name or area (a preview unless --write is given)",
             flags=(
-                Flag("--name", "<text>", note="writes name_by_user; see the note below"),
+                Flag(
+                    "--name",
+                    "<text>",
+                    note="writes name_by_user; see the note below",
+                    free_text=True,
+                ),
                 Flag("--area", "<id|name>"),
                 Flag("--clear-name", boolean=True, note="fall back to the integration's name"),
                 Flag("--clear-area", boolean=True),
+                WRITE_FLAG,
             ),
         ),
     ),
@@ -88,6 +100,7 @@ COMMAND = Command(
         "--name writes name_by_user: `name` is the integration's own and Home Assistant "
         "does not let anything change it",
         "devices accept a device_id or the displayed name anywhere <id|name> appears",
+        "update shows what it would change and sends nothing until --write is given",
         "disabling or deleting a device is deliberately not exposed here; "
         "use `hass-axi ws device.update` if you mean it",
     ),
@@ -97,9 +110,14 @@ COMMAND = Command(
         "hass-axi device list --search example --fields device_id,name,model",
         "hass-axi device get <device_id>",
         "hass-axi device update 'Example Ceiling' --name 'Hall Ceiling'",
-        "hass-axi device update <device_id> --area 'Example Room' --clear-name",
+        "hass-axi device update <device_id> --area 'Example Room' --clear-name --write",
     ),
 )
+
+
+def access(sub: str, parsed) -> str:
+    """`device update` writes only when it is told to; the preview only reads."""
+    return write_access(parsed) if sub == "update" else READ
 
 
 def run(ctx, sub: str, parsed):
@@ -163,6 +181,9 @@ def _area_source(device: dict, areas: list) -> str:
 
 
 def _list(ctx, parsed):
+    limit, fields = listing_args(
+        parsed, LIST_FIELDS, DEFAULT_LIST_FIELDS, default_limit=DEFAULT_LIMIT
+    )
     with ctx.ws() as client:
         devices, areas, entities = _snapshot(client)
 
@@ -187,18 +208,16 @@ def _list(ctx, parsed):
     if not rows:
         where = " ".join(scope) or "in this installation"
         return {
-            "devices": f"0 devices found {where}",
+            **empty_listing("devices", f"0 devices found {where}"),
             "total": f"{total} devices in the device registry",
             "help": HelpBlock(["Run `hass-axi device list` with no filters to see every device"]),
         }
 
-    limit = parse_limit(parsed.get("limit"), default=DEFAULT_LIMIT)
-    fields = select_fields(parsed.get("fields"), LIST_FIELDS, DEFAULT_LIST_FIELDS)
     shown = rows[:limit]
     count = count_line(len(shown), matched, total, filtered=bool(scope))
     help_lines = ["Run `hass-axi entity list --area <id|name>` to see the entities in an area"]
     if len(shown) < matched:
-        help_lines.append(f"Run `hass-axi device list --limit {matched}` to see all {matched}")
+        help_lines.append(see_all_line("device list", parsed, ("--area", "--search"), matched))
 
     return {"count": count, "devices": project(shown, fields), "help": HelpBlock(help_lines)}
 
@@ -223,7 +242,8 @@ def _get(ctx, parsed):
             [
                 f"Run `hass-axi entity list --device {row['device_id']}` "
                 "to see the entities it supplies",
-                f'Run `hass-axi device update {row["device_id"]} --name "<name>"` to rename it',
+                f'Run `hass-axi device update {row["device_id"]} --name "<name>"` to preview a '
+                "rename, and add --write to send it",
             ]
         ),
     }
@@ -285,6 +305,14 @@ def _update(ctx, parsed):
 
         # Idempotent: a request that asks for the state already stored is a no-op.
         pending = {k: v for k, v in changes.items() if (current.get(k) or None) != (v or None)}
+        if pending and not parsed.get("write"):
+            return {
+                "device": current.get("id", ""),
+                "name": displayed_device_name(current),
+                "preview": preview_note(ctx.environ),
+                "would_change": change_rows(current, pending),
+                "help": HelpBlock(preview_help(ctx.environ)),
+            }
         if pending:
             result = client.run("device.update", {"device_id": current.get("id", ""), **pending})
             entry = _resulting_device(result, current, pending)

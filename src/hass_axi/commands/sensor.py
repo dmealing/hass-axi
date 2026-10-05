@@ -28,15 +28,16 @@ from ._common import (
     device_name_map,
     domain_of,
     effective_area_id,
+    empty_listing,
     filter_by_area,
     friendly_name,
     last_reported,
+    listing_args,
     matches_search,
-    parse_limit,
     plural,
     project,
     registry_name,
-    select_fields,
+    see_all_line,
 )
 
 DEFAULT_LIMIT = 100
@@ -97,7 +98,14 @@ COMMAND = Command(
 )
 
 
+#: The filters a "see all" suggestion has to carry to list the same rows.
+_FILTERS = ("--device-class", "--unit", "--area", "--search", "--all")
+
+
 def run(ctx, sub: str, parsed):
+    limit, fields = listing_args(
+        parsed, LIST_FIELDS, DEFAULT_LIST_FIELDS, default_limit=DEFAULT_LIMIT
+    )
     states = [s for s in ctx.rest().states() if domain_of(s.get("entity_id", "")) == "sensor"]
     with ctx.ws() as client:
         entities = client.run("entity.list") or []
@@ -140,14 +148,12 @@ def run(ctx, sub: str, parsed):
     # Grouped by area, and the sensors in no area last rather than first.
     rows.sort(key=lambda r: (not r["area"], r["area"].lower(), r["name"].lower(), r["entity_id"]))
     matched = len(rows)
-    limit = parse_limit(parsed.get("limit"), default=DEFAULT_LIMIT)
-    fields = select_fields(parsed.get("fields"), LIST_FIELDS, DEFAULT_LIST_FIELDS)
     shown = rows[:limit]
 
     doc: dict = {}
     if not shown:
         where = " ".join(scope) or "in this installation"
-        doc["sensors"] = f"0 sensors found {where}"
+        doc.update(empty_listing("sensors", f"0 sensors found {where}"))
         # What is here, so an agent whose filter matched nothing can see the
         # values that would have matched rather than guessing again.
         doc["device_classes"] = sorted({r["device_class"] for r in visible if r["device_class"]})
@@ -171,7 +177,7 @@ def run(ctx, sub: str, parsed):
             "how old its reading is"
         )
     if len(shown) < matched:
-        help_lines.append(f"Run `hass-axi sensor list --limit {matched}` to see all {matched}")
+        help_lines.append(see_all_line("sensor list", parsed, _FILTERS, matched))
     if set_aside:
         help_lines.append("Run `hass-axi sensor list --all` to include them")
     doc["help"] = HelpBlock(help_lines)

@@ -29,6 +29,7 @@ from ._common import (
     device_area_map,
     domain_of,
     effective_area_id,
+    empty_listing,
     friendly_name,
     parse_json_flag,
     parse_pairs,
@@ -36,6 +37,7 @@ from ._common import (
     preview_help,
     preview_note,
     project,
+    resolve_area_target,
     select_fields,
 )
 
@@ -84,7 +86,7 @@ COMMAND = Command(
             summary="Preview a service call, or send it with --write",
             flags=(
                 Flag("--target-entity", "<entity_id>", repeat=True),
-                Flag("--target-area", "<area_id>", repeat=True),
+                Flag("--target-area", "<id|name>", repeat=True),
                 Flag("--target-device", "<device_id>", repeat=True),
                 Flag(
                     "--data", "<key=value>", repeat=True, note="value parsed as JSON when it parses"
@@ -166,7 +168,7 @@ def _list(ctx, parsed):
         ]
         rows.sort(key=lambda row: row["domain"])
         if not rows:
-            return {"services": "0 service domains registered in this installation"}
+            return empty_listing("services", "0 service domains registered in this installation")
         return {
             "count": plural(len(rows), "domain"),
             "domains": rows,
@@ -196,7 +198,7 @@ def _list(ctx, parsed):
         for name, spec in sorted(services.items())
     ]
     if not rows:
-        return {"services": f"0 services registered in domain {wanted}"}
+        return empty_listing("services", f"0 services registered in domain {wanted}")
     return {
         "count": f"{plural(len(rows), 'service')} in {wanted}",
         "services": rows,
@@ -215,7 +217,12 @@ def _list(ctx, parsed):
 
 def _get(ctx, parsed):
     domain, service = _split_name(parsed.positionals[0])
+    fields = select_fields(parsed.get("fields"), GET_FIELDS, DEFAULT_GET_FIELDS)
     published = ctx.rest().services()
+    if model.find_domain(published, domain) is None:
+        # Before the service, because the next step differs: a missing domain
+        # has no services to list, and suggesting its list suggests an error.
+        raise _no_such_domain(published, domain)
     spec = model.find_service(published, domain, service)
     if spec is None:
         raise _no_such_service(published, domain, service)
@@ -244,7 +251,6 @@ def _get(ctx, parsed):
             }
         )
 
-    fields = select_fields(parsed.get("fields"), GET_FIELDS, DEFAULT_GET_FIELDS)
     response = model.response_mode(spec)
     doc = {
         "service": f"{domain}.{service}",
@@ -256,7 +262,9 @@ def _get(ctx, parsed):
     target = _target_summary(spec, domain)
     if target:
         doc["target"] = target
-    doc["fields"] = project(rows, fields) if rows else f"0 fields declared on {domain}.{service}"
+    doc["fields"] = project(rows, fields)
+    if not rows:
+        doc["field_count"] = f"0 fields declared on {domain}.{service}"
 
     required = model.required_field_names(spec)
     example = f"hass-axi service call {domain}.{service} --target-entity <entity_id>"
@@ -381,6 +389,7 @@ def _call(ctx, parsed):
 
     data = parse_pairs(parsed.get("data", []), flag="--data")
     data.update(parse_json_flag(parsed.get("data_json"), flag="--data-json"))
+    _resolve_area_names(ctx, parsed)
 
     # The REST endpoint passes this body straight through as the service data
     # and never unwraps a `target` key, while entity services validate
@@ -440,6 +449,35 @@ def _call(ctx, parsed):
     return doc
 
 
+def _resolve_area_names(ctx, parsed) -> None:
+    """Turn any `--target-area` given as a name into the area's id, in place.
+
+    Every other `--area` takes an id or a name, and Home Assistant takes only
+    the id. The registry is always read when a target area is given, because
+    an id-shaped value is never actuated on a guess: `resolve_area_target`
+    only takes an exact `area_id` outright when no *other* area's folded name
+    also equals it, and refuses with the same ambiguity `entity list --area`
+    reports otherwise. A name that matches no area stays as it was typed for
+    the target report to explain.
+
+    A registry that cannot be read is raised, not swallowed: sending the name
+    on as though it were an id reaches nothing, and Home Assistant answers that
+    with an empty change set and no word about why.
+    """
+    given = list(parsed.get("target_area") or [])
+    if not given:
+        return
+    with ctx.ws() as client:
+        areas = client.run("area.list") or []
+    resolved = []
+    for value in given:
+        try:
+            resolved.append(resolve_area_target(areas, value).get("area_id") or value)
+        except NotFound:
+            resolved.append(value)
+    parsed.flags["target_area"] = resolved
+
+
 def _preview(ctx, live: _Live, domain: str, service: str, data: dict, parsed, targeted: bool):
     """Show what `service call` would send, checked as far as reading allows.
 
@@ -451,7 +489,14 @@ def _preview(ctx, live: _Live, domain: str, service: str, data: dict, parsed, ta
     one Home Assistant enforces. Only reads are made: the service model, the
     states, and the registries when an area or a device is named.
     """
-    published = ctx.rest().services()
+    try:
+        published = ctx.rest().services()
+    except AxiError as exc:
+        if exc.code != "NOT_HOME_ASSISTANT":
+            raise
+        # A model that answered in the wrong shape is a model that could not
+        # be read; the request can still be shown, unchecked.
+        published = None
     wants_response = parsed.get("response", False)
     request = {
         "method": "POST",
@@ -493,7 +538,11 @@ def _preview(ctx, live: _Live, domain: str, service: str, data: dict, parsed, ta
 
     masks = model.feature_masks(spec, domain)
     if not targeted:
-        doc["target"] = "none given"
+        doc["target"] = (
+            "none given - this service acts on a target and Home Assistant refuses it without one"
+            if _needs_target(spec)
+            else "none given"
+        )
         doc["capability_check"] = "not applicable without a target"
     else:
         _precheck(live, domain, service, parsed)
@@ -549,6 +598,10 @@ def _preview(ctx, live: _Live, domain: str, service: str, data: dict, parsed, ta
             )
 
     help_lines = preview_help(ctx.environ)
+    if not targeted and _needs_target(spec):
+        # Not sendable as it stands, so the way forward leads rather than the
+        # flag that would send it.
+        help_lines = [*_missing_target_help(domain, service), *help_lines]
     if targeted and len(doc.get("would_reach") or []) < len(acted_on):
         help_lines.append(
             f"{len(acted_on)} entities would be reached; the first {PREVIEW_ROWS} are listed"
@@ -895,6 +948,16 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
     if fault is not None:
         return fault
 
+    targeted = bool(
+        parsed.get("target_entity") or parsed.get("target_area") or parsed.get("target_device")
+    )
+    if _needs_target(spec) and not targeted and exc.code == "BAD_REQUEST":
+        return ApiError(
+            f"{domain}.{service} acts on a target and none was given",
+            help_lines=_missing_target_help(domain, service),
+            code="MISSING_TARGET",
+        )
+
     fault = _incapable_fault(live, spec, domain, service, parsed)
     if fault is not None:
         return fault
@@ -912,6 +975,25 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
         return unreached
 
     return _with_help(exc, _generic_help(domain, service))
+
+
+def _needs_target(spec) -> bool:
+    """Whether a service publishes a target, which is what an entity service does.
+
+    Home Assistant validates an entity service's call with
+    `cv.has_at_least_one_key` over the target keys, so one sent with none is a
+    `vol.Invalid` -- the same empty 400 as every other refusal.
+    """
+    return isinstance(spec, dict) and spec.get("target") is not None
+
+
+def _missing_target_help(domain: str, service: str) -> list:
+    return [
+        f"Run `hass-axi service call {domain}.{service} --target-entity <entity_id>` "
+        "to name what it acts on",
+        "--target-area <id|name> and --target-device <device_id> name several at once",
+        f"Run `hass-axi state list --domain {domain}` to find an entity id",
+    ]
 
 
 def _model_fault(published, domain: str, service: str, wants_response: bool):
@@ -1141,5 +1223,5 @@ def _generic_help(domain: str, service: str) -> list:
 
 def _with_help(exc: AxiError, help_lines: list):
     """Keep a refusal exactly as it was, but never leave it a dead end."""
-    exc.help_lines = exc.help_lines or help_lines
+    exc.help_lines = help_lines
     return exc

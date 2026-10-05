@@ -305,7 +305,7 @@ def test_a_non_admin_account_is_a_permission_failure_over_websocket(run_cli, ws_
     rejected" sent an agent to fix the one thing that was already right.
     """
     ws_server.fail_all = {"code": "unauthorized", "message": "Unauthorized"}
-    code, out = run_cli(["area", "create", "--name", "Example Room Two"], ws_env)
+    code, out = run_cli(["area", "create", "--write", "--name", "Example Room Two"], ws_env)
     assert code == 1
     assert "code: FORBIDDEN" in out
     assert f"class: {PERMISSION}" in out
@@ -493,15 +493,22 @@ INVOCATIONS = {
     ("api", "api"): ["api", "/config"],
     ("area", "list"): ["area", "list"],
     ("area", "get"): ["area", "get", "example_room"],
-    ("area", "create"): ["area", "create", "--name", "Example Room Two"],
-    ("area", "update"): ["area", "update", "example_room", "--name", "Renamed"],
+    ("area", "create"): ["area", "create", "--write", "--name", "Example Room Two"],
+    ("area", "update"): ["area", "update", "--write", "example_room", "--name", "Renamed"],
     ("device", "list"): ["device", "list"],
     ("device", "get"): ["device", "get", "device_two"],
-    ("device", "update"): ["device", "update", "device_two", "--name", "Renamed"],
+    ("device", "update"): ["device", "update", "--write", "device_two", "--name", "Renamed"],
     ("doctor", "doctor"): ["doctor"],
     ("entity", "list"): ["entity", "list"],
     ("entity", "get"): ["entity", "get", "light.example_ceiling"],
-    ("entity", "update"): ["entity", "update", "light.example_ceiling", "--name", "Renamed"],
+    ("entity", "update"): [
+        "entity",
+        "update",
+        "--write",
+        "light.example_ceiling",
+        "--name",
+        "Renamed",
+    ],
     ("home", "home"): [],
     ("service", "list"): ["service", "list"],
     ("service", "get"): ["service", "get", "light.turn_on"],
@@ -731,7 +738,7 @@ def test_a_read_only_refusal_is_a_usage_class_and_keeps_its_own_code(run_cli, ws
     different fixes.
     """
     code, out = run_cli(
-        ["entity", "update", "light.example_ceiling", "--name", "Renamed"],
+        ["entity", "update", "--write", "light.example_ceiling", "--name", "Renamed"],
         {**ws_env, "HASS_AXI_READ_ONLY": "1"},
     )
     assert code == 2

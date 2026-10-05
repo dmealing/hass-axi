@@ -1,0 +1,5 @@
+error: "unknown method 'BOGUS'; methods: GET, POST, PUT, PATCH, DELETE, HEAD"
+code: UNEXPECTED_ARGUMENT
+class: usage
+help[1]:
+  Run `hass-axi api GET /config`

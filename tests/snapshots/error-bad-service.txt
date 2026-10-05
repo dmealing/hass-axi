@@ -1,0 +1,6 @@
+error: "expected <domain>.<service>, got 'turn_on'"
+code: BAD_SERVICE
+class: usage
+help[2]:
+  Run `hass-axi service call light.turn_on --target-entity <entity_id>`
+  Run `hass-axi service list` to see the available domains

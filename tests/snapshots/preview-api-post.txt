@@ -1,0 +1,8 @@
+request:
+  method: POST
+  path: /api/services/light/turn_on
+  body:
+    entity_id: light.example_lamp
+preview: nothing was sent to Home Assistant
+help[1]:
+  Run the same command with --write to send it

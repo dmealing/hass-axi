@@ -11,6 +11,7 @@ from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
 from ..output import HelpBlock, truncate
 from ..readonly import READ
+from ..rest import require_entity_id
 from . import _window
 from ._common import (
     PREVIEW_CHARS,
@@ -18,14 +19,15 @@ from ._common import (
     device_area_map,
     domain_of,
     effective_area_id,
+    empty_listing,
     filter_by_area,
     friendly_name,
     last_reported,
+    listing_args,
     matches_search,
     not_reported_for,
-    parse_limit,
     project,
-    select_fields,
+    see_all_line,
 )
 
 DEFAULT_LIMIT = 100
@@ -112,7 +114,16 @@ def _row(state: dict, current) -> dict:
     }
 
 
+#: The filters a "see all" suggestion has to carry to list the same rows.
+_FILTERS = ("--area", "--domain", "--state", "--search", "--stale")
+
+
 def _list(ctx, parsed):
+    limit, fields = listing_args(
+        parsed, LIST_FIELDS, DEFAULT_LIST_FIELDS, default_limit=DEFAULT_LIMIT
+    )
+    stale = parsed.get("stale")
+    threshold = _stale_threshold(stale) if stale else None
     states = ctx.rest().states()
     current = _window.now()
     rows = [_row(state, current) for state in states]
@@ -133,20 +144,17 @@ def _list(ctx, parsed):
     if search:
         rows = [row for row in rows if matches_search(search, row["entity_id"], row["name"])]
         scope.append(f"matching {search!r}")
-    stale = parsed.get("stale")
     if stale:
-        rows = _narrow_to_stale(rows, stale, current)
+        rows = [row for _, row in not_reported_for(rows, threshold, current)]
         scope.append(f"not reported in {stale}")
 
     matched = len(rows)
-    limit = parse_limit(parsed.get("limit"), default=DEFAULT_LIMIT)
-    fields = select_fields(parsed.get("fields"), LIST_FIELDS, DEFAULT_LIST_FIELDS)
     shown = rows[:limit]
 
     if not shown:
         where = " ".join(scope) or "in this installation"
         return {
-            "states": f"0 entity states found {where}",
+            **empty_listing("states", f"0 entity states found {where}"),
             "total": f"{total} entities in this installation",
             "help": HelpBlock(
                 [
@@ -160,7 +168,7 @@ def _list(ctx, parsed):
 
     help_lines = ["Run `hass-axi state get <entity_id>` for one entity's full attributes"]
     if len(shown) < matched:
-        help_lines.append(f"Run `hass-axi state list --limit {matched}` to see all {matched}")
+        help_lines.append(see_all_line("state list", parsed, _FILTERS, matched))
     if not domains:
         help_lines.append("Run `hass-axi state list --domain light` to narrow by domain")
 
@@ -171,8 +179,8 @@ def _list(ctx, parsed):
     }
 
 
-def _narrow_to_stale(rows: list, raw: str, current) -> list:
-    """Keep the rows whose integration has reported nothing for ``raw``, oldest first."""
+def _stale_threshold(raw: str):
+    """The age `--stale` names, decided before any state is fetched."""
     threshold = _window.parse_age(raw)
     if threshold is None:
         raise UsageError(
@@ -180,7 +188,7 @@ def _narrow_to_stale(rows: list, raw: str, current) -> list:
             help_lines=["Run `hass-axi state list --stale 24h` (ages: s, m, h, d, w)"],
             code="BAD_TIME",
         )
-    return [row for _, row in not_reported_for(rows, threshold, current)]
+    return threshold
 
 
 def _narrow_to_area(ctx, rows: list, area_filter, scope: list) -> list:
@@ -208,6 +216,7 @@ def _narrow_to_area(ctx, rows: list, area_filter, scope: list) -> list:
 
 def _get(ctx, parsed):
     entity_id = parsed.positionals[0]
+    require_entity_id(entity_id)
     state = ctx.rest().state(entity_id)
     attributes = dict(state.get("attributes") or {})
     full = parsed.get("full", False)
@@ -222,12 +231,9 @@ def _get(ctx, parsed):
                     f"Run `hass-axi state get {entity_id} --full` to see complete attributes",
                 )
 
-    doc = {
-        "state": _row(state, _window.now()),
-        "attributes": attributes if attributes else {},
-    }
+    doc = {"state": _row(state, _window.now()), "attributes": attributes}
     if not attributes:
-        doc["attributes"] = "0 attributes on this entity"
+        doc["note"] = "0 attributes on this entity"
     if hint:
         doc["help"] = HelpBlock([hint])
     return doc

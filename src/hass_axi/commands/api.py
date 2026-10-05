@@ -8,7 +8,7 @@ from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
 from ..output import HelpBlock
 from ..readonly import DYNAMIC, READ, WRITE
-from ..rest import SAFE_METHODS, api_path
+from ..rest import SAFE_METHODS, BinaryResponse, api_path
 from ._common import (
     WRITE_FLAG,
     WRITE_FLAG_NAME,
@@ -105,6 +105,18 @@ def run(ctx, sub: str, parsed):
 
     result = ctx.rest().request(method, path, body=sent_body, query=sent_query)
 
+    if isinstance(result, BinaryResponse):
+        # Described rather than printed: a JPEG decoded as text is neither the
+        # image nor an error, and this tool has nowhere to put the bytes.
+        doc["result"] = f"{result.size} bytes of {result.content_type or 'binary data'}, not shown"
+        doc["help"] = HelpBlock(
+            [
+                "This endpoint answers with binary data, which hass-axi does not print",
+                "Fetch it with a tool that writes the response to a file instead",
+            ]
+        )
+        return doc
+
     if result is None or result == "":
         doc["result"] = f"{method} succeeded with an empty response"
         return doc
@@ -149,6 +161,13 @@ def _method_and_path(positionals: list):
                 code="MISSING_PATH",
             )
         return values[0].upper(), values[1]
+    if len(values) > 1 and values[1].startswith("/") and not values[0].startswith("/"):
+        # Two values with the path second: the first was meant as a method.
+        raise UsageError(
+            f"unknown method {values[0]!r}; methods: {', '.join(METHODS)}",
+            help_lines=[f"Run `hass-axi api GET {values[1]}`"],
+            code="UNEXPECTED_ARGUMENT",
+        )
     if len(values) > 1:
         raise UsageError(
             f"unexpected argument {values[1]!r}",

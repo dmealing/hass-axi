@@ -242,9 +242,12 @@ def compute_hook_update(settings: dict, command: str, timeout: int, event: str =
 
     hooks = updated.setdefault("hooks", {})
     if not isinstance(hooks, dict):
-        hooks = {}
-        updated["hooks"] = hooks
-        changed = True
+        # Somebody's file, in a shape this installer does not understand.
+        # Replacing the value would report `installed` over what was there.
+        raise ValueError(
+            f"`hooks` holds a JSON {type(hooks).__name__}, not an object; "
+            "fix or remove it and install again"
+        )
 
     legacy = hooks.get("session_start") if event == START else None
     if isinstance(legacy, list):
@@ -574,8 +577,42 @@ def _legacy_opencode_plugin(home: Path) -> Path:
 
 
 def _read_settings(path: Path) -> dict:
-    current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    return current if isinstance(current, dict) else {}
+    """The settings object in ``path``, or ``{}`` when there is no file.
+
+    A file that holds something other than an object is refused rather than
+    read as empty: reading it as empty is how a list somebody wrote came to be
+    replaced by this tool's hooks and reported `installed`.
+    """
+    if not path.exists():
+        return {}
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        return {}
+    current = json.loads(text)
+    if not isinstance(current, dict):
+        raise ValueError(
+            f"holds a JSON {type(current).__name__}, not an object; "
+            "fix or remove it and install again"
+        )
+    return current
+
+
+def toml_problem(content: str) -> str | None:
+    """Why ``content`` is not TOML, or ``None`` when it parses or cannot be checked.
+
+    Checked with the standard library's parser, which exists from Python 3.11;
+    on an older interpreter there is nothing to check with and the answer is
+    ``None``, which is what every release before this one assumed everywhere.
+    """
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover - Python 3.9 and 3.10
+        return None
+    try:
+        tomllib.loads(content)
+    except tomllib.TOMLDecodeError as exc:
+        return f"does not parse as TOML ({exc}); fix it and install again"
+    return None
 
 
 def install(
@@ -639,6 +676,7 @@ def status(
     try:
         content = config.read_text(encoding="utf-8") if config.exists() else ""
         _, changed, problem = compute_codex_config_update(content)
+        problem = toml_problem(content) or problem
         state = "installed" if content and not changed and problem is None else "missing"
     except OSError as exc:
         report["errors"].append(f"{config}: {exc}")
@@ -680,7 +718,11 @@ def remove(home: Path | None = None) -> dict:
         if path not in seen:
             try:
                 updated, changed = compute_hook_removal(_read_settings(path))
-                if changed:
+                if changed and not updated:
+                    # Nothing but this tool's hooks was in it, so the file goes
+                    # with them rather than staying behind as `{}`.
+                    path.unlink()
+                elif changed:
                     write_atomic(path, json.dumps(updated, indent=2) + "\n")
                 seen[path] = "removed" if changed else "absent"
             except (OSError, ValueError) as exc:
@@ -749,7 +791,7 @@ def _install_json_hook(
         if changed:
             write_atomic(path, json.dumps(updated, indent=2) + "\n")
         return {"target": label, "status": "installed" if changed else "current"}
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         report["errors"].append(f"{path}: {exc}")
         return {"target": label, "status": "failed"}
 
@@ -758,7 +800,14 @@ def _install_codex_features(path: Path, report: dict) -> dict:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         current = path.read_text(encoding="utf-8") if path.exists() else ""
-        updated, changed, problem = compute_codex_config_update(current)
+        # A config that does not parse cannot be made to enable anything by
+        # appending to it, and one this edit would break must not be written.
+        problem = toml_problem(current)
+        updated, changed = current, False
+        if problem is None:
+            updated, changed, problem = compute_codex_config_update(current)
+        if problem is None and changed and toml_problem(updated) is not None:
+            problem = "the edit would leave it unparseable; add `[features] hooks = true` by hand"
         if problem is not None:
             report["errors"].append(f"{path}: {problem}")
             return {"target": "codex-features", "status": "skipped"}

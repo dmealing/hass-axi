@@ -1,0 +1,5 @@
+error: unexpected argument 'extra' for `ping`
+code: UNEXPECTED_ARGUMENT
+class: usage
+help[1]:
+  Run `hass-axi ping`

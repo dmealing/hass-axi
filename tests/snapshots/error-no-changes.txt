@@ -1,0 +1,6 @@
+error: nothing to update
+code: NO_CHANGES
+class: usage
+help[2]:
+  Run `hass-axi entity update light.example_lamp --name "<name>"` to set the name
+  Run `hass-axi entity update light.example_lamp --area <id|name>` to move it

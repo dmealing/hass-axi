@@ -1,0 +1,5 @@
+error: "--limit needs a whole number, got 'abc'"
+code: BAD_LIMIT
+class: usage
+help[1]:
+  Run the command again with `--limit 50`

@@ -1,0 +1,5 @@
+error: "--name is required"
+code: MISSING_NAME
+class: usage
+help[1]:
+  Run `hass-axi area create --name 'Example Room'`

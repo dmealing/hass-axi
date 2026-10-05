@@ -33,7 +33,7 @@ def test_state_list_filters_by_state_and_by_search(run_cli, rest_env):
 def test_state_list_states_the_zero_explicitly(run_cli, rest_env):
     code, out = run_cli(["state", "list", "--domain", "vacuum"], rest_env)
     assert code == 0
-    assert "states: 0 entity states found in domain vacuum" in out
+    assert "count: 0 entity states found in domain vacuum" in out
     assert "total: 11 entities in this installation" in out
 
 
@@ -131,7 +131,9 @@ def test_service_call_sends_targets_flat_as_home_assistant_requires(run_cli, res
     assert "changed[1]{entity_id,name,state}:" in out
 
 
-def test_service_call_sends_every_target_kind_flat(run_cli, rest_env, rest_server):
+def test_service_call_sends_every_target_kind_flat(run_cli, installation, installation_env):
+    # `--target-area` now always resolves the registry before the call, so this
+    # needs both transports on one origin rather than `rest_env` alone.
     code, _ = run_cli(
         [
             "service",
@@ -145,12 +147,12 @@ def test_service_call_sends_every_target_kind_flat(run_cli, rest_env, rest_serve
             "device_one",
             "--write",
         ],
-        rest_env,
+        installation_env,
     )
     assert code == 0
-    body = next(r for r in rest_server.requests if r["path"] == "/api/services/light/turn_on")[
-        "body"
-    ]
+    body = next(
+        r for r in installation.rest.requests if r["path"] == "/api/services/light/turn_on"
+    )["body"]
     assert body == {
         "entity_id": ["light.example_lamp"],
         "area_id": ["example_room"],
@@ -202,7 +204,10 @@ def test_service_call_merges_a_json_object_over_key_value_data(run_cli, rest_env
 
 def test_service_call_reports_an_empty_change_set_definitively(run_cli, rest_env, rest_server):
     rest_server.state["service_result"] = []
-    code, out = run_cli(["service", "call", "light.turn_off", "--write"], rest_env)
+    code, out = run_cli(
+        ["service", "call", "light.turn_off", "--target-entity", "light.example_lamp", "--write"],
+        rest_env,
+    )
     assert code == 0
     assert "changed: light.turn_off accepted with 0 states changed" in out
 
@@ -217,6 +222,8 @@ def test_service_call_surfaces_a_service_response(run_cli, rest_env, rest_server
             "--response",
             "--data",
             "start_date_time=2026-01-01 00:00:00",
+            "--target-entity",
+            "calendar.example_agenda",
             "--write",
         ],
         rest_env,

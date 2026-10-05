@@ -176,6 +176,37 @@ that are neither JWT-shaped nor bearer-prefixed, and anything inside a binary.
 - `commands/sensor.py`, `history.py`, `logbook.py`, `statistics.py`, `ping.py` — the reads that
   close the gap with the other `ha-axi` and add the sensor and energy reads; see "The recorder
   reads" below.
+- `toolkit/` — the library surface: reusable, pure rules that other programs can import with no
+  dependency on the CLI layers. See "The library is `hass_axi.toolkit`" below.
+
+### The library is `hass_axi.toolkit`
+
+`hass_axi.toolkit` is the supported public library surface: plain values in, plain values out, and
+a failed lookup reported as data rather than raised as a CLI error. It contains no imports of the
+command modules, the argument parser, the output boundary or a transport, depends on the standard
+library alone, and produces no text that names a command to run. The CLI's own commands are built
+on it, so the two are identical in the rules they apply.
+
+- **`names.fold(text)`** — compares names the way people type them: case, typographic quotation
+  marks, dashes, the ellipsis, accents and spacing do not matter.
+- **`names.resolve(value, entries, ident, name)`** — finds an entry by identifier and then by folded
+  name. Returns the match, every entry with an ambiguous folded name (a tie), and the nearest
+  entries if nothing matched. Never breaks a tie or guesses; a failed lookup is always reported as
+  data.
+- **`names.nearest(value, entries, labels)`** — returns near-miss entries for a mistyped value.
+- **`shapes.health_fault(answer)`** — whether a decoded answer is really Home Assistant's API root.
+- **`shapes.shape_fault(value, kind)`** — whether an answer matches the expected shape.
+- **`shapes.is_text(content_type, raw)`** — whether a binary body is text.
+- **`shapes.is_entity_id(value)`** — whether a value can be an entity id.
+- **`recorder.summarize(meta, rows, start, period, end=None, hourly=None)`** — the total, mean,
+  minimum and maximum of a statistic inside a window, reading from hourly rows when coarse buckets
+  do not cover the window. Returns the summary and caveats: missing buckets, a meter that went
+  backwards or reset, one bucket that dwarfs the rest, buckets reaching outside the window.
+- **`recorder.sum_caveats(rows, unit)`** — the caveats a statistic's buckets show: missing buckets,
+  backwards readings, resets, an anomalous bucket.
+
+This package is new, and it may grow. When a rule is discovered in a fix or an enhancement, it
+lives in the toolkit so other programs can use it without duplicating the logic or the tests.
 
 ### The service model is a dependency now
 
@@ -633,9 +664,10 @@ Nothing is inferred from a name or an HTTP verb: `service call` mutates through 
 looks like any other POST, `template render` is a POST that changes nothing, and the WebSocket
 command set does not follow REST conventions at all.
 
-**`DYNAMIC` is a fourth answer, not a hole.** Five subcommands carry their subject in their
-arguments rather than in their declaration — `api`, `ws`, `service call`, `setup skill` and
-`setup hooks` — so they declare
+**`DYNAMIC` is a fourth answer, not a hole.** Nine subcommands are a read or a write depending
+on their arguments rather than on their declaration — `api`, `ws`, `service call`, `setup skill`,
+`setup hooks`, and the typed registry writes `entity update`, `area create`, `area update` and
+`device update`, which preview until `--write` — so they declare
 `DYNAMIC` and their module exposes `access(sub, parsed)`. A module that declares `DYNAMIC` and
 supplies no resolver is unclassified in a costume and `cli._access` treats it as a write; a test
 asserts every `DYNAMIC` sub has one. `wscmd` resolves the *type* through the same `_resolve` that
@@ -976,7 +1008,7 @@ body, neither of which quotes, so the constraint comes from the one reader that 
 
 ```sh
 scripts/dev-setup.sh                     # creates .venv and installs this checkout into it
-.venv/bin/pytest                         # ~1300 tests, a few seconds
+.venv/bin/pytest                         # ~2150 tests, under a minute
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/hass-axi setup skill --check     # SKILL.md is generated, never hand-edited
 ```
@@ -1014,7 +1046,9 @@ it, the way this paragraph does.
 otherwise; the checksum test will catch the edit anyway. Refreshing them from upstream is its own
 commit, separate from any encoder change made to satisfy it, and `PROVENANCE.md` carries the recipe.
 
-**Tests never need a live installation or a live token, and must not start to.** They run against
+**Tests never need a live installation or a live token, and must not start to** — the opt-in
+`tests/live/` suite, deselected by default and run only by `scripts/live-test.sh`, is the one
+exception. They run against
 real loopback servers in `tests/conftest.py`: an `http.server` for REST and a real `websockets`
 server that performs the Home Assistant `auth_required` / `auth` / `auth_ok` handshake. If a
 behaviour cannot be tested that way, say so in the PR rather than reaching for real credentials.

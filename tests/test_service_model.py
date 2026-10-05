@@ -175,15 +175,54 @@ def test_an_area_that_does_not_exist_is_reported_rather_than_accepted(run_cli, i
     assert "hass-axi area list" in out
 
 
-def test_an_area_name_passed_where_an_id_belongs_is_diagnosed(run_cli, installation_env):
-    """`--target-area` is an area_id; a name silently matches nothing upstream."""
-    code, out = run_cli(
+def test_an_area_name_passed_as_a_target_is_resolved_to_its_id(
+    run_cli, installation_env, rest_server
+):
+    """Every other `--area` takes a name; Home Assistant takes only the id, so it is resolved."""
+    code, _ = run_cli(
         ["service", "call", "light.turn_on", "--target-area", "Example Room", "--write"],
         installation_env,
     )
+    assert code == 0
+    posted = [r for r in rest_server.requests if r["path"] == "/api/services/light/turn_on"]
+    assert posted[-1]["body"]["area_id"] == ["example_room"]
+
+
+def test_an_area_id_as_a_target_costs_no_registry_read(run_cli, rest_env, rest_server):
+    """An id is sent as written, with no WebSocket round-trip to confirm it."""
+    code, _ = run_cli(
+        ["service", "call", "light.turn_on", "--target-entity", "light.example_lamp", "--write"],
+        rest_env,
+    )
+    assert code == 0
+
+
+def test_an_area_named_after_another_areas_id_is_refused_rather_than_guessed(
+    run_cli, installation, installation_env
+):
+    """`example_hall`'s own id must not shadow a different area merely named that.
+
+    A target has to actuate the one area meant, never a guess between two: an
+    id match is only taken outright when no other area's folded name equals
+    the same value.
+    """
+    installation.ws.areas.append(
+        {
+            "area_id": "example_den",
+            "name": "example_hall",
+            "icon": None,
+            "floor_id": None,
+            "aliases": [],
+        }
+    )
+    code, out = run_cli(
+        ["service", "call", "light.turn_on", "--target-area", "example_hall", "--write"],
+        installation_env,
+    )
     assert code == 1
-    assert "example_room" in out
-    assert "area name" in out
+    assert "matches more than one area" in out
+    assert "example_hall" in out
+    assert "example_den" in out
 
 
 def test_a_target_that_matched_but_changed_nothing_says_so(run_cli, installation_env):
@@ -279,7 +318,7 @@ def test_service_get_reports_the_response_mode(run_cli, rest_env):
 def test_service_get_states_an_empty_field_list_definitively(run_cli, rest_env):
     code, out = run_cli(["service", "get", "light.turn_off"], rest_env)
     assert code == 0
-    assert "fields: 0 fields declared on light.turn_off" in out
+    assert "field_count: 0 fields declared on light.turn_off" in out
 
 
 def test_service_get_rejects_an_unknown_service_with_the_near_misses(run_cli, rest_env):
@@ -415,13 +454,16 @@ def test_a_target_that_cannot_be_resolved_does_not_fail_a_call_that_worked(
 ):
     """The registries answer the follow-up question, not the call itself.
 
-    `rest_env` serves REST and nothing else, so resolving an area target is
-    impossible. The call still went out and Home Assistant still accepted it, so
-    the report says what it could not read rather than inventing a failure.
+    `rest_env` serves REST and nothing else, so resolving the target for the
+    report is impossible. `--target-device` needs no pre-call registry read --
+    unlike `--target-area`, which now always resolves before the call goes out
+    and would fail the call outright rather than soften into this report. The
+    call still went out and Home Assistant still accepted it, so the report
+    says what it could not read rather than inventing a failure.
     """
     rest_server.state["service_result"] = []
     code, out = run_cli(
-        ["service", "call", "light.turn_off", "--target-area", "example_room", "--write"],
+        ["service", "call", "light.turn_off", "--target-device", "device_example", "--write"],
         rest_env,
     )
     assert code == 0
