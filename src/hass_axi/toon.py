@@ -25,10 +25,10 @@ __all__ = ["TOON_DELIMITERS", "encode", "encode_scalar"]
 TOON_DELIMITERS = {",": "", "\t": "\t", "|": "|"}
 
 # Section 7.2: a string that would otherwise be read back as a number.
-_NUMERIC_LIKE = re.compile(r"^[+-]?[0-9]+(?:\.[0-9]+)?(?:e[+-]?[0-9]+)?$", re.IGNORECASE)
+_NUMERIC_LIKE = re.compile(r"^[+-]?[0-9]+(?:\.[0-9]+)?(?:e[+-]?[0-9]+)?\Z", re.IGNORECASE)
 
 # Section 7.3: keys and header field names safe to emit unquoted.
-_BARE_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*$")
+_BARE_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*\Z")
 
 _CONTROL = re.compile(r"[\x00-\x1f]")
 
