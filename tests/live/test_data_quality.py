@@ -146,23 +146,25 @@ def test_a_mean_is_the_mean_inside_the_window(house):
 
 
 def test_a_bucket_that_dwarfs_the_rest_is_called_out(house):
-    """Detected here by the same shape rule, from the raw daily buckets."""
+    """Detected here by the same shape rule, from the hourly rows inside the window.
+
+    Those are the rows the total is read from, whatever period is displayed, so
+    they are the rows the rule is about. The verdict depends on the grain: an
+    hour holding most of a week is hundreds of times the median hour while the
+    day around it is only a few times the median day.
+    """
     meters = sorted(i for i, m in metadata(house).items() if m.get("has_sum"))[:LIMIT]
     if not meters:
         pytest.skip("this installation keeps no sum statistics")
     start, end = window(7)
-    raw = house.ws(
-        "recorder/statistics_during_period",
-        start_time=iso(start),
-        end_time=iso(end),
-        statistic_ids=meters,
-        period="day",
-        types=["change"],
-    )
+    raw = hourly(house, meters, start, end, ["change"])
     mine = summaries(house, meters, start, end, "day")
     expected, silent, noisy = 0, [], []
     for statistic_id in meters:
-        positive = [r["change"] for r in raw.get(statistic_id, []) if (r.get("change") or 0) > 0]
+        rows = inside(raw.get(statistic_id, []), start, end)
+        if not rows:
+            continue
+        positive = [r["change"] for r in rows if (r.get("change") or 0) > 0]
         outlier = (
             len(positive) >= 3
             and max(positive) > 20 * stats.median(positive)
@@ -175,7 +177,9 @@ def test_a_bucket_that_dwarfs_the_rest_is_called_out(house):
         if said and not outlier:
             noisy.append(statistic_id)
     assert not silent, f"{len(silent)} of {expected} absurd buckets carry no caveat"
-    assert not noisy, f"{len(noisy)} statistics carry an outlier caveat the buckets do not support"
+    assert not noisy, (
+        f"{len(noisy)} statistics carry an outlier caveat the hourly rows do not support"
+    )
 
 
 def test_history_agrees_with_the_recorder_and_says_what_it_does_not_cover(house, snapshot):
