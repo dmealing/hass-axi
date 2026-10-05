@@ -84,8 +84,8 @@ _END = re.compile(r"\|\||&&|[;|&\n)]")
 _HEREDOC = re.compile(r"<<-?[ \t]*(['\"]?)(\w+)\1[^\n]*\n.*?^[ \t]*\2[ \t]*$", re.S | re.M)
 
 #: What a recorded label and date look like, checked again on the way back in.
-_LABEL = re.compile(r"^[a-z_]+(?: [a-z_]+)?$")
-_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_LABEL = re.compile(r"^[a-z_]+(?: [a-z_]+)?\Z")
+_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}\Z")
 
 #: The node types the two agents give a tool call in a transcript.
 _TOOL_CALL_TYPES = {"tool_use", "function_call", "local_shell_call", "custom_tool_call"}

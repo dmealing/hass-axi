@@ -13,7 +13,7 @@ import re
 import sys
 from typing import Any
 
-from .toon import encode
+from axi_toolkit.toon import encode
 
 #: Placeholder substituted for anything that looks like a credential.
 REDACTED = "<redacted>"

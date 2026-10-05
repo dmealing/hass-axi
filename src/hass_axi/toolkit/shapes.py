@@ -40,7 +40,7 @@ def is_text(content_type: str, raw: bytes) -> bool:
 
 #: `domain.object_id`, the only shape an entity id has. Case is not checked:
 #: Home Assistant folds it.
-_ENTITY_ID = re.compile(r"^[A-Za-z0-9_]+\.[A-Za-z0-9_]+$")
+_ENTITY_ID = re.compile(r"^[A-Za-z0-9_]+\.[A-Za-z0-9_]+\Z")
 
 
 def is_entity_id(value: str) -> bool:

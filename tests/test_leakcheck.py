@@ -164,16 +164,17 @@ def test_the_allow_marker_also_applies_to_the_condensed_pass():
 
 # -------------------------------------------------------- path allowances
 #
-# The marker is a comment, so a JSON file cannot carry one. PATH_ALLOWANCES is
-# how vendored data that must stay byte-for-byte is exempted instead, and these
-# tests hold it to the same scope the marker has.
+# The marker is a comment, and a file kept byte-for-byte cannot gain one.
+# PATH_ALLOWANCES is how such a file is exempted instead, and these tests hold
+# it to the same scope the marker has.
 
 
-ALLOWED_PATH = "tests/fixtures/toon-spec/encode/primitives.json"
 LOST_MESSAGE_PATH = "tests/fixtures/commit-messages/sibling-41bcb73.txt"
+ALLOWED_PATH = LOST_MESSAGE_PATH
 LUCKY_MESSAGE_PATH = "tests/fixtures/commit-messages/46c25f9.txt"
 HIJACKED_MESSAGE_PATH = "tests/fixtures/commit-messages/sibling-b1f9bb18.txt"
-TWO_SHAPES = "path " + "/ho" + "me/" + "someone" + "/notes and " + "192." + "168.1.10"
+TRAILER_ADDRESS = "noreply" + "@" + "anthropic" + ".com"
+TWO_SHAPES = "mail " + TRAILER_ADDRESS + " and " + "192." + "168.1.10"
 
 
 def test_a_path_allowance_exempts_only_the_rule_it_names():
@@ -181,15 +182,15 @@ def test_a_path_allowance_exempts_only_the_rule_it_names():
 
 
 def test_a_path_allowance_exempts_no_other_file():
-    findings = leakcheck.scan_text("src/hass_axi/toon.py", TWO_SHAPES + "\n")
-    assert rule_names(findings) == ["home-path", "private-ip"]
+    findings = leakcheck.scan_text("src/hass_axi/output.py", TWO_SHAPES + "\n")
+    assert rule_names(findings) == ["personal-email", "private-ip"]
 
 
 def test_an_allowance_matches_only_the_exact_path_it_names():
     """A path that merely ends with an allowed one -- a shadowing directory, a
     suffixed twin, a scan rooted elsewhere -- is a different file, and exempting
     it would grant the entry every directory it is ever copied into."""
-    assert leakcheck.path_allowances(ALLOWED_PATH) == frozenset({"home-path"})
+    assert leakcheck.path_allowances(ALLOWED_PATH) == frozenset({"personal-email"})
     assert leakcheck.path_allowances(f"attic/{ALLOWED_PATH}") == frozenset()
     assert leakcheck.path_allowances(f"/scan/root/{ALLOWED_PATH}") == frozenset()
     assert leakcheck.path_allowances(f"{ALLOWED_PATH}.bak") == frozenset()
@@ -200,10 +201,9 @@ def test_an_allowance_matches_only_the_exact_path_it_names():
 #: suite instead of quietly widening what the entry covers. Assembled from
 #: fragments like DIRTY, so this file stays clean under its own scanner.
 EXPECTED_SHAPES = {
-    ALLOWED_PATH: frozenset({"C:" + "\\\\" + "Users" + "\\\\" + "path"}),
-    LOST_MESSAGE_PATH: frozenset({"noreply" + "@" + "anthropic" + ".com"}),
-    LUCKY_MESSAGE_PATH: frozenset({"noreply" + "@" + "anthropic" + ".com"}),
-    HIJACKED_MESSAGE_PATH: frozenset({"noreply" + "@" + "anthropic" + ".com"}),
+    LOST_MESSAGE_PATH: frozenset({TRAILER_ADDRESS}),
+    LUCKY_MESSAGE_PATH: frozenset({TRAILER_ADDRESS}),
+    HIJACKED_MESSAGE_PATH: frozenset({TRAILER_ADDRESS}),
 }
 
 
