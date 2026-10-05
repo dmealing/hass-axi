@@ -172,9 +172,11 @@ def summarize(meta: dict, rows: list, start, period: str, *, end=None, hourly=No
     ``hourly`` is the statistic's hourly rows for the same window, passed when
     the display period is one the recorder widens the window for. The numbers
     are then read from the hourly rows that begin inside the window, so the
-    total covers what was asked for; the display buckets still say how many
-    there are and carry the caveats. Without it the buckets are summed as they
-    came, and the summary says so if they reach outside the window.
+    total covers what was asked for, and a meter's caveats (see `sum_caveats`)
+    are about those same hourly rows: "one bucket" there is one hour, whatever
+    the display period. The display buckets still say how many there are and
+    which are missing. Without it the buckets are summed as they came, and the
+    summary says so if they reach outside the window.
     """
     kind = kind_of(meta)
     unit = unit_of(meta)
@@ -240,7 +242,14 @@ def summarize(meta: dict, rows: list, start, period: str, *, end=None, hourly=No
 
 
 def sum_caveats(rows: list, unit: str) -> list:
-    """What a meter's buckets show about the meter: going backwards, and resetting."""
+    """What a meter's buckets show about the meter: going backwards, dwarfing, resetting.
+
+    Every rule is applied to ``rows`` at the grain they arrive in, and the
+    verdict depends on that grain: one hour can be far more than 20 times the
+    median hour while its day is not 20 times the median day. `summarize`
+    passes the rows the total is read from, which are hourly whenever it has
+    them.
+    """
     caveats = []
     negative = [c for c in (_number(r.get("change")) for r in rows) if c is not None and c < 0]
     if negative:
@@ -251,8 +260,8 @@ def sum_caveats(rows: list, unit: str) -> list:
         )
 
     # One bucket that dwarfs the rest. A meter that briefly reported a lifetime
-    # figure as a daily one, or one day's genuine heavy use: the buckets cannot
-    # say which, so the caveat states the shape and the total stays as it is.
+    # figure as a periodic one, or one period's genuine heavy use: the buckets
+    # cannot say which, so the caveat states the shape and the total stays as it is.
     positive = [
         (c, r) for c, r in ((_number(r.get("change")), r) for r in rows) if c is not None and c > 0
     ]
