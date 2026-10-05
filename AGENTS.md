@@ -176,6 +176,37 @@ that are neither JWT-shaped nor bearer-prefixed, and anything inside a binary.
 - `commands/sensor.py`, `history.py`, `logbook.py`, `statistics.py`, `ping.py` — the reads that
   close the gap with the other `ha-axi` and add the sensor and energy reads; see "The recorder
   reads" below.
+- `toolkit/` — the library surface: reusable, pure rules that other programs can import with no
+  dependency on the CLI layers. See "The library is `hass_axi.toolkit`" below.
+
+### The library is `hass_axi.toolkit`
+
+`hass_axi.toolkit` is the supported public library surface: plain values in, plain values out, and
+a failed lookup reported as data rather than raised as a CLI error. It contains no imports of the
+command modules, the argument parser, the output boundary or a transport, depends on the standard
+library alone, and produces no text that names a command to run. The CLI's own commands are built
+on it, so the two are identical in the rules they apply.
+
+- **`names.fold(text)`** — compares names the way people type them: case, typographic quotation
+  marks, dashes, the ellipsis, accents and spacing do not matter.
+- **`names.resolve(value, entries, ident, name)`** — finds an entry by identifier and then by folded
+  name. Returns the match, every entry with an ambiguous folded name (a tie), and the nearest
+  entries if nothing matched. Never breaks a tie or guesses; a failed lookup is always reported as
+  data.
+- **`names.nearest(value, entries, labels)`** — returns near-miss entries for a mistyped value.
+- **`shapes.health_fault(answer)`** — whether a decoded answer is really Home Assistant's API root.
+- **`shapes.shape_fault(value, kind)`** — whether an answer matches the expected shape.
+- **`shapes.is_text(content_type, raw)`** — whether a binary body is text.
+- **`shapes.is_entity_id(value)`** — whether a value can be an entity id.
+- **`recorder.summarize(meta, rows, start, period, end=None, hourly=None)`** — the total, mean,
+  minimum and maximum of a statistic inside a window, reading from hourly rows when coarse buckets
+  do not cover the window. Returns the summary and caveats: missing buckets, a meter that went
+  backwards or reset, one bucket that dwarfs the rest, buckets reaching outside the window.
+- **`recorder.sum_caveats(rows, unit)`** — the caveats a statistic's buckets show: missing buckets,
+  backwards readings, resets, an anomalous bucket.
+
+This package is new, and it may grow. When a rule is discovered in a fix or an enhancement, it
+lives in the toolkit so other programs can use it without duplicating the logic or the tests.
 
 ### The service model is a dependency now
 
