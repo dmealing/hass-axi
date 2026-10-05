@@ -4,6 +4,14 @@ This project was published as `ha-axi` up to and including 0.7.1, and as `hass-a
 release after it. The entries below 0.7.1 describe `ha-axi`; their links point at the repository's
 old name, which GitHub redirects.
 
+## [0.10.1](https://github.com/dmealing/hass-axi/compare/v0.10.0...v0.10.1) (2026-10-05)
+
+
+### Bug Fixes
+
+* take the TOON encoder from axi-toolkit and stop five validators accepting a trailing newline ([#44](https://github.com/dmealing/hass-axi/issues/44)) ([656c624](https://github.com/dmealing/hass-axi/commit/656c6245cffdc35a49427ce19386d7b15d15d8b2))
+* **toon:** quote a key that ends in a newline ([#43](https://github.com/dmealing/hass-axi/issues/43)) ([5e2868c](https://github.com/dmealing/hass-axi/commit/5e2868cc103434964c5ffcb26806224507ddcfa1))
+
 ## [0.10.0](https://github.com/dmealing/hass-axi/compare/v0.9.0...v0.10.0) (2026-10-05)
 
 
