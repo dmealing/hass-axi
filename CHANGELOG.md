@@ -9,6 +9,7 @@ old name, which GitHub redirects.
 
 ### ⚠ BREAKING CHANGES
 
+* **Every write previews until `--write`.** `service call`, write-method `api` requests, write `ws` commands, and the typed registry writes `entity update`, `area create`, `area update` and `device update` all print a preview, send nothing and exit 0 unless `--write` is passed. A script or agent that relied on any of them acting by default must add `--write`.
 * **cli:** entity update, area create, area update and device update no longer write unless --write is given; without it they print a preview and send nothing. a list command that matches nothing now answers with an empty list under its rows key and the sentence under count, in every output mode; the rows key was a string. service get reports a service with no fields as an empty fields list and a field_count line, and state get reports no attributes as an empty object and a note. a value-taking flag followed by another flag is MISSING_VALUE; write --flag=--value to pass a value that begins with two dashes. a 200 answer that is not Home Assistant's API fails with NOT_HOME_ASSISTANT at exit 1; ping and state list used to report success.
 * **cli:** `service call`, write-method `api` requests and write `ws` commands no longer act unless `--write` is passed; without it they preview and exit 0. The no-argument home view now exits 0 when unconfigured or unreachable, reporting the fault under `live_state`, `code` and `class` instead of `error`. `sensor list` and `logbook get` print four default columns; pass `--fields` for the rest.
 
