@@ -4,6 +4,19 @@ This project was published as `ha-axi` up to and including 0.7.1, and as `hass-a
 release after it. The entries below 0.7.1 describe `ha-axi`; their links point at the repository's
 old name, which GitHub redirects.
 
+## [0.9.0](https://github.com/dmealing/hass-axi/compare/v0.8.0...v0.9.0) (2026-10-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** entity update, area create, area update and device update no longer write unless --write is given; without it they print a preview and send nothing. a list command that matches nothing now answers with an empty list under its rows key and the sentence under count, in every output mode; the rows key was a string. service get reports a service with no fields as an empty fields list and a field_count line, and state get reports no attributes as an empty object and a note. a value-taking flag followed by another flag is MISSING_VALUE; write --flag=--value to pass a value that begins with two dashes. a 200 answer that is not Home Assistant's API fails with NOT_HOME_ASSISTANT at exit 1; ping and state list used to report success.
+* **cli:** `service call`, write-method `api` requests and write `ws` commands no longer act unless `--write` is passed; without it they preview and exit 0. The no-argument home view now exits 0 when unconfigured or unreachable, reporting the fault under `live_state`, `code` and `class` instead of `error`. `sensor list` and `logbook get` print four default columns; pass `--fields` for the rest.
+
+### Features
+
+* **cli:** fix 24 live-test defects, preview typed writes, add opt-in live suite ([#38](https://github.com/dmealing/hass-axi/issues/38)) ([b81accd](https://github.com/dmealing/hass-axi/commit/b81accd1e6368b08387dc83c708e2fb56156aefa))
+* **cli:** preview writes until --write, truncate raw output, and close the AXI catalog gaps ([#37](https://github.com/dmealing/hass-axi/issues/37)) ([a4115ef](https://github.com/dmealing/hass-axi/commit/a4115efb3eea876f7025608aadca7caeb4902961))
+
 ## [0.8.0](https://github.com/dmealing/hass-axi/compare/v0.7.1...v0.8.0) (2026-10-03)
 
 
