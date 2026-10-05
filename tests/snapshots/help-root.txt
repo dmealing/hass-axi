@@ -4,7 +4,7 @@ commands[17]:
   (none)=home, state, sensor, history, logbook, statistics, service, template, entity, area, device, ws, api, ping, doctor, setup, context
 flags[6]:
   --human (readable output), --json (raw JSON output), --timeout <seconds> (default 30),
-  --debug (diagnostics on stderr), --help, -v/--version
+  --debug (diagnostics on stderr), --help, -v/-V/--version
 env[3]:
   HA_URL (or HASS_SERVER) - Home Assistant base URL, e.g. https://homeassistant.example.com;
     several, comma-separated, are tried in order and the first that answers is used

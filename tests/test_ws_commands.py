@@ -312,9 +312,32 @@ def test_update_rejects_a_set_flag_paired_with_its_clear(run_cli, ws_env, argv):
 def test_area_list_counts_entities_including_device_inheritance(run_cli, ws_env):
     code, out = run_cli(["area", "list"], ws_env)
     assert code == 0
-    assert "areas[2]{area_id,name,entities,devices,floor_id}:" in out
-    assert "example_hall,Example Hall,2,1,ground" in out
-    assert "example_room,Example Room,3,2," in out
+    assert "areas[2]{area_id,name,entities,devices}:" in out
+    assert "example_hall,Example Hall,2,1\n" in out
+    assert "example_room,Example Room,3,2\n" in out
+
+
+def test_area_list_defaults_to_four_fields_and_fields_reaches_the_rest(run_cli, ws_env):
+    """AXI principle 2: a default list row is three or four fields, and the
+    rest are asked for. The floor is the one the default leaves out."""
+    _, default = run_cli(["area", "list", "--json"], ws_env)
+    import json
+
+    assert list(json.loads(default)["areas"][0]) == ["area_id", "name", "entities", "devices"]
+
+    code, out = run_cli(["area", "list", "--fields", "area_id,floor_id,entities"], ws_env)
+    assert code == 0
+    assert "areas[2]{area_id,floor_id,entities}:" in out
+    assert "example_hall,ground,2" in out
+
+
+def test_area_list_rejects_an_unknown_field_before_connecting(run_cli):
+    # No installation configured: a mistyped field is still a usage error, not
+    # NOT_CONFIGURED, because it is decided before anything is read.
+    code, out = run_cli(["area", "list", "--fields", "area_id,icon"], {})
+    assert code == 2
+    assert "unknown field: icon" in out
+    assert "available fields: area_id, name, entities, devices, floor_id" in out
 
 
 def test_area_get_accepts_a_name_as_well_as_an_id(run_cli, ws_env):
@@ -995,8 +1018,8 @@ def test_a_stranded_entity_still_counts_somewhere(run_cli, ws_env, ws_server):
     # Counting the stranded entity into an area nothing prints made the totals
     # stop summing, with nothing said about the entity that had gone missing.
     assert "unassigned_entities: 7" in out
-    assert "example_room,Example Room,2,2," in out
-    assert "example_hall,Example Hall,2,1,ground" in out
+    assert "example_room,Example Room,2,2\n" in out
+    assert "example_hall,Example Hall,2,1\n" in out
 
 
 def test_entity_get_names_a_dangling_area_id_rather_than_implying_a_placement(

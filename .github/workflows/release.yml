@@ -120,8 +120,11 @@ jobs:
       name: pypi
       url: https://pypi.org/p/hass-axi
     permissions:
-      # The only credential involved: a short-lived OIDC token minted for this
-      # run. No long-lived PyPI token exists in this repository or anywhere else.
+      # The only credential this job uses: a short-lived OIDC token minted for
+      # the run, so the workflow needs no stored PyPI token. This job does not
+      # run while GitHub Actions is disabled on the repository; releases are
+      # then uploaded by hand with a PyPI API token that is kept outside the
+      # repository. See "Releasing" in the README.
       id-token: write
     steps:
       - uses: actions/checkout@v4

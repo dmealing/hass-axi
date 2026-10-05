@@ -43,6 +43,11 @@ from ._common import (
 
 GET_FIELDS = ["field", "required", "type", "description", "options", "example", "section"]
 DEFAULT_GET_FIELDS = ["field", "required", "type", "description"]
+#: `service list` is two views -- the domains, and one domain's services -- and
+#: `--fields` selects from whichever one is being shown.
+DOMAIN_FIELDS = ["domain", "services"]
+SERVICE_FIELDS = ["service", "name", "fields", "response", "target"]
+DEFAULT_SERVICE_FIELDS = ["service", "name", "fields"]
 
 #: Descriptions are prose written for a UI, so they are previewed rather than
 #: printed whole; `--full` is the escape hatch, as it is on `state get`.
@@ -60,7 +65,15 @@ COMMAND = Command(
             name="list",
             access=READ,
             summary="List service domains, or the services in one domain",
-            flags=(Flag("--domain", "<name>", note="show the services in one domain"),),
+            flags=(
+                Flag("--domain", "<name>", note="show the services in one domain"),
+                Flag(
+                    "--fields",
+                    "<a,b,c>",
+                    note=f"from {'|'.join(DOMAIN_FIELDS)}, or with --domain from "
+                    f"{'|'.join(SERVICE_FIELDS)}",
+                ),
+            ),
         ),
         Sub(
             name="get",
@@ -155,8 +168,14 @@ def _split_name(raw: str) -> tuple:
 
 
 def _list(ctx, parsed):
-    domains = ctx.rest().services()
     wanted = parsed.get("domain")
+    # Before the request, so a mistyped field is a usage error whether or not
+    # the installation answers.
+    if wanted:
+        fields = select_fields(parsed.get("fields"), SERVICE_FIELDS, DEFAULT_SERVICE_FIELDS)
+    else:
+        fields = select_fields(parsed.get("fields"), DOMAIN_FIELDS, DOMAIN_FIELDS)
+    domains = ctx.rest().services()
 
     if not wanted:
         rows = [
@@ -171,7 +190,7 @@ def _list(ctx, parsed):
             return empty_listing("services", "0 service domains registered in this installation")
         return {
             "count": plural(len(rows), "domain"),
-            "domains": rows,
+            "domains": project(rows, fields),
             "help": HelpBlock(
                 [
                     "Run `hass-axi service list --domain <domain>` to see one domain's services",
@@ -194,6 +213,8 @@ def _list(ctx, parsed):
             # Counted through the model's own flattening: a section is not a
             # field, and reporting it as one invites an agent to send it.
             "fields": len(model.field_names(spec if isinstance(spec, dict) else {})),
+            "response": model.response_mode(spec if isinstance(spec, dict) else {}),
+            "target": bool(isinstance(spec, dict) and spec.get("target")),
         }
         for name, spec in sorted(services.items())
     ]
@@ -201,7 +222,7 @@ def _list(ctx, parsed):
         return empty_listing("services", f"0 services registered in domain {wanted}")
     return {
         "count": f"{plural(len(rows), 'service')} in {wanted}",
-        "services": rows,
+        "services": project(rows, fields),
         "help": HelpBlock(
             [
                 f"Run `hass-axi service get {rows[0]['service']}` to see its fields",

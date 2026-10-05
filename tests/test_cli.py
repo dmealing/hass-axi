@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
+import time
+
 import pytest
 
 from hass_axi import __version__
@@ -72,12 +76,99 @@ def test_help_never_needs_configuration(run_cli, name):
 
 
 @pytest.mark.parametrize(
-    "argv", [["--version"], ["-v"], ["device", "--version"], ["state", "list", "-v"]]
+    "argv",
+    [
+        ["--version"],
+        ["-v"],
+        ["-V"],
+        ["device", "--version"],
+        ["state", "list", "-v"],
+        ["state", "list", "-V"],
+        # The mode flags do not change it: a version probe compares the line.
+        ["--json", "--version"],
+        ["--human", "-V"],
+        ["area", "list", "--json", "--version"],
+    ],
 )
-def test_version_flag_works_in_any_position(run_cli, argv):
+def test_version_flag_prints_the_bare_version_in_any_position(run_cli, argv):
+    """AXI principle 10: `-v`, `-V` and `--version` print the bare version."""
     code, out = run_cli(argv, {})
     assert code == 0
-    assert __version__ in out
+    assert out == f"{__version__}\n"
+
+
+@pytest.mark.parametrize("flag", ["-v", "-V", "--version"])
+def test_the_console_script_answers_a_bare_version_flag_itself(flag, capsys):
+    from hass_axi import entry
+
+    assert entry.main([flag]) == 0
+    assert capsys.readouterr().out == f"{__version__}\n"
+
+
+def _in_a_fresh_interpreter(code: str) -> str:
+    """Run ``code`` in a clean interpreter and return what it printed."""
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True, timeout=60
+    )
+    return result.stdout
+
+
+def test_the_version_fast_path_loads_nothing_but_the_version():
+    """The version is answered before the command graph loads.
+
+    Asserted on what was imported rather than only on a stopwatch: the entry
+    point may pull in the package's `__init__` and nothing else of this tool.
+    """
+    out = _in_a_fresh_interpreter(
+        "import sys\n"
+        "from hass_axi.entry import main\n"
+        "code = main(['--version'])\n"
+        "loaded = sorted(n for n in sys.modules if n.startswith(('hass_axi', 'axi_toolkit')))\n"
+        "print(code, loaded)\n"
+    )
+    assert out == f"{__version__}\n0 ['hass_axi', 'hass_axi.entry']\n"
+
+
+def test_one_command_does_not_import_the_others():
+    """`cli` loads a command module when it is dispatched to, not at import.
+
+    A version flag after a command, `--help` for one noun and the session
+    hook's `context` all go through `cli.main`, and none of them should pay for
+    sixteen modules and two transports to run one.
+    """
+    out = _in_a_fresh_interpreter(
+        "import sys\n"
+        "from hass_axi.cli import main\n"
+        "main(['context'], environ={})\n"
+        "print(sorted(n for n in sys.modules if n.startswith('hass_axi.commands.')))\n"
+        "print([n for n in ('hass_axi.rest', 'hass_axi.ws', 'websockets') if n in sys.modules])\n"
+    )
+    commands, transports = out.splitlines()[-2:]
+    assert "'hass_axi.commands.context'" in commands
+    for other in ("state", "service", "entity", "api", "wscmd"):
+        assert f"'hass_axi.commands.{other}'" not in commands
+    assert transports == "[]"
+
+
+def test_the_version_path_costs_about_what_starting_python_costs():
+    """Measured against the interpreter's own floor, in the same run.
+
+    A ratio rather than a millisecond budget, so it holds on a slow machine,
+    and the best of several runs each, so one scheduling hiccup cannot fail it.
+    Importing the whole CLI to answer measured about five times the floor.
+    """
+
+    def best(code: str) -> float:
+        timings = []
+        for _ in range(7):
+            started = time.perf_counter()
+            subprocess.run([sys.executable, "-c", code], capture_output=True, check=True)
+            timings.append(time.perf_counter() - started)
+        return min(timings)
+
+    floor = best("print(1)")
+    version = best("import sys; from hass_axi.entry import main; sys.exit(main(['--version']))")
+    assert version < floor * 2.5, f"version {version * 1000:.1f} ms, floor {floor * 1000:.1f} ms"
 
 
 def test_an_unknown_command_lists_the_real_ones(run_cli):

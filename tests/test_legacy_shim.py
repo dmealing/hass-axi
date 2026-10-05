@@ -28,7 +28,7 @@ def test_the_old_command_forwards_with_a_notice_on_stderr_only(capsys):
     code = _shim().main(["--version"])
     captured = capsys.readouterr()
     assert code == 0
-    assert f'"hass-axi": {__version__}' in captured.out
+    assert captured.out == f"{__version__}\n"
     assert "now hass-axi" not in captured.out
     assert "this tool is now hass-axi" in captured.err
 

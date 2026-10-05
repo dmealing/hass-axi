@@ -94,7 +94,36 @@ def test_service_list_summarizes_domains(run_cli, rest_env):
 def test_service_list_for_one_domain(run_cli, rest_env):
     code, out = run_cli(["service", "list", "--domain", "light"], rest_env)
     assert code == 0
+    assert "services[2]{service,name,fields}:" in out
     assert "light.turn_on,Turn on,3" in out
+
+
+def test_service_list_fields_selects_from_the_view_being_shown(run_cli, rest_env):
+    """`service list` is two views, and `--fields` reads whichever is shown."""
+    code, out = run_cli(
+        ["service", "list", "--domain", "calendar", "--fields", "service,response,target"],
+        rest_env,
+    )
+    assert code == 0
+    assert "{service,response,target}:" in out
+    assert "calendar.get_events,optional,true" in out
+    assert "calendar.list_events,required,true" in out
+
+    code, out = run_cli(["service", "list", "--fields", "domain"], rest_env)
+    assert code == 0
+    assert "domains[5]{domain}:" in out
+
+
+def test_service_list_names_the_fields_of_the_view_a_wrong_one_was_asked_of(run_cli):
+    # Decided before the request, so it needs no installation at all.
+    code, out = run_cli(["service", "list", "--fields", "service"], {})
+    assert code == 2
+    assert "unknown field: service" in out
+    assert "available fields: domain, services" in out
+
+    code, out = run_cli(["service", "list", "--domain", "light", "--fields", "domain"], {})
+    assert code == 2
+    assert "available fields: service, name, fields, response, target" in out
 
 
 def test_service_list_rejects_an_unknown_domain(run_cli, rest_env):

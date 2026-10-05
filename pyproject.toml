@@ -37,7 +37,7 @@ dev = [
 ]
 
 [project.scripts]
-hass-axi = "hass_axi.cli:main"
+hass-axi = "hass_axi.entry:main"
 
 [project.urls]
 Homepage = "https://github.com/dmealing/hass-axi"

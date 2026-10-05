@@ -4,39 +4,27 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import MutableMapping
+from importlib import import_module
+from typing import TYPE_CHECKING
 
 from . import __version__, errors, output, readonly
-from . import config as config_module
 from .argspec import (
     GLOBAL_FLAGS,
     Command,
+    Parsed,
     command_help_doc,
     invocation,
     parse,
     render_command_help,
 )
-from .commands import api as api_command
-from .commands import area as area_command
-from .commands import context as context_command
-from .commands import device as device_command
-from .commands import doctor as doctor_command
-from .commands import entity as entity_command
-from .commands import history as history_command
-from .commands import home as home_command
-from .commands import logbook as logbook_command
-from .commands import ping as ping_command
-from .commands import sensor as sensor_command
-from .commands import service as service_command
-from .commands import setup as setup_command
-from .commands import state as state_command
-from .commands import statistics as statistics_command
-from .commands import template as template_command
-from .commands import wscmd as ws_command
 from .errors import EXIT_ERROR, EXIT_OK, AxiError, UsageError
 from .output import MODE_HUMAN, MODE_JSON, MODE_TOON, HelpBlock
-from .rest import RestClient
 from .toolkit.names import close_matches
-from .ws import WsClient
+
+if TYPE_CHECKING:
+    from .rest import RestClient
+    from .ws import WsClient
 
 #: Dispatch order, which is also the order `--help` and the skill list them in.
 COMMAND_ORDER = (
@@ -58,25 +46,61 @@ COMMAND_ORDER = (
     "context",
 )
 
-_MODULES = {
-    "state": state_command,
-    "sensor": sensor_command,
-    "history": history_command,
-    "logbook": logbook_command,
-    "statistics": statistics_command,
-    "service": service_command,
-    "template": template_command,
-    "entity": entity_command,
-    "area": area_command,
-    "device": device_command,
-    "ws": ws_command,
-    "api": api_command,
-    "ping": ping_command,
-    "doctor": doctor_command,
-    "setup": setup_command,
-    "context": context_command,
-    "home": home_command,
-}
+
+class _LazyModules(MutableMapping):
+    """The dispatch table, importing each command module the first time it is read.
+
+    One invocation runs one command, so importing all of them up front is paid
+    on every run for nothing -- and by `--version` and the session hook most of
+    all. An entry is declared as the module's name under `commands` and becomes
+    the module itself on first access. Iterating imports nothing; reading every
+    value, as root help and the test sweeps do, imports the lot.
+    """
+
+    def __init__(self, names: dict) -> None:
+        self._entries: dict = dict(names)
+
+    def __getitem__(self, name: str):
+        entry = self._entries[name]
+        if isinstance(entry, str):
+            entry = self._entries[name] = import_module(f".commands.{entry}", __package__)
+        return entry
+
+    def __setitem__(self, name: str, module) -> None:
+        self._entries[name] = module
+
+    def __delitem__(self, name: str) -> None:
+        del self._entries[name]
+
+    def __iter__(self):
+        return iter(self._entries)
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+
+#: Command name to its module under `commands`.
+_MODULES = _LazyModules(
+    {
+        "state": "state",
+        "sensor": "sensor",
+        "history": "history",
+        "logbook": "logbook",
+        "statistics": "statistics",
+        "service": "service",
+        "template": "template",
+        "entity": "entity",
+        "area": "area",
+        "device": "device",
+        "ws": "wscmd",
+        "api": "api",
+        "ping": "ping",
+        "doctor": "doctor",
+        "setup": "setup",
+        "context": "context",
+        "home": "home",
+    }
+)
 
 #: Commands an agent might reach for under a different noun.
 _ALIASES = {
@@ -117,7 +141,13 @@ class Context:
         self._config = None
         self._rest: RestClient | None = None
 
+    # The transports and the configuration loader are imported where they are
+    # first needed, so a run that reaches neither -- help, `context`, a usage
+    # error -- does not pay for them.
+
     def config(self):
+        from . import config as config_module
+
         if self._config is None:
             self._config = config_module.load(self.environ, timeout=self.timeout)
             # Registered before any transport runs, so a token can never appear
@@ -129,11 +159,15 @@ class Context:
         return self._config
 
     def rest(self) -> RestClient:
+        from .rest import RestClient
+
         if self._rest is None:
             self._rest = RestClient(self.config())
         return self._rest
 
     def ws(self) -> WsClient:
+        from .ws import WsClient
+
         return WsClient(self.config())
 
 
@@ -145,12 +179,12 @@ def render_root_help() -> str:
     names = ", ".join(COMMAND_ORDER)
     lines = [
         "usage: hass-axi [command] [subcommand] [args] [flags]",
-        f"description: {home_command.DESCRIPTION}",
+        f"description: {_MODULES['home'].DESCRIPTION}",
         f"commands[{len(COMMAND_ORDER) + 1}]:",
         f"  (none)=home, {names}",
         "flags[6]:",
         "  --human (readable output), --json (raw JSON output), --timeout <seconds> (default 30),",
-        "  --debug (diagnostics on stderr), --help, -v/--version",
+        "  --debug (diagnostics on stderr), --help, -v/-V/--version",
         "env[3]:",
         "  HA_URL (or HASS_SERVER) - Home Assistant base URL, e.g. https://homeassistant.example.com;",
         "    several, comma-separated, are tried in order and the first that answers is used",
@@ -181,7 +215,7 @@ def root_help_doc() -> dict:
     specs = command_specs()
     return {
         "usage": "hass-axi [command] [subcommand] [args] [flags]",
-        "description": home_command.DESCRIPTION,
+        "description": _MODULES["home"].DESCRIPTION,
         "commands": ["(none)=home", *COMMAND_ORDER],
         "flags": [
             "--human (readable output)",
@@ -189,7 +223,7 @@ def root_help_doc() -> dict:
             "--timeout <seconds> (default 30)",
             "--debug (diagnostics on stderr)",
             "--help",
-            "-v/--version",
+            "-v/-V/--version",
         ],
         "env": {
             "HA_URL": "Home Assistant base URL (or HASS_SERVER); several, comma-separated, "
@@ -338,6 +372,16 @@ def _wants_version(globals_: dict) -> bool:
     return bool(globals_.get("version") or globals_.get("v") or globals_.get("V"))
 
 
+def _write_version() -> None:
+    """The bare version, whatever the output mode.
+
+    A caller probing the version compares or parses the line itself, so it is
+    the same string under `--json` and `--human` and matches what the fast path
+    in `hass_axi.entry` prints for the bare flag.
+    """
+    output.write_text(__version__)
+
+
 def _unknown_command(name: str):
     suggestion = _ALIASES.get(name.lower())
     if suggestion:
@@ -454,14 +498,15 @@ def main(argv: list | None = None, *, environ=None) -> int:
 
     try:
         if _wants_version(globals_):
-            output.write({"hass-axi": __version__}, mode)
+            _write_version()
             return EXIT_OK
 
         if not rest:
             if globals_.get("help") or globals_.get("h"):
                 _write_help(render_root_help(), root_help_doc(), mode)
                 return EXIT_OK
-            command = home_command.COMMAND
+            module = _MODULES["home"]
+            command = module.COMMAND
             sub, sub_name, sub_argv = command.subs[0], "home", []
         else:
             name = rest[0]
@@ -488,18 +533,14 @@ def main(argv: list | None = None, *, environ=None) -> int:
             sub, sub_argv = _pick_sub(command, rest[1:])
             sub_name = sub.name
 
-        if command is home_command.COMMAND:
-            from .argspec import Parsed
-
+        if not rest:
             parsed = Parsed()
-            module = home_command
         else:
             parsed = parse(sub, sub_argv, command=command)
-            module = _MODULES[command.name]
             globals_.update(parsed.globals)
             mode = _mode(globals_)
             if _wants_version(globals_):
-                output.write({"hass-axi": __version__}, mode)
+                _write_version()
                 return EXIT_OK
 
         if globals_.get("debug"):

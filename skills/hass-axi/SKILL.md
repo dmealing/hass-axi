@@ -182,6 +182,7 @@ Read and update the area registry over the WebSocket API.
 
 ```sh
 hass-axi area list
+hass-axi area list --fields area_id,name,floor_id
 hass-axi area get example_room
 hass-axi area create --name 'Example Room'
 hass-axi area create --name 'Example Room' --write
