@@ -16,18 +16,21 @@ value and nobody's house. This file asks three questions of it, offline:
 
 **What a failure means.** A name is read or emitted that the capture does not
 have. Either nobody sends it -- remove it, and fix whatever depended on it --
-or a server sends it only in a state the lab was not in, and then it goes in
-:data:`UNOBSERVED` *with the reason it could not be observed*. A reason is
-required, and an entry the capture has since caught up with fails too.
+or a server sends it only in a state the lab was not in, and then the model
+declares it *with the reason it could not be observed*, in an ``unobserved`` bag
+beside the key in ``metaobjects/``. :data:`UNOBSERVED` is those reasons, read back.
+A reason is required, and an entry the capture has since caught up with fails too.
 
 Whether the capture still matches a server is a different question, asked by
 ``scripts/shapecapture.py --check``.
 
-**The model.** What Home Assistant answers is declared in ``metaobjects/``, and two
-things here are generated from it: the column vocabularies in
-:mod:`hass_axi.model.rows`, and the builders in ``tests/hamodel/`` that the doubles
-make their answers through. The last section holds both to what the commands print
-and to what a builder refuses.
+**The model.** What Home Assistant answers is declared in ``metaobjects/``, and three
+things are generated from it: the column vocabularies in :mod:`hass_axi.model.rows`,
+the builders in ``tests/hamodel/`` that the doubles make their answers through, and
+the check beside them that every declared key is in the capture. The last section
+here holds the first two to what the commands print and to what a builder refuses.
+The scan of the readers stays until the readers are generated too: it is what holds
+a key read with ``.get`` to the capture.
 """
 
 from __future__ import annotations
@@ -45,6 +48,7 @@ import pytest
 
 import conftest
 from conftest import FAKE_TOKEN, RECORDER_DAY, RECORDER_NOW, synthetic_jwt
+from hamodel import capture_contract as contract
 from hamodel import elements
 from hass_axi import commands, ws
 from hass_axi.commands import _window
@@ -60,30 +64,35 @@ CAPTURE_PATH = ROOT / "tests" / "fixtures" / "ha-shape" / "capture.json"
 CAPTURE = json.loads(CAPTURE_PATH.read_text(encoding="utf-8"))
 OBJECTS = CAPTURE["objects"]
 
-#: Names the tool reads, or the doubles send, that the lab could not show:
-#: object -> name -> why. The lab runs the demo integration and what
-#: `tests/live/lab/container.py` declares, so anything only another
-#: integration publishes was not there to read.
-UNOBSERVED = {
-    "service.target": {
-        "device": (
-            "published by a service whose target filters devices, and no integration "
-            "the lab loads declares one"
-        ),
-    },
+#: The one object the readers read that the model does not declare, because no capture
+#: has one to hold a declaration to: object -> name -> why.
+NOT_DECLARED = {
     "service.field.selector.select.option": {
         "value": (
             "an option written as a label and a value; every select in the lab lists "
             "its options as plain strings"
         ),
     },
-    "state.attributes": {
-        "battery_level": (
-            "set by integrations for battery-powered devices; no demo entity in the "
-            "lab publishes it"
-        ),
-    },
 }
+
+
+def _unobserved() -> dict:
+    """Names the tool reads, or the doubles send, that the lab could not show.
+
+    ``captured object -> name -> why``. The reasons are the model's own, kept beside the
+    key each one excuses in ``metaobjects/``: the lab runs the demo integration and what
+    ``tests/live/lab/container.py`` declares, so anything only another integration
+    publishes was not there to read.
+    """
+    found = {name: dict(entries) for name, entries in NOT_DECLARED.items()}
+    for entry in contract.DECLARED.values():
+        for name in entry["capture"]:
+            if entry["unobserved"]:
+                found.setdefault(name, {}).update(entry["unobserved"])
+    return found
+
+
+UNOBSERVED = _unobserved()
 
 #: Types the doubles send for a key the capture has, where the lab showed the
 #: key with other types only: (object, key, type) -> why.
@@ -676,6 +685,28 @@ def test_every_parameter_a_write_previews_is_a_key_the_stored_entry_has(command,
 # ------------------------------------------------------------------------- the tables
 
 
+def _built_by_the_doubles() -> dict:
+    """``captured object -> names`` the doubles pass to a builder by name.
+
+    Read off the source, because a double sends some keys only in a state the script
+    that reads it never puts it in: an update that enables an entity, for one.
+    """
+    captures = {entry["key"]: entry["capture"] for entry in contract.DECLARED.values()}
+    found: dict = {}
+    for node in ast.walk(ast.parse(Path(conftest.__file__).read_text(encoding="utf-8"))):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "elements"
+        ):
+            continue
+        keys = {keyword.arg for keyword in node.keywords if keyword.arg}
+        for name in captures.get(node.func.attr, ()):
+            found.setdefault(name, set()).update(keys)
+    return found
+
+
 def _read_or_sent(doubles_document: dict) -> dict:
     """``object -> names`` somebody depends on: read by a reader or sent by a double."""
     found: dict = {}
@@ -690,6 +721,8 @@ def _read_or_sent(doubles_document: dict) -> dict:
         for name in _objects(SERVICE_READERS[holder]):
             found.setdefault(name, set()).update(read)
     for name, keys in doubles_document.items():
+        found.setdefault(name, set()).update(keys)
+    for name, keys in _built_by_the_doubles().items():
         found.setdefault(name, set()).update(keys)
     return found
 
@@ -723,6 +756,9 @@ PRINTED = {
     "logbook": ("logbook", ["logbook", "get"]),
     "statistic": ("statistics", ["statistics", "list"]),
     "service_domain": ("service", ["service", "list"]),
+    "service": ("service", ["service", "list", "--domain", "light"]),
+    "service_field": ("service", ["service", "get", "light.turn_on"]),
+    "sensor": ("sensor", ["sensor", "list", "--all"]),
 }
 
 

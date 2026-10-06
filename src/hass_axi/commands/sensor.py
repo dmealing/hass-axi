@@ -18,6 +18,7 @@ entities are left out for the same reason. `--all` puts them back.
 from __future__ import annotations
 
 from ..argspec import Command, Flag, Sub
+from ..model import rows as vocabulary
 from ..output import HelpBlock
 from ..readonly import READ
 from . import _window
@@ -41,23 +42,12 @@ from ._common import (
 )
 
 DEFAULT_LIMIT = 100
-LIST_FIELDS = [
-    "entity_id",
-    "name",
-    "value",
-    "unit",
-    "area",
-    "area_id",
-    "age",
-    "device_class",
-    "state_class",
-    "last_reported",
-    "entity_category",
-]
+#: Declared in ``metaobjects/meta.rows.yaml``, generated into :mod:`hass_axi.model.rows`.
+LIST_FIELDS = vocabulary.FIELDS["sensor"]
 #: Four columns: which sensor, what it reads and in what unit. Where it is and
 #: how fresh the reading is are one `--fields` away; a default row is paid for
 #: once per sensor, and most questions are answered by the reading itself.
-DEFAULT_LIST_FIELDS = ["entity_id", "name", "value", "unit"]
+DEFAULT_LIST_FIELDS = vocabulary.DEFAULT["sensor"]
 
 #: Registry categories that mark an entity as not a reading. Home Assistant
 #: defines exactly these two.

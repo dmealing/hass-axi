@@ -22,7 +22,11 @@
 metadata:
   package: homeassistant::core
   children:
-    - attr.properties: { name: capture, value: { file: tests/fixtures/ha-shape/capture.json } }
+    # The capture files its answers under `objects`, and records what a list held as a
+    # second name ending `[]`, which is a type and not a key the server sent.
+    - attr.properties:
+        name: capture
+        value: { file: tests/fixtures/ha-shape/capture.json, section: objects, list_suffix: "[]" }
     - object.entity:
         name: State
         description: One state, as GET /api/states and GET /api/states/<entity_id> answer (State.as_dict).

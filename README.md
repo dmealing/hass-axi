@@ -598,18 +598,23 @@ declares the keys this tool reads or its test doubles send rather than everythin
 publishes: 31 objects, 153 keys. A row column either extends the one key it is read from, so a
 renamed or retyped key fails at load, or names the keys it is computed from.
 
-Two things are generated from it and committed:
+Three things are generated from it and committed:
 
 - **`src/hass_axi/model/rows.py`**, which ships in the wheel: the `--fields` vocabulary and default
-  set of each row, and the keys each column reads. `state list`, `entity list`, `device list`,
-  `area list`, `logbook get`, `statistics list` and `service list` read their columns from it.
+  set of all ten rows the list commands print, and the keys each column reads — of the row's own
+  object and of any other it is joined to. No command module keeps a column list of its own.
 - **`tests/hamodel/elements.py`**: one builder per declared object. The test doubles make their
   answers through these, and a builder refuses a key the model does not declare.
+- **`tests/hamodel/capture_contract.py`** and its tests: the check that every declared key is one
+  the captured server sent. It fails in one direction only. A declared key in no captured answer
+  fails unless the model gives the reason it could not be observed; a key the server sends and the
+  model does not declare is reported by `scripts/ci-local.sh --only model` and never failed,
+  because a server publishes far more than a tool reads.
 
 Change the metadata, never a generated file:
 
 ```sh
-uvx --python 3.12 --from metaobjects==1.0.13 --with 'axi-toolkit[metagen]==0.5.0' metaobjects gen   # regenerate, then commit
+uvx --python 3.12 --from metaobjects==1.0.13 --with 'axi-toolkit[metagen]==0.6.0' metaobjects gen   # regenerate, then commit
 scripts/ci-local.sh --only model                               # fails on a hand edit or a stale file
 ```
 
@@ -617,13 +622,9 @@ The generators are [`axi-toolkit`](https://github.com/dmealing/axi-toolkit)'s, s
 sibling AXI CLI, and run under `uvx` because the toolchain needs Python 3.11 or newer. Nothing
 generated imports it: the package still supports Python 3.9 and gains no dependency.
 
-**Not generated yet.** Three vocabularies are still written by hand in their command modules —
-`sensor list`, and the two `service` views of one domain's services and one service's fields —
-because some of their columns are read from a second object or are the key an object is filed
-under, which the generators cannot yet declare. The check that holds every declared key to the
-capture, and typed readers in place of the `dict.get` chains in the row builders, wait on the same
-generators. Until then `tests/test_shape_contract.py` is what holds the readers and the doubles to
-the capture.
+**Not generated yet: the readers.** The row builders still read an answer with `dict.get`, because
+the shared generators emit no typed reader. Until they do, the scan in
+`tests/test_shape_contract.py` is what holds every key a command reads to the capture.
 
 ## Output format
 

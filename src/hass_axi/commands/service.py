@@ -42,15 +42,16 @@ from ._common import (
     select_fields,
 )
 
-GET_FIELDS = ["field", "required", "type", "description", "options", "example", "section"]
-DEFAULT_GET_FIELDS = ["field", "required", "type", "description"]
+#: Every view's columns are declared in ``metaobjects/meta.rows.yaml`` and generated into
+#: :mod:`hass_axi.model.rows`.
+GET_FIELDS = vocabulary.FIELDS["service_field"]
+DEFAULT_GET_FIELDS = vocabulary.DEFAULT["service_field"]
 #: `service list` is two views -- the domains, and one domain's services -- and
-#: `--fields` selects from whichever one is being shown.
-#: The domain view is declared in ``metaobjects/meta.rows.yaml`` and generated into
-#: :mod:`hass_axi.model.rows`. Its default set is every column, so it is asked for by one name.
+#: `--fields` selects from whichever one is being shown. The domain view's default
+#: set is every column, so it is asked for by one name.
 DOMAIN_FIELDS = vocabulary.FIELDS["service_domain"]
-SERVICE_FIELDS = ["service", "name", "fields", "response", "target"]
-DEFAULT_SERVICE_FIELDS = ["service", "name", "fields"]
+SERVICE_FIELDS = vocabulary.FIELDS["service"]
+DEFAULT_SERVICE_FIELDS = vocabulary.DEFAULT["service"]
 
 #: Descriptions are prose written for a UI, so they are previewed rather than
 #: printed whole; `--full` is the escape hatch, as it is on `state get`.

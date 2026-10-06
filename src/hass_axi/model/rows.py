@@ -8,6 +8,12 @@ printed. ``DEFAULT`` is the set shown when no columns are asked for. ``READS`` i
 the attributes of the upstream object that each column is read from: nothing at
 run time reads it, and it is here so that what a column is made of ships with
 the column, for the test suite and for whatever builds on this package.
+
+A name in ``READS`` written ``package::Object.name`` is read from that other
+object, and not from the one the row is made of.
+
+``KEY_OF`` is each column that is the key its object sits under in a map, and
+the map: that key is in no answer as a name, so ``READS`` cannot carry it.
 """
 
 from __future__ import annotations
@@ -73,6 +79,35 @@ FIELDS = {
         "domain",
         "services",
     ),
+    "sensor": (
+        "entity_id",
+        "name",
+        "value",
+        "unit",
+        "area",
+        "area_id",
+        "age",
+        "device_class",
+        "state_class",
+        "last_reported",
+        "entity_category",
+    ),
+    "service": (
+        "service",
+        "name",
+        "fields",
+        "response",
+        "target",
+    ),
+    "service_field": (
+        "field",
+        "required",
+        "type",
+        "description",
+        "options",
+        "example",
+        "section",
+    ),
 }
 
 DEFAULT = {
@@ -113,6 +148,23 @@ DEFAULT = {
         "domain",
         "services",
     ),
+    "sensor": (
+        "entity_id",
+        "name",
+        "value",
+        "unit",
+    ),
+    "service": (
+        "service",
+        "name",
+        "fields",
+    ),
+    "service_field": (
+        "field",
+        "required",
+        "type",
+        "description",
+    ),
 }
 
 READS = {
@@ -121,6 +173,7 @@ READS = {
         "name": (
             "attributes",
             "entity_id",
+            "homeassistant::core::StateAttributes.friendly_name",
         ),
         "state": ("state",),
         "domain": ("entity_id",),
@@ -141,14 +194,23 @@ READS = {
             "name",
             "device_id",
             "original_name",
+            "homeassistant::registry::DeviceEntry.id",
+            "homeassistant::registry::DeviceEntry.name_by_user",
+            "homeassistant::registry::DeviceEntry.name",
         ),
         "area": (
             "area_id",
             "device_id",
+            "homeassistant::registry::DeviceEntry.id",
+            "homeassistant::registry::DeviceEntry.area_id",
+            "homeassistant::registry::AreaEntry.area_id",
+            "homeassistant::registry::AreaEntry.name",
         ),
         "area_id": (
             "area_id",
             "device_id",
+            "homeassistant::registry::DeviceEntry.id",
+            "homeassistant::registry::DeviceEntry.area_id",
         ),
         "platform": ("platform",),
         "domain": ("entity_id",),
@@ -164,17 +226,33 @@ READS = {
             "name_by_user",
             "name",
         ),
-        "area": ("area_id",),
+        "area": (
+            "area_id",
+            "homeassistant::registry::AreaEntry.area_id",
+            "homeassistant::registry::AreaEntry.name",
+        ),
         "area_id": ("area_id",),
         "manufacturer": ("manufacturer",),
         "model": ("model",),
-        "entities": ("id",),
+        "entities": (
+            "id",
+            "homeassistant::registry::EntityEntry.device_id",
+        ),
     },
     "area": {
         "area_id": ("area_id",),
         "name": ("name",),
-        "entities": ("area_id",),
-        "devices": ("area_id",),
+        "entities": (
+            "area_id",
+            "homeassistant::registry::EntityEntry.area_id",
+            "homeassistant::registry::EntityEntry.device_id",
+            "homeassistant::registry::DeviceEntry.id",
+            "homeassistant::registry::DeviceEntry.area_id",
+        ),
+        "devices": (
+            "area_id",
+            "homeassistant::registry::DeviceEntry.area_id",
+        ),
         "floor_id": ("floor_id",),
     },
     "logbook": {
@@ -202,6 +280,9 @@ READS = {
         "name": (
             "name",
             "statistic_id",
+            "homeassistant::core::State.entity_id",
+            "homeassistant::core::State.attributes",
+            "homeassistant::core::StateAttributes.friendly_name",
         ),
         "kind": (
             "has_sum",
@@ -218,5 +299,101 @@ READS = {
     "service_domain": {
         "domain": ("domain",),
         "services": ("services",),
+    },
+    "sensor": {
+        "entity_id": ("entity_id",),
+        "name": (
+            "entity_id",
+            "attributes",
+            "homeassistant::registry::EntityEntry.entity_id",
+            "homeassistant::registry::EntityEntry.name",
+            "homeassistant::registry::EntityEntry.device_id",
+            "homeassistant::registry::EntityEntry.original_name",
+            "homeassistant::registry::DeviceEntry.id",
+            "homeassistant::registry::DeviceEntry.name_by_user",
+            "homeassistant::registry::DeviceEntry.name",
+            "homeassistant::core::StateAttributes.friendly_name",
+        ),
+        "value": ("state",),
+        "unit": (
+            "attributes",
+            "homeassistant::core::StateAttributes.unit_of_measurement",
+        ),
+        "area": (
+            "entity_id",
+            "homeassistant::registry::EntityEntry.entity_id",
+            "homeassistant::registry::EntityEntry.area_id",
+            "homeassistant::registry::EntityEntry.device_id",
+            "homeassistant::registry::DeviceEntry.id",
+            "homeassistant::registry::DeviceEntry.area_id",
+            "homeassistant::registry::AreaEntry.area_id",
+            "homeassistant::registry::AreaEntry.name",
+        ),
+        "area_id": (
+            "entity_id",
+            "homeassistant::registry::EntityEntry.entity_id",
+            "homeassistant::registry::EntityEntry.area_id",
+            "homeassistant::registry::EntityEntry.device_id",
+            "homeassistant::registry::DeviceEntry.id",
+            "homeassistant::registry::DeviceEntry.area_id",
+        ),
+        "age": (
+            "last_reported",
+            "last_updated",
+        ),
+        "device_class": (
+            "attributes",
+            "homeassistant::core::StateAttributes.device_class",
+        ),
+        "state_class": (
+            "attributes",
+            "homeassistant::core::StateAttributes.state_class",
+        ),
+        "last_reported": (
+            "last_reported",
+            "last_updated",
+        ),
+        "entity_category": (
+            "entity_id",
+            "homeassistant::registry::EntityEntry.entity_id",
+            "homeassistant::registry::EntityEntry.entity_category",
+        ),
+    },
+    "service": {
+        "service": ("homeassistant::services::ServiceDomain.domain",),
+        "name": ("name",),
+        "fields": (
+            "fields",
+            "homeassistant::services::ServiceField.fields",
+        ),
+        "response": (
+            "response",
+            "homeassistant::services::ServiceResponse.optional",
+        ),
+        "target": ("target",),
+    },
+    "service_field": {
+        "field": ("fields",),
+        "required": ("required",),
+        "type": ("selector",),
+        "description": ("description",),
+        "options": (
+            "selector",
+            "homeassistant::services::Selector.select",
+            "homeassistant::services::SelectSelector.options",
+        ),
+        "example": ("example",),
+        "section": ("fields",),
+    },
+}
+
+KEY_OF = {
+    "service": {
+        "service": "homeassistant::services::ServiceDomain.services",
+        "name": "homeassistant::services::ServiceDomain.services",
+    },
+    "service_field": {
+        "field": "homeassistant::services::Service.fields",
+        "section": "homeassistant::services::Service.fields",
     },
 }

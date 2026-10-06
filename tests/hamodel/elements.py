@@ -3,9 +3,9 @@
 # `metaobjects verify --codegen`.
 """Builders for the answers a test double gives in place of the real server.
 
-One function per declared object. Each takes the attributes of one element by
-the server's own names and hands them back in the order given, having refused
-a name the model does not declare and the absence of one a real element always
+One function per declared object. Each takes the keys of one object by the
+server's own names and hands them back in the order given, having refused a
+name the model does not declare and the absence of one a real object always
 carries. A double that builds every answer through these cannot invent a name.
 """
 
@@ -340,170 +340,170 @@ REQUIRED = {
 }
 
 
-def _element(kind: str, attributes: dict) -> dict:
-    unknown = sorted(set(attributes) - set(ATTRIBUTES[kind]))
+def _object(kind: str, keys: dict) -> dict:
+    unknown = sorted(set(keys) - set(ATTRIBUTES[kind]))
     if unknown:
         raise KeyError(
-            f"{kind}: {unknown} is not an attribute the model declares, and a double may "
+            f"{kind}: {unknown} is not a key the model declares, and a double may "
             "not invent one; declare it, and the capture check will say whether a real "
             "server sends it"
         )
-    absent = [name for name in REQUIRED[kind] if attributes.get(name) in (None, "")]
+    absent = [name for name in REQUIRED[kind] if keys.get(name) in (None, "")]
     if absent:
-        raise KeyError(f"{kind}: a real {ELEMENT[kind]} element always carries {absent}")
-    return attributes
+        raise KeyError(f"{kind}: a real {ELEMENT[kind]} object always carries {absent}")
+    return keys
 
 
-def state(**attributes) -> dict:
-    """The attributes of one State element, as homeassistant::core::State declares them."""
-    return _element("state", attributes)
+def state(**keys) -> dict:
+    """The keys of one State object, as homeassistant::core::State declares them."""
+    return _object("state", keys)
 
 
-def state_attributes(**attributes) -> dict:
-    """The attributes of one attributes element, as homeassistant::core::StateAttributes declares them."""
-    return _element("state_attributes", attributes)
+def state_attributes(**keys) -> dict:
+    """The keys of one attributes object, as homeassistant::core::StateAttributes declares them."""
+    return _object("state_attributes", keys)
 
 
-def context(**attributes) -> dict:
-    """The attributes of one context element, as homeassistant::core::Context declares them."""
-    return _element("context", attributes)
+def context(**keys) -> dict:
+    """The keys of one context object, as homeassistant::core::Context declares them."""
+    return _object("context", keys)
 
 
-def api_root(**attributes) -> dict:
-    """The attributes of one API root element, as homeassistant::core::ApiRoot declares them."""
-    return _element("api_root", attributes)
+def api_root(**keys) -> dict:
+    """The keys of one API root object, as homeassistant::core::ApiRoot declares them."""
+    return _object("api_root", keys)
 
 
-def config(**attributes) -> dict:
-    """The attributes of one config element, as homeassistant::core::Config declares them."""
-    return _element("config", attributes)
+def config(**keys) -> dict:
+    """The keys of one config object, as homeassistant::core::Config declares them."""
+    return _object("config", keys)
 
 
-def rest_error(**attributes) -> dict:
-    """The attributes of one error element, as homeassistant::core::RestError declares them."""
-    return _element("rest_error", attributes)
+def rest_error(**keys) -> dict:
+    """The keys of one error object, as homeassistant::core::RestError declares them."""
+    return _object("rest_error", keys)
 
 
-def logbook_entry(**attributes) -> dict:
-    """The attributes of one logbook row element, as homeassistant::logbook::LogbookEntry declares them."""
-    return _element("logbook_entry", attributes)
+def logbook_entry(**keys) -> dict:
+    """The keys of one logbook row object, as homeassistant::logbook::LogbookEntry declares them."""
+    return _object("logbook_entry", keys)
 
 
-def statistic_meta(**attributes) -> dict:
-    """The attributes of one statistic metadata element, as homeassistant::recorder::StatisticMeta declares them."""
-    return _element("statistic_meta", attributes)
+def statistic_meta(**keys) -> dict:
+    """The keys of one statistic metadata object, as homeassistant::recorder::StatisticMeta declares them."""
+    return _object("statistic_meta", keys)
 
 
-def statistics_row(**attributes) -> dict:
-    """The attributes of one statistics row element, as homeassistant::recorder::StatisticsRow declares them."""
-    return _element("statistics_row", attributes)
+def statistics_row(**keys) -> dict:
+    """The keys of one statistics row object, as homeassistant::recorder::StatisticsRow declares them."""
+    return _object("statistics_row", keys)
 
 
-def history_state(**attributes) -> dict:
-    """The attributes of one history row element, as homeassistant::recorder::HistoryState declares them."""
-    return _element("history_state", attributes)
+def history_state(**keys) -> dict:
+    """The keys of one history row object, as homeassistant::recorder::HistoryState declares them."""
+    return _object("history_state", keys)
 
 
-def entity_entry(**attributes) -> dict:
-    """The attributes of one entity registry entry element, as homeassistant::registry::EntityEntry declares them."""
-    return _element("entity_entry", attributes)
+def entity_entry(**keys) -> dict:
+    """The keys of one entity registry entry object, as homeassistant::registry::EntityEntry declares them."""
+    return _object("entity_entry", keys)
 
 
-def device_entry(**attributes) -> dict:
-    """The attributes of one device registry entry element, as homeassistant::registry::DeviceEntry declares them."""
-    return _element("device_entry", attributes)
+def device_entry(**keys) -> dict:
+    """The keys of one device registry entry object, as homeassistant::registry::DeviceEntry declares them."""
+    return _object("device_entry", keys)
 
 
-def area_entry(**attributes) -> dict:
-    """The attributes of one area registry entry element, as homeassistant::registry::AreaEntry declares them."""
-    return _element("area_entry", attributes)
+def area_entry(**keys) -> dict:
+    """The keys of one area registry entry object, as homeassistant::registry::AreaEntry declares them."""
+    return _object("area_entry", keys)
 
 
-def floor_entry(**attributes) -> dict:
-    """The attributes of one floor registry entry element, as homeassistant::registry::FloorEntry declares them."""
-    return _element("floor_entry", attributes)
+def floor_entry(**keys) -> dict:
+    """The keys of one floor registry entry object, as homeassistant::registry::FloorEntry declares them."""
+    return _object("floor_entry", keys)
 
 
-def entity_update_result(**attributes) -> dict:
-    """The attributes of one entity update result element, as homeassistant::registry::EntityUpdateResult declares them."""
-    return _element("entity_update_result", attributes)
+def entity_update_result(**keys) -> dict:
+    """The keys of one entity update result object, as homeassistant::registry::EntityUpdateResult declares them."""
+    return _object("entity_update_result", keys)
 
 
-def service_domain(**attributes) -> dict:
-    """The attributes of one service domain element, as homeassistant::services::ServiceDomain declares them."""
-    return _element("service_domain", attributes)
+def service_domain(**keys) -> dict:
+    """The keys of one service domain object, as homeassistant::services::ServiceDomain declares them."""
+    return _object("service_domain", keys)
 
 
-def service(**attributes) -> dict:
-    """The attributes of one service element, as homeassistant::services::Service declares them."""
-    return _element("service", attributes)
+def service(**keys) -> dict:
+    """The keys of one service object, as homeassistant::services::Service declares them."""
+    return _object("service", keys)
 
 
-def service_field(**attributes) -> dict:
-    """The attributes of one service field element, as homeassistant::services::ServiceField declares them."""
-    return _element("service_field", attributes)
+def service_field(**keys) -> dict:
+    """The keys of one service field object, as homeassistant::services::ServiceField declares them."""
+    return _object("service_field", keys)
 
 
-def service_field_filter(**attributes) -> dict:
-    """The attributes of one field filter element, as homeassistant::services::ServiceFieldFilter declares them."""
-    return _element("service_field_filter", attributes)
+def service_field_filter(**keys) -> dict:
+    """The keys of one field filter object, as homeassistant::services::ServiceFieldFilter declares them."""
+    return _object("service_field_filter", keys)
 
 
-def selector(**attributes) -> dict:
-    """The attributes of one selector element, as homeassistant::services::Selector declares them."""
-    return _element("selector", attributes)
+def selector(**keys) -> dict:
+    """The keys of one selector object, as homeassistant::services::Selector declares them."""
+    return _object("selector", keys)
 
 
-def select_selector(**attributes) -> dict:
-    """The attributes of one select selector element, as homeassistant::services::SelectSelector declares them."""
-    return _element("select_selector", attributes)
+def select_selector(**keys) -> dict:
+    """The keys of one select selector object, as homeassistant::services::SelectSelector declares them."""
+    return _object("select_selector", keys)
 
 
-def service_response(**attributes) -> dict:
-    """The attributes of one service response element, as homeassistant::services::ServiceResponse declares them."""
-    return _element("service_response", attributes)
+def service_response(**keys) -> dict:
+    """The keys of one service response object, as homeassistant::services::ServiceResponse declares them."""
+    return _object("service_response", keys)
 
 
-def service_target(**attributes) -> dict:
-    """The attributes of one service target element, as homeassistant::services::ServiceTarget declares them."""
-    return _element("service_target", attributes)
+def service_target(**keys) -> dict:
+    """The keys of one service target object, as homeassistant::services::ServiceTarget declares them."""
+    return _object("service_target", keys)
 
 
-def service_target_entity(**attributes) -> dict:
-    """The attributes of one target entity filter element, as homeassistant::services::ServiceTargetEntity declares them."""
-    return _element("service_target_entity", attributes)
+def service_target_entity(**keys) -> dict:
+    """The keys of one target entity filter object, as homeassistant::services::ServiceTargetEntity declares them."""
+    return _object("service_target_entity", keys)
 
 
-def service_call_result(**attributes) -> dict:
-    """The attributes of one service call result element, as homeassistant::services::ServiceCallResult declares them."""
-    return _element("service_call_result", attributes)
+def service_call_result(**keys) -> dict:
+    """The keys of one service call result object, as homeassistant::services::ServiceCallResult declares them."""
+    return _object("service_call_result", keys)
 
 
-def auth_required(**attributes) -> dict:
-    """The attributes of one auth_required frame element, as homeassistant::websocket::AuthRequired declares them."""
-    return _element("auth_required", attributes)
+def auth_required(**keys) -> dict:
+    """The keys of one auth_required frame object, as homeassistant::websocket::AuthRequired declares them."""
+    return _object("auth_required", keys)
 
 
-def auth_ok(**attributes) -> dict:
-    """The attributes of one auth_ok frame element, as homeassistant::websocket::AuthOk declares them."""
-    return _element("auth_ok", attributes)
+def auth_ok(**keys) -> dict:
+    """The keys of one auth_ok frame object, as homeassistant::websocket::AuthOk declares them."""
+    return _object("auth_ok", keys)
 
 
-def auth_invalid(**attributes) -> dict:
-    """The attributes of one auth_invalid frame element, as homeassistant::websocket::AuthInvalid declares them."""
-    return _element("auth_invalid", attributes)
+def auth_invalid(**keys) -> dict:
+    """The keys of one auth_invalid frame object, as homeassistant::websocket::AuthInvalid declares them."""
+    return _object("auth_invalid", keys)
 
 
-def result_message(**attributes) -> dict:
-    """The attributes of one result frame element, as homeassistant::websocket::ResultMessage declares them."""
-    return _element("result_message", attributes)
+def result_message(**keys) -> dict:
+    """The keys of one result frame object, as homeassistant::websocket::ResultMessage declares them."""
+    return _object("result_message", keys)
 
 
-def error_message(**attributes) -> dict:
-    """The attributes of one error frame element, as homeassistant::websocket::ErrorMessage declares them."""
-    return _element("error_message", attributes)
+def error_message(**keys) -> dict:
+    """The keys of one error frame object, as homeassistant::websocket::ErrorMessage declares them."""
+    return _object("error_message", keys)
 
 
-def error_detail(**attributes) -> dict:
-    """The attributes of one error element, as homeassistant::websocket::ErrorDetail declares them."""
-    return _element("error_detail", attributes)
+def error_detail(**keys) -> dict:
+    """The keys of one error object, as homeassistant::websocket::ErrorDetail declares them."""
+    return _object("error_detail", keys)
