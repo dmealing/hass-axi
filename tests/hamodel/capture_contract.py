@@ -707,4 +707,4 @@ def report(elements: dict) -> str:
 if __name__ == "__main__":
     captured = answers()
     sys.stdout.write(report(captured))
-    sys.exit(1 if never_sent(captured) or never_read(captured) else 0)
+    sys.exit(1 if never_sent(captured) or never_read(captured) or outlived(captured) else 0)

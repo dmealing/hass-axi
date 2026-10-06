@@ -25,3 +25,11 @@ def test_every_declared_attribute_is_one_a_real_server_sent(fqn):
 def test_every_attribute_a_row_reads_is_in_each_answer_it_is_built_from(key):
     missing = contract.never_read(ELEMENTS, {key: contract.ROWS[key]})
     assert missing == {}, f"{missing}: the column is empty everywhere but in the tests"
+
+
+def test_every_unobserved_exemption_is_still_earning_its_place():
+    stale = contract.outlived(ELEMENTS)
+    assert stale == {}, (
+        f"{stale} has an unobserved exemption that the capture now carries: "
+        "delete the reason rather than leaving it as a blind spot"
+    )
