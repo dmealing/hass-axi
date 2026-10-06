@@ -341,11 +341,15 @@ class RestClient:
         detail = ""
         try:
             raw = exc.read().decode("utf-8", errors="replace")
-            parsed = json.loads(raw)
-            detail = parsed.get("message") or parsed.get("error") or raw
+            # `message` is the key `HomeAssistantView.json_message` writes, and
+            # the only one a refusal was observed to carry. A body that says it
+            # another way, or whose message is not text -- the mobile app's
+            # webhook nests an object under `error` -- is quoted whole.
+            message = json.loads(raw).get("message")
+            detail = message if message and isinstance(message, str) else raw
         except Exception:
             detail = ""
-        detail = (detail or "").strip()
+        detail = detail.strip()
 
         if exc.code == 401:
             return AuthFailed(

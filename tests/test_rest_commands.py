@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import io
+import json
 import socket
 import threading
+import urllib.error
+
+import pytest
 
 from conftest import FAKE_TOKEN
+from hass_axi import rest
 
 
 def test_state_list_defaults_to_three_fields_and_reports_the_total(run_cli, rest_env):
@@ -523,3 +529,29 @@ def test_template_render_reports_what_the_template_did_wrong(run_cli, rest_env):
     code, out = run_cli(["template", "render", "--template", "{{ undefined_helper() }}"], rest_env)
     assert code == 1
     assert "'undefined_helper' is undefined" in out
+
+
+@pytest.mark.parametrize(
+    ("body", "shown"),
+    [
+        # What `json_message` writes: the message is the detail.
+        ({"message": "Entity not found."}, "Entity not found."),
+        # The mobile app's webhook nests an object under `error`; no core view
+        # was observed to send one as text, so the body is quoted, not read.
+        (
+            {"success": False, "error": {"code": "invalid_format", "message": "Example"}},
+            '"invalid_format"',
+        ),
+        ({"message": ["Example"]}, '["Example"]'),
+        ({"message": 7}, '{"message": 7}'),
+    ],
+)
+def test_a_refusal_whose_detail_is_not_text_is_quoted_and_not_a_crash(body, shown):
+    """A message that was an object used to reach `.strip()` and raise `AttributeError`."""
+    raw = json.dumps(body).encode()
+    refusal = urllib.error.HTTPError(
+        "https://homeassistant.example.com/api/example", 400, "Bad Request", {}, io.BytesIO(raw)
+    )
+    error = rest.RestClient._http_error(None, refusal, "POST", "/example")
+    assert error.code == "BAD_REQUEST"
+    assert shown in str(error)
