@@ -989,6 +989,24 @@ only their own half, a `has_entity_name` of each setting, a disabled entry with 
 `tests/test_double_fidelity.py` asserts each of those shapes is still present. Every one of them was
 absent once, and each absence cost a defect that a green suite could not see.
 
+The names themselves are held to a real server. `tests/fixtures/ha-shape/capture.json` is what the
+pinned lab container sent, reduced by `scripts/shapecapture.py` to the keys each object carries and
+the JSON type of each: a state, the registry entries, a service definition, the recorder's
+statistics, history and logbook rows, and the WebSocket frames. It holds no value and nobody's
+house. `tests/test_shape_contract.py` reads the doubles with the same script and scans the source
+for every key the tool reads, and fails on a name the capture does not have unless the name is
+listed with the reason the lab could not show it.
+
+```sh
+.venv/bin/python scripts/shapecapture.py --check           # has the lab drifted from the capture
+.venv/bin/python scripts/shapecapture.py --write           # refresh the capture; needs docker
+.venv/bin/python scripts/shapecapture.py --check --house   # how an installation differs, read-only
+```
+
+`--write` starts the lab itself and accepts no other source. `--check --house` reads `HA_URL` and
+`HA_TOKEN` (or `--env-file <path>`), sends reads only, and prints counts and key names: never the
+address, the token or a value. Neither runs from `pytest`, `scripts/ci-local.sh` or the gate.
+
 ### The live suite
 
 `tests/live/` runs this build against a real Home Assistant and compares every answer with

@@ -1010,7 +1010,7 @@ body, neither of which quotes, so the constraint comes from the one reader that 
 
 ```sh
 scripts/dev-setup.sh                     # creates .venv and installs this checkout into it
-.venv/bin/pytest                         # ~2150 tests, under a minute
+.venv/bin/pytest                         # ~2350 tests, under a minute
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/hass-axi setup skill --check     # SKILL.md is generated, never hand-edited
 ```

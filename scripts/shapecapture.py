@@ -412,9 +412,11 @@ def seed(target: Target) -> None:
             icon="mdi:home-floor-1",
             aliases=["Example Level"],
         )
-        areas = socket.must("config/area_registry/list") or [
-            socket.must("config/area_registry/create", name="Example Room")
-        ]
+        # A second floor and an area with nothing set beyond a name: what
+        # either carries when nobody chose an icon or a level for it.
+        socket.must("config/floor_registry/create", name="Example Annex")
+        socket.must("config/area_registry/create", name="Example Room")
+        areas = socket.must("config/area_registry/list")
         area_id = areas[0]["area_id"]
         socket.must(
             "config/area_registry/update",
@@ -575,7 +577,13 @@ def _read_services(listing, shapes: Shapes) -> None:
     shapes.add("service.field.filter", [f.get("filter") for f in fields])
     selectors = [f.get("selector") for f in fields if isinstance(f.get("selector"), dict)]
     shapes.add("service.field.selector", selectors)
-    shapes.add("service.field.selector.select", [s.get("select") for s in selectors])
+    selects = [s.get("select") for s in selectors if isinstance(s.get("select"), dict)]
+    shapes.add("service.field.selector.select", selects)
+    # An option is a plain string or a mapping; only the mappings have keys.
+    shapes.add(
+        "service.field.selector.select.option",
+        [option for select in selects for option in select.get("options") or ()],
+    )
     targets = [s.get("target") for s in specs if isinstance(s.get("target"), dict)]
     shapes.add("service.target", targets)
     shapes.add(
@@ -583,6 +591,11 @@ def _read_services(listing, shapes: Shapes) -> None:
         [entry for t in targets for entry in t.get("entity") or ()],
     )
     shapes.add("service.response", [s.get("response") for s in specs])
+
+
+def _of_type(frames, type_: str) -> list:
+    """The frames that are what they were asked for, so an answer is never filed as another."""
+    return [f for f in frames if isinstance(f, dict) and f.get("type") == type_]
 
 
 def _read_websocket(target: Target, shapes: Shapes, states: list) -> str:
@@ -593,7 +606,7 @@ def _read_websocket(target: Target, shapes: Shapes, states: list) -> str:
         version = str(socket.welcome.get("ha_version", ""))
 
         entities = socket.frame("config/entity_registry/list")
-        shapes.add("websocket.result", [entities])
+        shapes.add("websocket.result", _of_type([entities], "result"))
         entries = entities.get("result") or []
         shapes.add("registry.entity", entries)
         ids = [e["entity_id"] for e in entries if isinstance(e, dict) and "entity_id" in e]
@@ -632,9 +645,10 @@ def _read_websocket(target: Target, shapes: Shapes, states: list) -> str:
                 )
 
         refusal = socket.frame(UNKNOWN_COMMAND)
-        shapes.add("websocket.error", [refusal])
-        shapes.add("websocket.error.error", [refusal.get("error")])
-        shapes.add("websocket.pong", [socket.frame("ping")])
+        if not refusal.get("success"):
+            shapes.add("websocket.error", _of_type([refusal], "result"))
+            shapes.add("websocket.error.error", [refusal.get("error")])
+        shapes.add("websocket.pong", _of_type([socket.frame("ping")], "pong"))
 
         _read_event(target, socket, shapes, states)
         if target.disposable and ids:
@@ -651,7 +665,7 @@ def _read_websocket(target: Target, shapes: Shapes, states: list) -> str:
         # the address that sent it.
         with target.connect() as connection:
             _, verdict = target.handshake(connection, "shape-capture-not-a-token")
-        shapes.add("websocket.auth_invalid", [verdict])
+        shapes.add("websocket.auth_invalid", _of_type([verdict], "auth_invalid"))
     return version
 
 
@@ -693,8 +707,8 @@ def read(target: Target) -> tuple:
     """Everything this script records about ``target``: ``(shapes, version)``.
 
     A target that is not disposable is only read. A disposable one is also
-    sent a refused credential, one write of a value back to itself, and one
-    service call, because three of the frames exist only as answers to those.
+    sent a refused credential, one write of a value back to itself, and two
+    service calls, because four of the objects exist only as answers to those.
     """
     shapes = Shapes()
     states = _read_rest(target, shapes)
