@@ -1577,7 +1577,14 @@ class FakeRestServer:
                     # way, and the client fell through to help about fields.
                     if not selected:
                         return self._server_error()
-                    return self._send(200, {"changed_states": changed, "service_response": None})
+                    # The response is always a mapping: `ServiceRegistry.async_call`
+                    # raises on anything else, and an entity service answers with
+                    # one keyed by each entity that ran. It was `None` here, which
+                    # no real instance sends.
+                    answered = {entity_id: {} for entity_id in selected}
+                    return self._send(
+                        200, {"changed_states": changed, "service_response": answered}
+                    )
                 return self._send(200, changed)
 
             def do_GET(self):

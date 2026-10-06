@@ -449,9 +449,11 @@ this dependency, not something to absorb quietly.
   `state list --state unavailable` outright.
 - **A 404 that carries a message is not a wrong path.** aiohttp answers an unrouted path with
   plain-text `404: Not Found` and no body; a routed path whose *subject* is missing answers in JSON
-  — `/states/<id>` says `Entity not found.`. `rest._http_error` quotes the message when there is one
-  and only says `no such API path` when there is not, because telling an agent the path is wrong
-  sends it looking for a spelling mistake that is not there.
+  — `/states/<id>` says `Entity not found.`. `rest._http_error` extracts the `message` field when
+  the body decodes to JSON; if that field is a string it is quoted, otherwise the whole raw body is
+  quoted — a mobile app webhook can nest an object under `error` instead, so the tool must not crash
+  on a non-text message. When there is no body at all, it only says `no such API path`, because
+  telling an agent the path is wrong sends it looking for a spelling mistake that is not there.
 - **A diagnostic read must not fail a call that worked.** The target report needs the registries,
   which the REST-only path cannot supply. If that read fails, the report says so and the exit code
   stays 0: the call itself was accepted, and turning it into an error would be a fresh untruth.
@@ -1010,7 +1012,7 @@ body, neither of which quotes, so the constraint comes from the one reader that 
 
 ```sh
 scripts/dev-setup.sh                     # creates .venv and installs this checkout into it
-.venv/bin/pytest                         # ~2150 tests, under a minute
+.venv/bin/pytest                         # ~2350 tests, under a minute
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/hass-axi setup skill --check     # SKILL.md is generated, never hand-edited
 ```

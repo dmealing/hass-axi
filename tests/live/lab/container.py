@@ -32,10 +32,46 @@ DEFAULT_IMAGE = "ghcr.io/home-assistant/home-assistant:2026.8.3"
 #: The demo integration supplies lights, covers, climate and media players with
 #: registry entries and devices, which is the distribution the tool is for. The
 #: template entities add what the demo lacks: a cover that can only open and
-#: close, so a capability requirement has something to refuse.
+#: close, so a capability requirement has something to refuse. The script, the
+#: automation and the two helpers are for `scripts/shapecapture.py`: a script is
+#: the one service whose fields carry their own prose, and a change an
+#: automation made is the one logbook entry that names what caused it. They are
+#: declared here rather than created through the API, because a script written
+#: there is loaded only by a configuration that already includes its file.
 CONFIGURATION = """\
 default_config:
 demo:
+input_boolean:
+  example_toggle:
+    name: Example Toggle
+  example_follower:
+    name: Example Follower
+automation:
+  - alias: Example Automation
+    id: example_automation
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.example_toggle
+    actions:
+      - action: input_boolean.toggle
+        target:
+          entity_id: input_boolean.example_follower
+script:
+  example_script:
+    alias: Example Script
+    description: An example script.
+    fields:
+      example_field:
+        name: Example field
+        description: An example field.
+        example: example
+        advanced: true
+        selector:
+          text:
+    sequence:
+      - action: input_boolean.toggle
+        target:
+          entity_id: input_boolean.example_toggle
 template:
   - cover:
       - name: Example Blind
