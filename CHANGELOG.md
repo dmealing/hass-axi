@@ -4,6 +4,13 @@ This project was published as `ha-axi` up to and including 0.7.1, and as `hass-a
 release after it. The entries below 0.7.1 describe `ha-axi`; their links point at the repository's
 old name, which GitHub redirects.
 
+## [0.10.2](https://github.com/dmealing/hass-axi/compare/v0.10.1...v0.10.2) (2026-10-06)
+
+
+### Bug Fixes
+
+* **rest:** quote a non-text refusal instead of crashing, and capture what a real Home Assistant sends ([#46](https://github.com/dmealing/hass-axi/issues/46)) ([829cbdd](https://github.com/dmealing/hass-axi/commit/829cbddbf653617972a66ab1a9d9ea181036fca8))
+
 ## [0.10.1](https://github.com/dmealing/hass-axi/compare/v0.10.0...v0.10.1) (2026-10-05)
 
 
