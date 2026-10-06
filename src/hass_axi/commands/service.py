@@ -42,14 +42,12 @@ from ._common import (
     select_fields,
 )
 
-#: Every view's columns are declared in ``metaobjects/meta.rows.yaml`` and generated into
-#: :mod:`hass_axi.model.rows`.
 GET_FIELDS = vocabulary.FIELDS["service_field"]
 DEFAULT_GET_FIELDS = vocabulary.DEFAULT["service_field"]
 #: `service list` is two views -- the domains, and one domain's services -- and
-#: `--fields` selects from whichever one is being shown. The domain view's default
-#: set is every column, so it is asked for by one name.
+#: `--fields` selects from whichever one is being shown.
 DOMAIN_FIELDS = vocabulary.FIELDS["service_domain"]
+DEFAULT_DOMAIN_FIELDS = vocabulary.DEFAULT["service_domain"]
 SERVICE_FIELDS = vocabulary.FIELDS["service"]
 DEFAULT_SERVICE_FIELDS = vocabulary.DEFAULT["service"]
 
@@ -178,7 +176,7 @@ def _list(ctx, parsed):
     if wanted:
         fields = select_fields(parsed.get("fields"), SERVICE_FIELDS, DEFAULT_SERVICE_FIELDS)
     else:
-        fields = select_fields(parsed.get("fields"), DOMAIN_FIELDS, DOMAIN_FIELDS)
+        fields = select_fields(parsed.get("fields"), DOMAIN_FIELDS, DEFAULT_DOMAIN_FIELDS)
     domains = ctx.rest().services()
 
     if not wanted:

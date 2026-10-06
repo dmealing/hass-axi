@@ -42,7 +42,6 @@ from ._common import (
 )
 
 DEFAULT_LIMIT = 100
-#: Declared in ``metaobjects/meta.rows.yaml``, generated into :mod:`hass_axi.model.rows`.
 LIST_FIELDS = vocabulary.FIELDS["sensor"]
 #: Four columns: which sensor, what it reads and in what unit. Where it is and
 #: how fresh the reading is are one `--fields` away; a default row is paid for

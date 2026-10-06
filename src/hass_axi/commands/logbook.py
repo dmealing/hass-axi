@@ -18,7 +18,6 @@ from . import _window
 from ._common import count_line, empty_listing, listing_args, matches_search, project
 
 DEFAULT_LIMIT = 50
-#: Declared in ``metaobjects/meta.rows.yaml``, generated into :mod:`hass_axi.model.rows`.
 LIST_FIELDS = vocabulary.FIELDS["logbook"]
 #: Four columns: when, what, what happened and why. `name` rather than
 #: `entity_id` because every logbook entry has one and some -- Home Assistant

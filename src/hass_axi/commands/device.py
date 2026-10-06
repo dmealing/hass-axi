@@ -42,7 +42,6 @@ from ._common import (
 )
 
 DEFAULT_LIMIT = 100
-#: Declared in ``metaobjects/meta.rows.yaml``, generated into :mod:`hass_axi.model.rows`.
 LIST_FIELDS = vocabulary.FIELDS["device"]
 DEFAULT_LIST_FIELDS = vocabulary.DEFAULT["device"]
 
