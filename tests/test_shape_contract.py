@@ -848,5 +848,3 @@ def test_a_column_filed_under_a_key_prints_a_key_of_the_map_the_model_names(
     for row in rows:
         holder = declared[row["section"]]["fields"] if row["section"] else declared
         assert row["field"] in holder and "fields" not in holder[row["field"]]
-
-
