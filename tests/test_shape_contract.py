@@ -729,6 +729,9 @@ def _read_or_sent(doubles_document: dict) -> dict:
 def test_every_exception_states_why_and_is_still_needed(doubles):
     """An entry the capture has caught up with, or nothing depends on, has to go."""
     depended_on = _read_or_sent(doubles[0].document())
+    # The generated check only reports a reason the capture has caught up with. Here it
+    # fails, because the generated files are not edited by hand to make them fail it.
+    assert contract.outlived(contract.answers()) == {}
     for name, entries in UNOBSERVED.items():
         for key, reason in entries.items():
             assert len(reason) > 40, (name, key)
