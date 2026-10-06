@@ -1,0 +1,118 @@
+# What GET /api/services publishes, and what a service call answers.
+metadata:
+  package: homeassistant::services
+  children:
+    - object.value:
+        name: ServiceDomain
+        description: One element of GET /api/services - a domain and the services it registers.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: service_domain, element: service domain, format: json, capture: [service.domain] }
+          - field.string: { name: domain, required: true }
+          - field.map: { name: services, objectRef: Service, required: true, description: Keyed by service name. }
+
+    - object.value:
+        name: Service
+        description: One service, as async_get_all_descriptions publishes it.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: service, element: service, format: json, capture: [service] }
+          - field.string: { name: name, description: "Empty where the prose lives in translation files, which this API does not serve." }
+          - field.string: { name: description }
+          - field.map: { name: fields, objectRef: ServiceField, description: "Keyed by field name. A section is a key too, holding its own `fields`." }
+          - field.object: { name: target, objectRef: ServiceTarget, storage: jsonb }
+          - field.object: { name: response, objectRef: ServiceResponse, storage: jsonb }
+
+    - object.value:
+        name: ServiceField
+        description: One field of a service, or one section holding fields of its own.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: service_field, element: service field, format: json, capture: [service.field] }
+          - field.string: { name: description }
+          - field.boolean: { name: required }
+          - field.string: { name: example, dbColumnType: jsonb, description: Any JSON value. }
+          - field.object: { name: selector, objectRef: Selector, storage: jsonb }
+          - field.object: { name: filter, objectRef: ServiceFieldFilter, storage: jsonb }
+          - field.map: { name: fields, objectRef: ServiceField, description: On a section only. }
+          - field.boolean: { name: collapsed, description: On a section only. }
+
+    - object.value:
+        name: ServiceFieldFilter
+        description: The capability a field is offered under.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: service_field_filter, element: field filter, format: json, capture: [service.field.filter] }
+          - field.int[]: { name: supported_features }
+
+    - object.value:
+        name: Selector
+        description: >-
+          A field's selector: one key naming its kind, holding that kind's configuration.
+          These are the kinds this tool reads or its doubles send.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: selector, element: selector, format: json, capture: [service.field.selector] }
+          - field.object: { name: select, objectRef: SelectSelector, storage: jsonb }
+          - field.string: { name: datetime, dbColumnType: jsonb }
+          - field.string: { name: number, dbColumnType: jsonb }
+          - field.string: { name: text, dbColumnType: jsonb }
+
+    - object.value:
+        name: SelectSelector
+        description: The configuration of a select selector.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: select_selector, element: select selector, format: json, capture: [service.field.selector.select] }
+          - field.string[]: { name: options }
+
+    - object.value:
+        name: ServiceResponse
+        description: Whether a service answers with data.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: service_response, element: service response, format: json, capture: [service.response] }
+          - field.boolean: { name: optional, required: true }
+
+    - object.value:
+        name: ServiceTarget
+        description: What a service can be aimed at.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: service_target, element: service target, format: json, capture: [service.target] }
+          - field.object[]: { name: entity, objectRef: ServiceTargetEntity, storage: jsonb }
+          - field.string:
+              name: device
+              dbColumnType: jsonb
+              children:
+                - attr.properties:
+                    name: unobserved
+                    value: { reason: "published by a service whose target filters devices, and no integration the lab loads declares one" }
+
+    - object.value:
+        name: ServiceTargetEntity
+        description: One entity filter of a service target.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: service_target_entity, element: target entity filter, format: json, capture: [service.target.entity] }
+          - field.string[]: { name: domain }
+          - field.int[]: { name: supported_features, description: "A disjunction: any one mask, and every bit of that one." }
+
+    - object.value:
+        name: ServiceCallResult
+        description: The answer of POST /api/services/<domain>/<service>?return_response.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: service_call_result, element: service call result, format: json, capture: [service.call] }
+          - field.object[]: { name: changed_states, objectRef: "homeassistant::core::State", storage: jsonb, required: true }
+          - field.string: { name: service_response, dbColumnType: jsonb }

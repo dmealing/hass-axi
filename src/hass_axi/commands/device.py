@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
+from ..model import rows as vocabulary
 from ..output import HelpBlock
 from ..readonly import DYNAMIC, READ
 from ._common import (
@@ -41,16 +42,8 @@ from ._common import (
 )
 
 DEFAULT_LIMIT = 100
-LIST_FIELDS = [
-    "device_id",
-    "name",
-    "area",
-    "area_id",
-    "manufacturer",
-    "model",
-    "entities",
-]
-DEFAULT_LIST_FIELDS = ["device_id", "name", "area"]
+LIST_FIELDS = vocabulary.FIELDS["device"]
+DEFAULT_LIST_FIELDS = vocabulary.DEFAULT["device"]
 
 COMMAND = Command(
     name="device",

@@ -6,12 +6,15 @@
 # declared here, the gate's test step is an agent choosing what to run.
 #
 # The two commands together are a bare `scripts/ci-local.sh`, cut along its
-# `--only` sections so neither step repeats the other: ruff is the lint step,
-# and everything else — the leak scan, the commit-message audit, pytest and the
-# generated-skill check — is the test step. `scripts/ci-local.sh --help` says
-# what each section runs. The gate runs pytest once, on the interpreter that
-# builds .venv; the 3.9-3.12 matrix is `scripts/ci-local.sh --matrix`, run by
-# hand (see the script's header for why).
+# `--only` sections so neither step repeats the other: ruff and the model drift
+# check are the lint step, and everything else — the leak scan, the
+# commit-message audit, pytest and the generated-skill check — is the test step.
+# The drift check sits in lint because lint is the last step that runs a
+# command: the gate's document step comes after test and writes to the tree, and
+# it has edited a generated file there, which nothing then checked.
+# `scripts/ci-local.sh --help` says what each section runs. The gate runs pytest
+# once, on the interpreter that builds .venv; the 3.9-3.12 matrix is
+# `scripts/ci-local.sh --matrix`, run by hand (see the script's header for why).
 #
 # The gate checks out a fresh worktree with no .venv; the script builds one
 # with scripts/dev-setup.sh the first time a section needs it.
@@ -21,4 +24,4 @@
 
 commands:
   test: "scripts/ci-local.sh --only leakcheck --only commits --only test --only skill"
-  lint: "scripts/ci-local.sh --only lint"
+  lint: "scripts/ci-local.sh --only lint --only model"

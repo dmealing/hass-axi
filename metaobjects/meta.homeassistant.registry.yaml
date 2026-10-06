@@ -1,0 +1,108 @@
+# The four registries, which only the WebSocket API publishes.
+metadata:
+  package: homeassistant::registry
+  children:
+    - object.entity:
+        name: EntityEntry
+        description: >-
+          One entity registry entry: a row of config/entity_registry/list
+          (RegistryEntry.as_partial_dict) and, with five more keys, the answer of
+          config/entity_registry/get and update (extended_dict).
+        children:
+          - attr.properties:
+              name: wire
+              value:
+                key: entity_entry
+                element: entity registry entry
+                format: json
+                capture: [registry.entity, registry.entity.extended]
+          - field.string: { name: entity_id, required: true }
+          - field.string: { name: id, required: true }
+          - field.string: { name: unique_id, required: true }
+          - field.string: { name: platform, required: true }
+          - field.string: { name: name, description: "A name somebody set. It wins outright over the composed one." }
+          - field.string: { name: original_name, description: "The entity's half of its name, already unprefixed by the server." }
+          - field.boolean: { name: has_entity_name }
+          - field.string: { name: area_id, description: "Null when the area is the device's." }
+          - field.string: { name: device_id }
+          - field.string: { name: disabled_by }
+          - field.string: { name: hidden_by }
+          - field.string: { name: entity_category }
+          - field.string: { name: icon }
+          - field.string: { name: translation_key }
+          - field.string: { name: config_entry_id }
+          - field.string: { name: config_subentry_id }
+          - field.string: { name: categories, dbColumnType: jsonb }
+          - field.string: { name: options, dbColumnType: jsonb }
+          - field.string[]: { name: labels }
+          - field.double: { name: created_at, description: Epoch seconds. }
+          - field.double: { name: modified_at, description: Epoch seconds. }
+          - field.string[]: { name: aliases, description: "On get and update only. An element can be null." }
+          - field.string: { name: capabilities, dbColumnType: jsonb, description: On get and update only. }
+          - field.string: { name: device_class, description: On get and update only. }
+          - field.string: { name: original_device_class, description: On get and update only. }
+          - field.string: { name: original_icon, description: On get and update only. }
+          - identity.primary: { name: pk, fields: entity_id }
+
+    - object.entity:
+        name: DeviceEntry
+        description: One device registry entry, a row of config/device_registry/list (DeviceEntry.dict_repr).
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: device_entry, element: device registry entry, format: json, capture: [registry.device] }
+          - field.string: { name: id, required: true }
+          - field.string: { name: name, description: "The integration's name for the device, which nothing can change." }
+          - field.string: { name: name_by_user, description: "A name somebody set. It is the one displayed." }
+          - field.string: { name: area_id }
+          - field.string: { name: manufacturer }
+          - field.string: { name: model }
+          - field.string: { name: disabled_by }
+          - field.string[]: { name: labels }
+          - identity.primary: { name: pk, fields: id }
+
+    - object.entity:
+        name: AreaEntry
+        description: One area registry entry, a row of config/area_registry/list.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: area_entry, element: area registry entry, format: json, capture: [registry.area] }
+          - field.string: { name: area_id, required: true }
+          - field.string: { name: name, required: true }
+          - field.string[]: { name: aliases }
+          - field.string: { name: floor_id }
+          - field.string: { name: icon }
+          - identity.primary: { name: pk, fields: area_id }
+
+    - object.entity:
+        name: FloorEntry
+        description: One floor registry entry, a row of config/floor_registry/list.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: floor_entry, element: floor registry entry, format: json, capture: [registry.floor] }
+          - field.string: { name: floor_id, required: true }
+          - field.string: { name: name, required: true }
+          - field.string[]: { name: aliases }
+          - field.string: { name: icon }
+          - field.int: { name: level }
+          - field.double: { name: created_at, description: Epoch seconds. }
+          - field.double: { name: modified_at, description: Epoch seconds. }
+          - identity.primary: { name: pk, fields: floor_id }
+
+    - object.value:
+        name: EntityUpdateResult
+        description: The answer of config/entity_registry/update, which wraps the stored entry.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: entity_update_result, element: entity update result, format: json, capture: [websocket.entity_update] }
+          - field.object: { name: entity_entry, objectRef: EntityEntry, storage: jsonb, required: true }
+          - field.int:
+              name: reload_delay
+              description: Seconds until the entry that supplies the entity reloads.
+              children:
+                - attr.properties:
+                    name: unobserved
+                    value: { reason: "sent only when an update enables a disabled entity, and the capture's one update enables none" }

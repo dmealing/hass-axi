@@ -16,12 +16,21 @@ value and nobody's house. This file asks three questions of it, offline:
 
 **What a failure means.** A name is read or emitted that the capture does not
 have. Either nobody sends it -- remove it, and fix whatever depended on it --
-or a server sends it only in a state the lab was not in, and then it goes in
-:data:`UNOBSERVED` *with the reason it could not be observed*. A reason is
-required, and an entry the capture has since caught up with fails too.
+or a server sends it only in a state the lab was not in, and then the model
+declares it *with the reason it could not be observed*, in an ``unobserved`` bag
+beside the key in ``metaobjects/``. :data:`UNOBSERVED` is those reasons, read back.
+A reason is required, and an entry the capture has since caught up with fails too.
 
 Whether the capture still matches a server is a different question, asked by
 ``scripts/shapecapture.py --check``.
+
+**The model.** What Home Assistant answers is declared in ``metaobjects/``, and three
+things are generated from it: the column vocabularies in :mod:`hass_axi.model.rows`,
+the builders in ``tests/hamodel/`` that the doubles make their answers through, and
+the check beside them that every declared key is in the capture. The last section
+here holds the first two to what the commands print and to what a builder refuses.
+The scan of the readers stays until the readers are generated too: it is what holds
+a key read with ``.get`` to the capture.
 """
 
 from __future__ import annotations
@@ -39,7 +48,11 @@ import pytest
 
 import conftest
 from conftest import FAKE_TOKEN, RECORDER_DAY, RECORDER_NOW, synthetic_jwt
-from hass_axi import ws
+from hamodel import capture_contract as contract
+from hamodel import elements
+from hass_axi import commands, ws
+from hass_axi.commands import _window
+from hass_axi.model import rows as vocabulary
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src" / "hass_axi"
@@ -51,30 +64,35 @@ CAPTURE_PATH = ROOT / "tests" / "fixtures" / "ha-shape" / "capture.json"
 CAPTURE = json.loads(CAPTURE_PATH.read_text(encoding="utf-8"))
 OBJECTS = CAPTURE["objects"]
 
-#: Names the tool reads, or the doubles send, that the lab could not show:
-#: object -> name -> why. The lab runs the demo integration and what
-#: `tests/live/lab/container.py` declares, so anything only another
-#: integration publishes was not there to read.
-UNOBSERVED = {
-    "service.target": {
-        "device": (
-            "published by a service whose target filters devices, and no integration "
-            "the lab loads declares one"
-        ),
-    },
+#: The one object the readers read that the model does not declare, because no capture
+#: has one to hold a declaration to: object -> name -> why.
+NOT_DECLARED = {
     "service.field.selector.select.option": {
         "value": (
             "an option written as a label and a value; every select in the lab lists "
             "its options as plain strings"
         ),
     },
-    "state.attributes": {
-        "battery_level": (
-            "set by integrations for battery-powered devices; no demo entity in the "
-            "lab publishes it"
-        ),
-    },
 }
+
+
+def _unobserved() -> dict:
+    """Names the tool reads, or the doubles send, that the lab could not show.
+
+    ``captured object -> name -> why``. The reasons are the model's own, kept beside the
+    key each one excuses in ``metaobjects/``: the lab runs the demo integration and what
+    ``tests/live/lab/container.py`` declares, so anything only another integration
+    publishes was not there to read.
+    """
+    found = {name: dict(entries) for name, entries in NOT_DECLARED.items()}
+    for entry in contract.DECLARED.values():
+        for name in entry["capture"]:
+            if entry["unobserved"]:
+                found.setdefault(name, {}).update(entry["unobserved"])
+    return found
+
+
+UNOBSERVED = _unobserved()
 
 #: Types the doubles send for a key the capture has, where the lab showed the
 #: key with other types only: (object, key, type) -> why.
@@ -108,6 +126,7 @@ LOCAL = {
     "entry.py",
     "errors.py",
     "hooks.py",
+    "model/rows.py",
     "output.py",
     "readonly.py",
     "sessionlog.py",
@@ -330,7 +349,8 @@ def _scanned() -> dict:
             continue
         reads = key_reads(path)
         if name.startswith("commands/"):
-            reads.pop(ARGUMENTS, None)
+            for own in (ARGUMENTS, "vocabulary.FIELDS", "vocabulary.DEFAULT"):
+                reads.pop(own, None)
         found[name] = reads
     return found
 
@@ -664,6 +684,28 @@ def test_every_parameter_a_write_previews_is_a_key_the_stored_entry_has(command,
 # ------------------------------------------------------------------------- the tables
 
 
+def _built_by_the_doubles() -> dict:
+    """``captured object -> names`` the doubles pass to a builder by name.
+
+    Read off the source, because a double sends some keys only in a state the script
+    that reads it never puts it in: an update that enables an entity, for one.
+    """
+    captures = {entry["key"]: entry["capture"] for entry in contract.DECLARED.values()}
+    found: dict = {}
+    for node in ast.walk(ast.parse(Path(conftest.__file__).read_text(encoding="utf-8"))):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "elements"
+        ):
+            continue
+        keys = {keyword.arg for keyword in node.keywords if keyword.arg}
+        for name in captures.get(node.func.attr, ()):
+            found.setdefault(name, set()).update(keys)
+    return found
+
+
 def _read_or_sent(doubles_document: dict) -> dict:
     """``object -> names`` somebody depends on: read by a reader or sent by a double."""
     found: dict = {}
@@ -679,12 +721,17 @@ def _read_or_sent(doubles_document: dict) -> dict:
             found.setdefault(name, set()).update(read)
     for name, keys in doubles_document.items():
         found.setdefault(name, set()).update(keys)
+    for name, keys in _built_by_the_doubles().items():
+        found.setdefault(name, set()).update(keys)
     return found
 
 
 def test_every_exception_states_why_and_is_still_needed(doubles):
     """An entry the capture has caught up with, or nothing depends on, has to go."""
     depended_on = _read_or_sent(doubles[0].document())
+    # The generated check only reports a reason the capture has caught up with. Here it
+    # fails, because the generated files are not edited by hand to make them fail it.
+    assert contract.outlived(contract.answers()) == {}
     for name, entries in UNOBSERVED.items():
         for key, reason in entries.items():
             assert len(reason) > 40, (name, key)
@@ -697,3 +744,107 @@ def test_every_exception_states_why_and_is_still_needed(doubles):
         assert kind in sent[name][key], f"no double sends {name}.{key} as {kind}"
     for name, reason in NOT_MODELLED.items():
         assert len(reason) > 40 and name in OBJECTS, name
+
+
+# -------------------------------------------------------------------------- the model
+
+#: Each generated vocabulary: the command module that prints the row, and a command
+#: that prints at least one against the doubles.
+PRINTED = {
+    "state": ("state", ["state", "list"]),
+    "entity": ("entity", ["entity", "list"]),
+    "device": ("device", ["device", "list"]),
+    "area": ("area", ["area", "list"]),
+    "logbook": ("logbook", ["logbook", "get"]),
+    "statistic": ("statistics", ["statistics", "list"]),
+    "service_domain": ("service", ["service", "list"]),
+    "service": ("service", ["service", "list", "--domain", "light"]),
+    "service_field": ("service", ["service", "get", "light.turn_on"]),
+    "sensor": ("sensor", ["sensor", "list", "--all"]),
+}
+
+
+def test_every_generated_vocabulary_is_printed_by_a_command():
+    assert set(vocabulary.FIELDS) == set(PRINTED) == set(vocabulary.DEFAULT)
+
+
+@pytest.mark.parametrize("key", sorted(PRINTED))
+def test_a_row_is_built_with_the_columns_the_model_declares(
+    key, monkeypatch, run_cli, installation_env
+):
+    """The declared columns and the row a command builds are two statements of one set.
+
+    `project` reads a column with `.get`, so a column the model declares and the
+    builder forgot would print as null and fail nothing.
+    """
+    name, argv = PRINTED[key]
+    module = importlib.import_module(f"{commands.__name__}.{name}")
+    built = []
+
+    def spy(rows, fields):
+        built.extend(list(row) for row in rows)
+        return project(rows, fields)
+
+    project = module.project
+    monkeypatch.setattr(module, "project", spy)
+    monkeypatch.setattr(_window, "now", lambda: datetime.datetime.fromisoformat(RECORDER_NOW))
+    code, _out = run_cli(argv, installation_env)
+    assert code == 0 and built
+    assert {tuple(row) for row in built} == {vocabulary.FIELDS[key]}
+    assert set(vocabulary.DEFAULT[key]) <= set(vocabulary.FIELDS[key])
+    assert set(vocabulary.READS[key]) == set(vocabulary.FIELDS[key])
+
+
+def test_a_builder_refuses_a_name_the_model_does_not_declare():
+    with pytest.raises(KeyError, match="example_invented_key"):
+        elements.state_attributes(friendly_name="Example Lamp", example_invented_key=1)
+    with pytest.raises(KeyError, match="entity_id"):
+        elements.state(state="on", attributes={})
+
+
+@pytest.mark.parametrize("key", sorted(PRINTED))
+def test_the_capture_check_holds_a_row_to_what_its_vocabulary_says_it_reads(key):
+    """Two generated files state what a row reads, and the check runs on only one of them."""
+    row, held = contract.ROWS[key], set()
+    for names in vocabulary.READS[key].values():
+        held.update(names)
+    filed_under = set(vocabulary.KEY_OF.get(key, {}).values())
+    own = {name for name in held if "::" not in name}
+    own |= {ref.rpartition(".")[2] for ref in filed_under if ref.startswith(row["of"] + ".")}
+    assert own == set(row["reads"])
+    others = {f"{fqn}.{name}" for fqn, names in row.get("also", {}).items() for name in names}
+    assert others == {name for name in held if "::" in name} | {
+        ref for ref in filed_under if not ref.startswith(row["of"] + ".")
+    }
+
+
+def test_a_column_filed_under_a_key_prints_a_key_of_the_map_the_model_names(
+    run_cli, installation_env
+):
+    """`KEY_OF` says which map a column is a key of; these are the keys of those maps."""
+    assert {
+        "service": dict.fromkeys(
+            ("service", "name"), "homeassistant::services::ServiceDomain.services"
+        ),
+        "service_field": dict.fromkeys(
+            ("field", "section"), "homeassistant::services::Service.fields"
+        ),
+    } == vocabulary.KEY_OF
+    light = next(entry for entry in conftest.SERVICES if entry["domain"] == "light")
+    code, out = run_cli(["--json", "service", "list", "--domain", "light"], installation_env)
+    assert code == 0
+    printed = {row["service"] for row in json.loads(out)["services"]}
+    assert printed == {f"light.{name}" for name in light["services"]}
+
+    declared = light["services"]["turn_on"]["fields"]
+    code, out = run_cli(
+        ["--json", "service", "get", "light.turn_on", "--fields", "field,section"],
+        installation_env,
+    )
+    assert code == 0
+    rows = json.loads(out)["fields"]
+    sections = {name for name, field in declared.items() if "fields" in field}
+    assert {row["section"] for row in rows} == {"", *sections}
+    for row in rows:
+        holder = declared[row["section"]]["fields"] if row["section"] else declared
+        assert row["field"] in holder and "fields" not in holder[row["field"]]

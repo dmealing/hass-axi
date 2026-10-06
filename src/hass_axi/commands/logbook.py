@@ -10,6 +10,7 @@ half-dozen `context_*` keys the API spreads it across.
 from __future__ import annotations
 
 from ..argspec import Command, Flag, Sub
+from ..model import rows as vocabulary
 from ..output import HelpBlock
 from ..readonly import READ
 from ..rest import require_entity_id
@@ -17,12 +18,12 @@ from . import _window
 from ._common import count_line, empty_listing, listing_args, matches_search, project
 
 DEFAULT_LIMIT = 50
-LIST_FIELDS = ["when", "name", "entity_id", "event", "cause", "domain", "state"]
+LIST_FIELDS = vocabulary.FIELDS["logbook"]
 #: Four columns: when, what, what happened and why. `name` rather than
 #: `entity_id` because every logbook entry has one and some -- Home Assistant
 #: starting, an integration's own event -- have no entity at all; the id is one
 #: `--fields` away.
-DEFAULT_LIST_FIELDS = ["when", "name", "event", "cause"]
+DEFAULT_LIST_FIELDS = vocabulary.DEFAULT["logbook"]
 
 COMMAND = Command(
     name="logbook",

@@ -1,0 +1,31 @@
+# What the logbook answers over REST.
+metadata:
+  package: homeassistant::logbook
+  children:
+    - object.value:
+        name: LogbookEntry
+        description: >-
+          One row of GET /api/logbook/<start>. Which keys a row carries depends on what
+          happened: a state change has `state`, anything else a `message`, and the
+          `context_*` keys name what caused it.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: logbook_entry, element: logbook row, format: json, capture: [logbook.row] }
+          - field.string: { name: when, required: true, description: ISO 8601. }
+          - field.string: { name: name }
+          - field.string: { name: entity_id }
+          - field.string: { name: domain }
+          - field.string: { name: state }
+          - field.string: { name: message }
+          - field.string: { name: source }
+          - field.string: { name: context_id }
+          - field.string: { name: context_user_id }
+          - field.string: { name: context_event_type }
+          - field.string: { name: context_domain }
+          - field.string: { name: context_service }
+          - field.string: { name: context_entity_id }
+          - field.string: { name: context_entity_id_name }
+          - field.string: { name: context_name }
+          - field.string: { name: context_message }
+          - field.string: { name: context_source }

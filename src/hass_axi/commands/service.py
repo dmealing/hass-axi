@@ -21,6 +21,7 @@ from axi_toolkit.ha import services as model
 
 from ..argspec import Command, Flag, Sub
 from ..errors import ApiError, AxiError, NotFound, UsageError
+from ..model import rows as vocabulary
 from ..output import HelpBlock, truncate
 from ..readonly import DYNAMIC, READ, WRITE
 from ._common import (
@@ -41,13 +42,14 @@ from ._common import (
     select_fields,
 )
 
-GET_FIELDS = ["field", "required", "type", "description", "options", "example", "section"]
-DEFAULT_GET_FIELDS = ["field", "required", "type", "description"]
+GET_FIELDS = vocabulary.FIELDS["service_field"]
+DEFAULT_GET_FIELDS = vocabulary.DEFAULT["service_field"]
 #: `service list` is two views -- the domains, and one domain's services -- and
 #: `--fields` selects from whichever one is being shown.
-DOMAIN_FIELDS = ["domain", "services"]
-SERVICE_FIELDS = ["service", "name", "fields", "response", "target"]
-DEFAULT_SERVICE_FIELDS = ["service", "name", "fields"]
+DOMAIN_FIELDS = vocabulary.FIELDS["service_domain"]
+DEFAULT_DOMAIN_FIELDS = vocabulary.DEFAULT["service_domain"]
+SERVICE_FIELDS = vocabulary.FIELDS["service"]
+DEFAULT_SERVICE_FIELDS = vocabulary.DEFAULT["service"]
 
 #: Descriptions are prose written for a UI, so they are previewed rather than
 #: printed whole; `--full` is the escape hatch, as it is on `state get`.
@@ -174,7 +176,7 @@ def _list(ctx, parsed):
     if wanted:
         fields = select_fields(parsed.get("fields"), SERVICE_FIELDS, DEFAULT_SERVICE_FIELDS)
     else:
-        fields = select_fields(parsed.get("fields"), DOMAIN_FIELDS, DOMAIN_FIELDS)
+        fields = select_fields(parsed.get("fields"), DOMAIN_FIELDS, DEFAULT_DOMAIN_FIELDS)
     domains = ctx.rest().services()
 
     if not wanted:

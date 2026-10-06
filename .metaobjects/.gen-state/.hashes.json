@@ -1,0 +1,8 @@
+{
+  "src/hass_axi/model/__init__.py": "daa04cec586768866d0996c779f62073e6773fe63750ff668327991fac2fd0f5",
+  "src/hass_axi/model/rows.py": "9b6bb0c8c5634b05523509a794ba6a1669fa8a4ba793378283e627da5638923f",
+  "tests/hamodel/__init__.py": "daa04cec586768866d0996c779f62073e6773fe63750ff668327991fac2fd0f5",
+  "tests/hamodel/capture_contract.py": "83b4e391b20e0d3130b990a18b0cf1a4162bb190915b5ed9e01e71ed605b313e",
+  "tests/hamodel/elements.py": "c44cd34fe4ad3120fd8f75748b7f0713007059c83690e7c05361b135bc84ba8f",
+  "tests/hamodel/test_capture_contract.py": "f568ae42c5aab2390c2f0e165d357bd43f59fa03b14b83de1da6a459d719becc"
+}

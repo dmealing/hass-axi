@@ -1,0 +1,57 @@
+# What the recorder answers: statistics over the WebSocket, history over REST.
+metadata:
+  package: homeassistant::recorder
+  children:
+    - object.entity:
+        name: StatisticMeta
+        description: One statistic the recorder keeps, as recorder/list_statistic_ids publishes it.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: statistic_meta, element: statistic metadata, format: json, capture: [recorder.statistic_meta] }
+          - field.string: { name: statistic_id, required: true }
+          - field.string: { name: name, description: "Null for an entity's own statistic, whose name is its state's." }
+          - field.string: { name: source, required: true }
+          - field.boolean: { name: has_sum, required: true, description: A meter. }
+          - field.boolean: { name: has_mean, description: "Superseded by mean_type and still published; the only form an older server sends." }
+          - field.int: { name: mean_type, description: "0 none, 1 arithmetic, 2 circular." }
+          - field.string: { name: display_unit_of_measurement, description: The unit the values arrive in. }
+          - field.string: { name: statistics_unit_of_measurement }
+          - field.string: { name: unit_class }
+          - identity.primary: { name: pk, fields: statistic_id }
+
+    - object.value:
+        name: StatisticsRow
+        description: One bucket of one statistic, as recorder/statistics_during_period answers.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: statistics_row, element: statistics row, format: json, capture: [recorder.statistics_row] }
+          - field.long: { name: start, required: true, description: Epoch milliseconds. }
+          - field.long: { name: end, required: true, description: Epoch milliseconds. }
+          - field.double: { name: change, description: "Null for a statistic that keeps no sum." }
+          - field.double: { name: state }
+          - field.double: { name: sum }
+          - field.double: { name: mean }
+          - field.double: { name: min }
+          - field.double: { name: max }
+          - field.double: { name: last_reset, description: "Null in every bucket the lab recorded." }
+
+    - object.value:
+        name: HistoryState
+        description: >-
+          One row of GET /api/history/period under minimal_response. The first row of
+          each entity's list is a whole state; the rest carry `state` and `last_changed`.
+        children:
+          - attr.properties:
+              name: wire
+              value:
+                key: history_state
+                element: history row
+                format: json
+                capture: [history.first_row, history.later_row]
+          - field.string: { name: state, required: true }
+          - field.string: { name: last_changed, required: true, description: ISO 8601. }
+          - field.string: { name: entity_id, description: On the first row only. }
+          - field.object: { name: attributes, objectRef: "homeassistant::core::StateAttributes", storage: jsonb, description: On the first row only. }
+          - field.string: { name: last_updated, description: "ISO 8601. On the first row only." }
