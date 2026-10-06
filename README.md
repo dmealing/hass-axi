@@ -614,9 +614,12 @@ Three things are generated from it and committed:
 Change the metadata, never a generated file:
 
 ```sh
-uvx --python 3.12 --from metaobjects==1.0.13 --with 'axi-toolkit[metagen]==0.6.0' metaobjects gen   # regenerate, then commit
+uvx --python 3.12 --from "$METAOBJECTS" --with "$AXI_TOOLKIT" metaobjects gen   # regenerate, then commit
 scripts/ci-local.sh --only model                               # fails on a hand edit or a stale file
 ```
+
+`METAOBJECTS` and `AXI_TOOLKIT` are the pinned toolchain versions; `scripts/ci-local.sh` is the one
+place that pin is written, so read it there rather than here.
 
 The generators are [`axi-toolkit`](https://github.com/dmealing/axi-toolkit)'s, shared with the
 sibling AXI CLI, and run under `uvx` because the toolchain needs Python 3.11 or newer. Nothing

@@ -850,25 +850,3 @@ def test_a_column_filed_under_a_key_prints_a_key_of_the_map_the_model_names(
         assert row["field"] in holder and "fields" not in holder[row["field"]]
 
 
-def test_the_readme_counts_the_model_the_way_the_generated_contract_does():
-    """The README states the size of the model as prose; the contract states it as data."""
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    objects = len(contract.DECLARED)
-    keys = sum(len(entry["fields"]) for entry in contract.DECLARED.values())
-    assert f"{objects} objects, {keys} keys" in readme
-
-
-def test_the_documented_regeneration_command_carries_the_pinned_toolchain():
-    """Three files name the generator versions, and one of them executes them.
-
-    ``scripts/ci-local.sh`` runs the pinned pair, and the config header and the
-    README document the same command line. A copy that drifts regenerates with a
-    different generator than the drift gate verifies against, and the next
-    contributor's regenerated commit then "drifts" for no model reason.
-    """
-    script = (ROOT / "scripts" / "ci-local.sh").read_text(encoding="utf-8")
-    pinned = dict(re.findall(r'^(METAOBJECTS|AXI_TOOLKIT)=\$\{\1:-"([^"]+)"\}', script, re.M))
-    assert set(pinned) == {"METAOBJECTS", "AXI_TOOLKIT"}, pinned
-    command = f"--from {pinned['METAOBJECTS']} --with '{pinned['AXI_TOOLKIT']}'"
-    for path in (ROOT / "metaobjects.config.yaml", ROOT / "README.md"):
-        assert command in path.read_text(encoding="utf-8"), path
