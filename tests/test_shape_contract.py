@@ -798,3 +798,51 @@ def test_a_builder_refuses_a_name_the_model_does_not_declare():
         elements.state_attributes(friendly_name="Example Lamp", example_invented_key=1)
     with pytest.raises(KeyError, match="entity_id"):
         elements.state(state="on", attributes={})
+
+
+@pytest.mark.parametrize("key", sorted(PRINTED))
+def test_the_capture_check_holds_a_row_to_what_its_vocabulary_says_it_reads(key):
+    """Two generated files state what a row reads, and the check runs on only one of them."""
+    row, held = contract.ROWS[key], set()
+    for names in vocabulary.READS[key].values():
+        held.update(names)
+    filed_under = set(vocabulary.KEY_OF.get(key, {}).values())
+    own = {name for name in held if "::" not in name}
+    own |= {ref.rpartition(".")[2] for ref in filed_under if ref.startswith(row["of"] + ".")}
+    assert own == set(row["reads"])
+    others = {f"{fqn}.{name}" for fqn, names in row.get("also", {}).items() for name in names}
+    assert others == {name for name in held if "::" in name} | {
+        ref for ref in filed_under if not ref.startswith(row["of"] + ".")
+    }
+
+
+def test_a_column_filed_under_a_key_prints_a_key_of_the_map_the_model_names(
+    run_cli, installation_env
+):
+    """`KEY_OF` says which map a column is a key of; these are the keys of those maps."""
+    assert {
+        "service": dict.fromkeys(
+            ("service", "name"), "homeassistant::services::ServiceDomain.services"
+        ),
+        "service_field": dict.fromkeys(
+            ("field", "section"), "homeassistant::services::Service.fields"
+        ),
+    } == vocabulary.KEY_OF
+    light = next(entry for entry in conftest.SERVICES if entry["domain"] == "light")
+    code, out = run_cli(["--json", "service", "list", "--domain", "light"], installation_env)
+    assert code == 0
+    printed = {row["service"] for row in json.loads(out)["services"]}
+    assert printed == {f"light.{name}" for name in light["services"]}
+
+    declared = light["services"]["turn_on"]["fields"]
+    code, out = run_cli(
+        ["--json", "service", "get", "light.turn_on", "--fields", "field,section"],
+        installation_env,
+    )
+    assert code == 0
+    rows = json.loads(out)["fields"]
+    sections = {name for name, field in declared.items() if "fields" in field}
+    assert {row["section"] for row in rows} == {"", *sections}
+    for row in rows:
+        holder = declared[row["section"]]["fields"] if row["section"] else declared
+        assert row["field"] in holder and "fields" not in holder[row["field"]]
