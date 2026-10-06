@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
+from ..model import rows as vocabulary
 from ..output import HelpBlock, truncate
 from ..readonly import READ
 from ..rest import require_entity_id
@@ -31,17 +32,9 @@ from ._common import (
 )
 
 DEFAULT_LIMIT = 100
-LIST_FIELDS = [
-    "entity_id",
-    "name",
-    "state",
-    "domain",
-    "last_changed",
-    "last_updated",
-    "last_reported",
-    "age",
-]
-DEFAULT_LIST_FIELDS = ["entity_id", "name", "state"]
+#: Declared in ``metaobjects/meta.rows.yaml``, generated into :mod:`hass_axi.model.rows`.
+LIST_FIELDS = vocabulary.FIELDS["state"]
+DEFAULT_LIST_FIELDS = vocabulary.DEFAULT["state"]
 
 COMMAND = Command(
     name="state",

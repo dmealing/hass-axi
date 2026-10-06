@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ..argspec import Command, Flag, Sub
 from ..errors import NotFound, UsageError
+from ..model import rows as vocabulary
 from ..output import HelpBlock
 from ..readonly import DYNAMIC, READ
 from ._common import (
@@ -39,20 +40,9 @@ from ._common import (
 )
 
 DEFAULT_LIMIT = 100
-LIST_FIELDS = [
-    "entity_id",
-    "name",
-    "area",
-    "area_id",
-    "platform",
-    "domain",
-    "device_id",
-    "original_name",
-    "disabled",
-    "hidden",
-    "entity_category",
-]
-DEFAULT_LIST_FIELDS = ["entity_id", "name", "area"]
+#: Declared in ``metaobjects/meta.rows.yaml``, generated into :mod:`hass_axi.model.rows`.
+LIST_FIELDS = vocabulary.FIELDS["entity"]
+DEFAULT_LIST_FIELDS = vocabulary.DEFAULT["entity"]
 
 COMMAND = Command(
     name="entity",

@@ -1,0 +1,67 @@
+# The frames of the WebSocket API that this tool reads.
+metadata:
+  package: homeassistant::websocket
+  children:
+    - object.value:
+        name: AuthRequired
+        description: The first frame of a connection.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: auth_required, element: auth_required frame, format: json, capture: [websocket.auth_required] }
+          - field.string: { name: type, required: true }
+          - field.string: { name: ha_version, required: true }
+
+    - object.value:
+        name: AuthOk
+        description: The answer to an accepted token.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: auth_ok, element: auth_ok frame, format: json, capture: [websocket.auth_ok] }
+          - field.string: { name: type, required: true }
+          - field.string: { name: ha_version, required: true }
+
+    - object.value:
+        name: AuthInvalid
+        description: The answer to a rejected token.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: auth_invalid, element: auth_invalid frame, format: json, capture: [websocket.auth_invalid] }
+          - field.string: { name: type, required: true }
+          - field.string: { name: message, required: true }
+
+    - object.value:
+        name: ResultMessage
+        description: The answer to a command that worked.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: result_message, element: result frame, format: json, capture: [websocket.result] }
+          - field.int: { name: id, required: true }
+          - field.string: { name: type, required: true }
+          - field.boolean: { name: success, required: true }
+          - field.string: { name: result, dbColumnType: jsonb, description: "Whatever the command answers: a list, an object or null." }
+
+    - object.value:
+        name: ErrorMessage
+        description: The answer to a command that was refused.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: error_message, element: error frame, format: json, capture: [websocket.error] }
+          - field.int: { name: id, required: true }
+          - field.string: { name: type, required: true }
+          - field.boolean: { name: success, required: true }
+          - field.object: { name: error, objectRef: ErrorDetail, storage: jsonb, required: true }
+
+    - object.value:
+        name: ErrorDetail
+        description: Why a command was refused.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: error_detail, element: error, format: json, capture: [websocket.error.error] }
+          - field.string: { name: code, required: true }
+          - field.string: { name: message, required: true }

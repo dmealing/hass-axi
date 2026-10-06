@@ -1,0 +1,234 @@
+# The rows hass-axi prints, and which Home Assistant key each column is read from.
+#
+# A column read straight from one key `extends` it, so the loader refuses the model when
+# that key is renamed or retyped. A computed column names what it reads in a `derived`
+# bag, which the generator checks against the same object. Column order is the order
+# `--fields` documents and the order a row is printed in. Each default set is an
+# `object.projection` over its row. `row.capture` names the captured answers a row is
+# built from: every key it reads has to be in each.
+#
+# `reads` names keys of the row's own object only. Where a column also reads another
+# object -- an entity's name takes its device's, an area's counts come from the entity
+# and device registries -- the description says so and the other object's own
+# declaration is what the capture check holds those keys to.
+metadata:
+  package: hass_axi::rows
+  children:
+    - object.value:
+        name: StateRow
+        description: One state, as `state list` and `state get` print it.
+        children:
+          - attr.properties: { name: row, value: { key: state, of: "homeassistant::core::State", capture: [state] } }
+          - field.string: { name: entity_id, extends: "homeassistant::core::State.entity_id" }
+          - field.string:
+              name: name
+              description: "The friendly_name attribute, or the entity id where there is none."
+              children: [ { attr.properties: { name: derived, value: { reads: [attributes, entity_id] } } } ]
+          - field.string: { name: state, extends: "homeassistant::core::State.state" }
+          - field.string:
+              name: domain
+              children: [ { attr.properties: { name: derived, value: { reads: [entity_id] } } } ]
+          - field.string: { name: last_changed, extends: "homeassistant::core::State.last_changed" }
+          - field.string: { name: last_updated, extends: "homeassistant::core::State.last_updated" }
+          - field.string:
+              name: last_reported
+              description: "last_updated stands in on a server that predates last_reported."
+              children: [ { attr.properties: { name: derived, value: { reads: [last_reported, last_updated] } } } ]
+          - field.string:
+              name: age
+              children: [ { attr.properties: { name: derived, value: { reads: [last_reported, last_updated], unit: age } } } ]
+    - object.projection:
+        name: StateRowDefault
+        description: The columns `state list` shows when --fields is not given.
+        children:
+          - field.string: { name: entity_id, extends: "StateRow.entity_id" }
+          - field.string: { name: name, extends: "StateRow.name" }
+          - field.string: { name: state, extends: "StateRow.state" }
+
+    - object.value:
+        name: EntityRow
+        description: >-
+          One entity registry entry, as `entity list`, `entity get` and `entity update`
+          print it. `name` and `area` also read the device the entry belongs to, and
+          `area` the area registry.
+        children:
+          - attr.properties:
+              name: row
+              value: { key: entity, of: "homeassistant::registry::EntityEntry", capture: [registry.entity, registry.entity.extended] }
+          - field.string: { name: entity_id, extends: "homeassistant::registry::EntityEntry.entity_id" }
+          - field.string:
+              name: name
+              description: "The name Home Assistant displays: a set name outright, else the device's name joined to original_name."
+              children: [ { attr.properties: { name: derived, value: { reads: [name, device_id, original_name] } } } ]
+          - field.string:
+              name: area
+              children: [ { attr.properties: { name: derived, value: { reads: [area_id, device_id] } } } ]
+          - field.string:
+              name: area_id
+              description: "The entry's own area, else its device's."
+              children: [ { attr.properties: { name: derived, value: { reads: [area_id, device_id] } } } ]
+          - field.string: { name: platform, extends: "homeassistant::registry::EntityEntry.platform" }
+          - field.string:
+              name: domain
+              children: [ { attr.properties: { name: derived, value: { reads: [entity_id] } } } ]
+          - field.string: { name: device_id, extends: "homeassistant::registry::EntityEntry.device_id" }
+          - field.string: { name: original_name, extends: "homeassistant::registry::EntityEntry.original_name" }
+          - field.boolean:
+              name: disabled
+              children: [ { attr.properties: { name: derived, value: { reads: [disabled_by] } } } ]
+          - field.boolean:
+              name: hidden
+              children: [ { attr.properties: { name: derived, value: { reads: [hidden_by] } } } ]
+          - field.string: { name: entity_category, extends: "homeassistant::registry::EntityEntry.entity_category" }
+    - object.projection:
+        name: EntityRowDefault
+        description: The columns `entity list` shows when --fields is not given.
+        children:
+          - field.string: { name: entity_id, extends: "EntityRow.entity_id" }
+          - field.string: { name: name, extends: "EntityRow.name" }
+          - field.string: { name: area, extends: "EntityRow.area" }
+
+    - object.value:
+        name: DeviceRow
+        description: >-
+          One device, as `device list`, `device get` and `device update` print it.
+          `area` also reads the area registry, and `entities` counts entity registry
+          entries naming the device.
+        children:
+          - attr.properties: { name: row, value: { key: device, of: "homeassistant::registry::DeviceEntry", capture: [registry.device] } }
+          - field.string: { name: device_id, extends: "homeassistant::registry::DeviceEntry.id" }
+          - field.string:
+              name: name
+              description: "name_by_user over name: the one displayed."
+              children: [ { attr.properties: { name: derived, value: { reads: [name_by_user, name] } } } ]
+          - field.string:
+              name: area
+              children: [ { attr.properties: { name: derived, value: { reads: [area_id] } } } ]
+          - field.string: { name: area_id, extends: "homeassistant::registry::DeviceEntry.area_id" }
+          - field.string: { name: manufacturer, extends: "homeassistant::registry::DeviceEntry.manufacturer" }
+          - field.string: { name: model, extends: "homeassistant::registry::DeviceEntry.model" }
+          - field.int:
+              name: entities
+              children: [ { attr.properties: { name: derived, value: { reads: [id], unit: count } } } ]
+    - object.projection:
+        name: DeviceRowDefault
+        description: The columns `device list` shows when --fields is not given.
+        children:
+          - field.string: { name: device_id, extends: "DeviceRow.device_id" }
+          - field.string: { name: name, extends: "DeviceRow.name" }
+          - field.string: { name: area, extends: "DeviceRow.area" }
+
+    - object.value:
+        name: AreaRow
+        description: >-
+          One area, as `area list` prints it. `entities` and `devices` count the entity
+          and device registry entries placed in the area.
+        children:
+          - attr.properties: { name: row, value: { key: area, of: "homeassistant::registry::AreaEntry", capture: [registry.area] } }
+          - field.string: { name: area_id, extends: "homeassistant::registry::AreaEntry.area_id" }
+          - field.string: { name: name, extends: "homeassistant::registry::AreaEntry.name" }
+          - field.int:
+              name: entities
+              children: [ { attr.properties: { name: derived, value: { reads: [area_id], unit: count } } } ]
+          - field.int:
+              name: devices
+              children: [ { attr.properties: { name: derived, value: { reads: [area_id], unit: count } } } ]
+          - field.string: { name: floor_id, extends: "homeassistant::registry::AreaEntry.floor_id" }
+    - object.projection:
+        name: AreaRowDefault
+        description: The columns `area list` shows when --fields is not given.
+        children:
+          - field.string: { name: area_id, extends: "AreaRow.area_id" }
+          - field.string: { name: name, extends: "AreaRow.name" }
+          - field.int: { name: entities, extends: "AreaRow.entities" }
+          - field.int: { name: devices, extends: "AreaRow.devices" }
+
+    - object.value:
+        name: LogbookRow
+        description: One logbook entry, as `logbook get` prints it.
+        children:
+          - attr.properties: { name: row, value: { key: logbook, of: "homeassistant::logbook::LogbookEntry", capture: [logbook.row] } }
+          - field.string: { name: when, extends: "homeassistant::logbook::LogbookEntry.when" }
+          - field.string: { name: name, extends: "homeassistant::logbook::LogbookEntry.name" }
+          - field.string: { name: entity_id, extends: "homeassistant::logbook::LogbookEntry.entity_id" }
+          - field.string:
+              name: event
+              description: "The message, or the state an entity changed to."
+              children: [ { attr.properties: { name: derived, value: { reads: [message, state] } } } ]
+          - field.string:
+              name: cause
+              description: What Home Assistant recorded as having caused the entry, in one phrase.
+              children:
+                - attr.properties:
+                    name: derived
+                    value:
+                      reads:
+                        - context_event_type
+                        - context_name
+                        - context_entity_id_name
+                        - context_domain
+                        - context_service
+                        - context_entity_id
+                        - context_user_id
+          - field.string: { name: domain, extends: "homeassistant::logbook::LogbookEntry.domain" }
+          - field.string: { name: state, extends: "homeassistant::logbook::LogbookEntry.state" }
+    - object.projection:
+        name: LogbookRowDefault
+        description: The columns `logbook get` shows when --fields is not given.
+        children:
+          - field.string: { name: when, extends: "LogbookRow.when" }
+          - field.string: { name: name, extends: "LogbookRow.name" }
+          - field.string: { name: event, extends: "LogbookRow.event" }
+          - field.string: { name: cause, extends: "LogbookRow.cause" }
+
+    - object.value:
+        name: StatisticRow
+        description: >-
+          One statistic the recorder keeps, as `statistics list` prints it. `name` also
+          reads the state of the entity a statistic belongs to.
+        children:
+          - attr.properties:
+              name: row
+              value: { key: statistic, of: "homeassistant::recorder::StatisticMeta", capture: [recorder.statistic_meta] }
+          - field.string: { name: statistic_id, extends: "homeassistant::recorder::StatisticMeta.statistic_id" }
+          - field.string:
+              name: name
+              children: [ { attr.properties: { name: derived, value: { reads: [name, statistic_id] } } } ]
+          - field.string:
+              name: kind
+              description: "sum, mean or circular mean: from the metadata and nothing else."
+              children: [ { attr.properties: { name: derived, value: { reads: [has_sum, mean_type, has_mean] } } } ]
+          - field.string:
+              name: unit
+              children:
+                - attr.properties:
+                    name: derived
+                    value: { reads: [display_unit_of_measurement, statistics_unit_of_measurement] }
+          - field.string: { name: source, extends: "homeassistant::recorder::StatisticMeta.source" }
+          - field.string: { name: unit_class, extends: "homeassistant::recorder::StatisticMeta.unit_class" }
+    - object.projection:
+        name: StatisticRowDefault
+        description: The columns `statistics list` shows when --fields is not given.
+        children:
+          - field.string: { name: statistic_id, extends: "StatisticRow.statistic_id" }
+          - field.string: { name: name, extends: "StatisticRow.name" }
+          - field.string: { name: kind, extends: "StatisticRow.kind" }
+          - field.string: { name: unit, extends: "StatisticRow.unit" }
+
+    - object.value:
+        name: ServiceDomainRow
+        description: One domain, as `service list` prints it.
+        children:
+          - attr.properties:
+              name: row
+              value: { key: service_domain, of: "homeassistant::services::ServiceDomain", capture: [service.domain] }
+          - field.string: { name: domain, extends: "homeassistant::services::ServiceDomain.domain" }
+          - field.int:
+              name: services
+              children: [ { attr.properties: { name: derived, value: { reads: [services], unit: count } } } ]
+    - object.projection:
+        name: ServiceDomainRowDefault
+        description: The columns `service list` shows when --fields is not given - both of them.
+        children:
+          - field.string: { name: domain, extends: "ServiceDomainRow.domain" }
+          - field.int: { name: services, extends: "ServiceDomainRow.services" }

@@ -1,0 +1,102 @@
+# What a Home Assistant sends, as hass-axi and its test doubles name it.
+#
+# Every name in the files beside this one is Home Assistant's own, transcribed from the
+# names-only capture of a real server (tests/fixtures/ha-shape/capture.json, written by
+# scripts/shapecapture.py against the pinned lab container). Nothing is taken from memory
+# or from a client library.
+#
+# An object declares the keys this tool reads or its doubles send, not every key the
+# server publishes. The generated capture check fails when a declared key is in no
+# captured answer and carries no `unobserved` reason; what the server sends beyond the
+# declaration is reported and never failed.
+#
+# A key holding JSON this tool passes through unread is a string with `dbColumnType:
+# jsonb`, MetaObjects' spelling for an open bag: nothing here is stored, and there is no
+# neutral "any JSON value" field.
+#
+# Not declared, because no capture has one or the tool reads none:
+# - the pushed frames (`websocket.event*`, `websocket.pong`): the tool subscribes to
+#   nothing and sends no ping;
+# - a select option written as a label and a value: every select in the lab lists its
+#   options as plain strings, so there is no captured object to hold the names to.
+metadata:
+  package: homeassistant::core
+  children:
+    - attr.properties: { name: capture, value: { file: tests/fixtures/ha-shape/capture.json } }
+    - object.entity:
+        name: State
+        description: One state, as GET /api/states and GET /api/states/<entity_id> answer (State.as_dict).
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: state, element: State, format: json, capture: [state] }
+          - field.string: { name: entity_id, required: true }
+          - field.string: { name: state, required: true }
+          - field.object: { name: attributes, objectRef: StateAttributes, storage: jsonb, required: true }
+          - field.string: { name: last_changed, required: true, description: ISO 8601. }
+          - field.string: { name: last_reported, required: true, description: "ISO 8601. Moves on every report, whether or not the value changed." }
+          - field.string: { name: last_updated, required: true, description: ISO 8601. }
+          - field.object: { name: context, objectRef: Context, storage: jsonb }
+          - identity.primary: { name: id, fields: entity_id }
+
+    - object.value:
+        name: StateAttributes
+        description: >-
+          The attributes of one state. An open map: an integration publishes what it
+          likes, and these are the names this tool reads or its doubles send.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: state_attributes, element: attributes, format: json, capture: [state.attributes] }
+          - field.string: { name: friendly_name }
+          - field.string: { name: device_class }
+          - field.string: { name: state_class }
+          - field.string: { name: unit_of_measurement }
+          - field.int: { name: supported_features }
+          - field.int: { name: brightness }
+          - field.double: { name: temperature }
+          - field.int:
+              name: battery_level
+              children:
+                - attr.properties:
+                    name: unobserved
+                    value: { reason: "set by integrations for battery-powered devices; no demo entity in the lab publishes it" }
+
+    - object.value:
+        name: Context
+        description: What caused a state, as Context.as_dict publishes it.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: context, element: context, format: json, capture: [state.context] }
+          - field.string: { name: id, required: true }
+          - field.string: { name: parent_id }
+          - field.string: { name: user_id }
+
+    - object.value:
+        name: ApiRoot
+        description: The answer of GET /api/, which says only that the API is running.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: api_root, element: API root, format: json, capture: [rest.api_root] }
+          - field.string: { name: message, required: true }
+
+    - object.value:
+        name: Config
+        description: The answer of GET /api/config.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: config, element: config, format: json, capture: [rest.config] }
+          - field.string: { name: version, required: true }
+          - field.string: { name: location_name }
+
+    - object.value:
+        name: RestError
+        description: The JSON body of a refusal that carries one.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: rest_error, element: error, format: json, capture: [rest.error] }
+          - field.string: { name: message, required: true }

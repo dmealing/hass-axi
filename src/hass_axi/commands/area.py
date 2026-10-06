@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
+from ..model import rows as vocabulary
 from ..output import HelpBlock
 from ..readonly import DYNAMIC, READ
 from ._common import (
@@ -26,10 +27,11 @@ from ._common import (
     write_access,
 )
 
-LIST_FIELDS = ["area_id", "name", "entities", "devices", "floor_id"]
+#: Declared in ``metaobjects/meta.rows.yaml``, generated into :mod:`hass_axi.model.rows`.
+LIST_FIELDS = vocabulary.FIELDS["area"]
 #: What an area is and how much it holds. The floor is one `--fields` away, and
 #: `area get` reports it with the icon and aliases.
-DEFAULT_LIST_FIELDS = ["area_id", "name", "entities", "devices"]
+DEFAULT_LIST_FIELDS = vocabulary.DEFAULT["area"]
 
 COMMAND = Command(
     name="area",

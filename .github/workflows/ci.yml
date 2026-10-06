@@ -174,10 +174,27 @@ jobs:
       # not `PATH`'s.
       - run: scripts/ci-local.sh --only skill
 
+  model:
+    name: model is current
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The generated files are committed; this regenerates them from the model
+      # and fails on a difference. The toolchain runs under `uvx`, so it needs
+      # `uv` on the runner and nothing in a virtualenv.
+      - uses: astral-sh/setup-uv@v6
+      - run: scripts/ci-local.sh --only model
+
   # Nothing watches a workflow that runs on main and overnight, so a failure has
   # to come and find someone.
   notify:
-    needs: [leakcheck, commits, lint, test, skill]
+    needs: [leakcheck, commits, lint, test, skill, model]
     if: always() && contains(needs.*.result, 'failure')
     runs-on: [self-hosted, linux]
     timeout-minutes: 5

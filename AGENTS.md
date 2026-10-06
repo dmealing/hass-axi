@@ -1173,7 +1173,7 @@ Supported Pythons are 3.9 through 3.12. `from __future__ import annotations` is 
 Three workflows, split by where the work is cheap:
 
 - **`.github/workflows/ci.yml`** — the heavy matrix (leak scan, lint, `pytest` on 3.9 through 3.12,
-  the generated-skill check) on the maintainer's self-hosted runner. Triggers: push to `main`, a
+  the generated-skill check, the model drift check) on the maintainer's self-hosted runner. Triggers: push to `main`, a
   nightly `schedule`, and `workflow_dispatch`. Never pull requests. Each job runs one section of
   `scripts/ci-local.sh`. GitHub Actions is disabled on this repository, so today those checks run
   only through that script, which the no-mistakes gate runs on every change (`.no-mistakes.yaml`).

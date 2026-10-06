@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import pytest
 
+from hamodel import elements
 from hass_axi import output
 
 #: An obviously-synthetic token. It is not a JWT and grants nothing.
@@ -69,148 +70,98 @@ FEATURE_TRANSITION = 32
 #: Keys Home Assistant treats as targeting rather than as service data.
 TARGET_KEYS = ("entity_id", "device_id", "area_id", "floor_id", "label_id")
 
+
+def _state(entity_id: str, state: str, context: int, **attributes) -> dict:
+    """One state as `State.as_dict` publishes it, at the instant every fixture shares."""
+    moment = "2026-01-01T00:00:00+00:00"
+    return elements.state(
+        entity_id=entity_id,
+        state=state,
+        attributes=elements.state_attributes(**attributes),
+        last_changed=moment,
+        last_reported=moment,
+        last_updated=moment,
+        context=elements.context(
+            id=f"01EXAMPLECONTEXT{context:010d}", parent_id=None, user_id=None
+        ),
+    )
+
+
 STATES = [
-    {
-        "entity_id": "light.example_lamp",
-        "state": "on",
-        "attributes": {"friendly_name": "Example Lamp", "brightness": 180},
-        "last_changed": "2026-01-01T00:00:00+00:00",
-        "last_reported": "2026-01-01T00:00:00+00:00",
-        "last_updated": "2026-01-01T00:00:00+00:00",
-        "context": {"id": "01EXAMPLECONTEXT0000000001", "parent_id": None, "user_id": None},
-    },
-    {
-        "entity_id": "light.example_ceiling",
-        "state": "off",
-        "attributes": {"friendly_name": "Example Ceiling"},
-        "last_changed": "2026-01-01T00:00:00+00:00",
-        "last_reported": "2026-01-01T00:00:00+00:00",
-        "last_updated": "2026-01-01T00:00:00+00:00",
-        "context": {"id": "01EXAMPLECONTEXT0000000002", "parent_id": None, "user_id": None},
-    },
-    {
-        "entity_id": "sensor.example_temperature",
-        "state": "21.5",
-        "attributes": {
-            "friendly_name": "Example Hub Temperature",
-            "unit_of_measurement": "C",
-            "device_class": "temperature",
-            "state_class": "measurement",
-        },
-        "last_changed": "2026-01-01T00:00:00+00:00",
-        "last_reported": "2026-01-01T00:00:00+00:00",
-        "last_updated": "2026-01-01T00:00:00+00:00",
-        "context": {"id": "01EXAMPLECONTEXT0000000003", "parent_id": None, "user_id": None},
-    },
-    {
-        "entity_id": "switch.example_outlet",
-        "state": "unavailable",
-        "attributes": {"friendly_name": "Example Outlet"},
-        "last_changed": "2026-01-01T00:00:00+00:00",
-        "last_reported": "2026-01-01T00:00:00+00:00",
-        "last_updated": "2026-01-01T00:00:00+00:00",
-        "context": {"id": "01EXAMPLECONTEXT0000000004", "parent_id": None, "user_id": None},
-    },
-    {
-        "entity_id": "media_player.example_speaker",
-        "state": "playing",
-        "attributes": {
-            "friendly_name": "Example Speaker",
-            # Volume can be set but not stepped, and the track cannot be
-            # skipped. That is the shape of the capability case worth testing:
-            # `volume_up` still works, through the VOLUME_SET alternative the
-            # service declares, while `media_next_track` genuinely cannot.
-            "supported_features": FEATURE_TURN_ON | FEATURE_VOLUME_SET,
-        },
-        "last_changed": "2026-01-01T00:00:00+00:00",
-        "last_reported": "2026-01-01T00:00:00+00:00",
-        "last_updated": "2026-01-01T00:00:00+00:00",
-        "context": {"id": "01EXAMPLECONTEXT0000000005", "parent_id": None, "user_id": None},
-    },
-    {
-        "entity_id": "climate.example_thermostat",
-        "state": "heat",
-        "attributes": {
-            "friendly_name": "Example Thermostat",
-            "supported_features": FEATURE_TARGET_TEMPERATURE,
-            "temperature": 21,
-        },
-        "last_changed": "2026-01-01T00:00:00+00:00",
-        "last_reported": "2026-01-01T00:00:00+00:00",
-        "last_updated": "2026-01-01T00:00:00+00:00",
-        "context": {"id": "01EXAMPLECONTEXT0000000006", "parent_id": None, "user_id": None},
-    },
-    {
-        # The entity whose whole name is its device's. Its registry entry names
-        # nothing at all, and this is the state that says what Home Assistant
-        # displays for it -- the two have to agree, and did not.
-        "entity_id": "binary_sensor.example_doorway",
-        "state": "off",
-        "attributes": {"friendly_name": "Example Doorway", "device_class": "door"},
-        "last_changed": "2026-01-01T00:00:00+00:00",
-        "last_reported": "2026-01-01T00:00:00+00:00",
-        "last_updated": "2026-01-01T00:00:00+00:00",
-        "context": {"id": "01EXAMPLECONTEXT0000000007", "parent_id": None, "user_id": None},
-    },
-    {
-        "entity_id": "sensor.example_legacy_meter",
-        "state": "7",
-        "attributes": {
-            "friendly_name": "Example Doorway Legacy Meter",
-            "unit_of_measurement": "kWh",
-            "device_class": "energy",
-            "state_class": "total_increasing",
-        },
-        "last_changed": "2026-01-01T00:00:00+00:00",
-        "last_reported": "2026-01-01T00:00:00+00:00",
-        "last_updated": "2026-01-01T00:00:00+00:00",
-        "context": {"id": "01EXAMPLECONTEXT0000000008", "parent_id": None, "user_id": None},
-    },
-    {
-        # A calendar, so `calendar.get_events` has something to reach: a
-        # `return_response` call that reaches nothing cannot answer with an empty
-        # change set, and a double with no reachable entity for the only
-        # response service it publishes could only ever exercise the refusal.
-        "entity_id": "calendar.example_agenda",
-        "state": "on",
-        "attributes": {"friendly_name": "Example Agenda"},
-        "last_changed": "2026-01-01T00:00:00+00:00",
-        "last_reported": "2026-01-01T00:00:00+00:00",
-        "last_updated": "2026-01-01T00:00:00+00:00",
-        "context": {"id": "01EXAMPLECONTEXT0000000010", "parent_id": None, "user_id": None},
-    },
-    {
-        # A second calendar the response service *matches* but cannot act on.
-        # Home Assistant drops `unavailable` candidates before it decides a
-        # target matched nothing, so under `return_response` this entity turns
-        # the call into the bodyless 500 -- the one refusal shape whose reason
-        # exists only in the filtering rule -- while an ordinary call skips it
-        # in silence and answers an empty change set.
-        "entity_id": "calendar.example_old_agenda",
-        "state": "unavailable",
-        "attributes": {"friendly_name": "Example Old Agenda"},
-        "last_changed": "2026-01-01T00:00:00+00:00",
-        "last_reported": "2026-01-01T00:00:00+00:00",
-        "last_updated": "2026-01-01T00:00:00+00:00",
-        "context": {"id": "01EXAMPLECONTEXT0000000011", "parent_id": None, "user_id": None},
-    },
-    {
-        # `unknown` is not `unavailable`: the entity is reachable and has simply
-        # not reported a value yet. A double that never produced one let the
-        # home view count the two together under the name of one of them.
-        "entity_id": "sensor.example_reading",
-        "state": "unknown",
-        "attributes": {
-            "friendly_name": "Example Hub Reading",
-            "unit_of_measurement": "A",
-            "device_class": "current",
-            "state_class": "measurement",
-        },
-        "last_changed": "2026-01-01T00:00:00+00:00",
-        "last_reported": "2026-01-01T00:00:00+00:00",
-        "last_updated": "2026-01-01T00:00:00+00:00",
-        "context": {"id": "01EXAMPLECONTEXT0000000009", "parent_id": None, "user_id": None},
-    },
+    _state("light.example_lamp", "on", 1, friendly_name="Example Lamp", brightness=180),
+    _state("light.example_ceiling", "off", 2, friendly_name="Example Ceiling"),
+    _state(
+        "sensor.example_temperature",
+        "21.5",
+        3,
+        friendly_name="Example Hub Temperature",
+        unit_of_measurement="C",
+        device_class="temperature",
+        state_class="measurement",
+    ),
+    _state("switch.example_outlet", "unavailable", 4, friendly_name="Example Outlet"),
+    _state(
+        "media_player.example_speaker",
+        "playing",
+        5,
+        friendly_name="Example Speaker",
+        # Volume can be set but not stepped, and the track cannot be
+        # skipped. That is the shape of the capability case worth testing:
+        # `volume_up` still works, through the VOLUME_SET alternative the
+        # service declares, while `media_next_track` genuinely cannot.
+        supported_features=FEATURE_TURN_ON | FEATURE_VOLUME_SET,
+    ),
+    _state(
+        "climate.example_thermostat",
+        "heat",
+        6,
+        friendly_name="Example Thermostat",
+        supported_features=FEATURE_TARGET_TEMPERATURE,
+        temperature=21,
+    ),
+    # The entity whose whole name is its device's. Its registry entry names
+    # nothing at all, and this is the state that says what Home Assistant
+    # displays for it -- the two have to agree, and did not.
+    _state(
+        "binary_sensor.example_doorway",
+        "off",
+        7,
+        friendly_name="Example Doorway",
+        device_class="door",
+    ),
+    _state(
+        "sensor.example_legacy_meter",
+        "7",
+        8,
+        friendly_name="Example Doorway Legacy Meter",
+        unit_of_measurement="kWh",
+        device_class="energy",
+        state_class="total_increasing",
+    ),
+    # A calendar, so `calendar.get_events` has something to reach: a
+    # `return_response` call that reaches nothing cannot answer with an empty
+    # change set, and a double with no reachable entity for the only
+    # response service it publishes could only ever exercise the refusal.
+    _state("calendar.example_agenda", "on", 10, friendly_name="Example Agenda"),
+    # A second calendar the response service *matches* but cannot act on.
+    # Home Assistant drops `unavailable` candidates before it decides a
+    # target matched nothing, so under `return_response` this entity turns
+    # the call into the bodyless 500 -- the one refusal shape whose reason
+    # exists only in the filtering rule -- while an ordinary call skips it
+    # in silence and answers an empty change set.
+    _state("calendar.example_old_agenda", "unavailable", 11, friendly_name="Example Old Agenda"),
+    # `unknown` is not `unavailable`: the entity is reachable and has simply
+    # not reported a value yet. A double that never produced one let the
+    # home view count the two together under the name of one of them.
+    _state(
+        "sensor.example_reading",
+        "unknown",
+        9,
+        friendly_name="Example Hub Reading",
+        unit_of_measurement="A",
+        device_class="current",
+        state_class="measurement",
+    ),
 ]
 
 #: The service model, in the shape `GET /api/services` actually returns.
@@ -225,72 +176,84 @@ STATES = [
 #: Written by hand rather than copied from any installation: every domain and
 #: service name here is part of Home Assistant's public vocabulary, and every
 #: entity, area and capability value is invented.
+
+
+def _number(low: int, high: int) -> dict:
+    return elements.selector(number={"min": low, "max": high})
+
+
+def _aimed_at(domain: str, *masks: int) -> dict:
+    """A target of one entity filter: a domain, and the masks one of which it must satisfy."""
+    entity = {"domain": [domain]}
+    if masks:
+        entity["supported_features"] = list(masks)
+    return elements.service_target(entity=[elements.service_target_entity(**entity)])
+
+
 SERVICES = [
-    {
-        "domain": "light",
-        "services": {
-            "turn_on": {
-                "name": "Turn on",
-                "description": "Turn on one or more lights.",
-                "fields": {
-                    "brightness": {
-                        "description": "Brightness, from 0 to 255.",
-                        "selector": {"number": {"min": 0, "max": 255}},
-                    },
-                    "transition": {
-                        "description": "Seconds to fade over.",
-                        "filter": {"supported_features": [FEATURE_TRANSITION]},
-                        "selector": {"number": {"min": 0, "max": 300}},
-                    },
-                    "advanced_fields": {
-                        "collapsed": True,
-                        "fields": {
-                            "profile": {
-                                "description": "A named light profile.",
-                                "selector": {"text": None},
-                            }
+    elements.service_domain(
+        domain="light",
+        services={
+            "turn_on": elements.service(
+                name="Turn on",
+                description="Turn on one or more lights.",
+                fields={
+                    "brightness": elements.service_field(
+                        description="Brightness, from 0 to 255.",
+                        selector=_number(0, 255),
+                    ),
+                    "transition": elements.service_field(
+                        description="Seconds to fade over.",
+                        filter=elements.service_field_filter(
+                            supported_features=[FEATURE_TRANSITION]
+                        ),
+                        selector=_number(0, 300),
+                    ),
+                    "advanced_fields": elements.service_field(
+                        collapsed=True,
+                        fields={
+                            "profile": elements.service_field(
+                                description="A named light profile.",
+                                selector=elements.selector(text=None),
+                            )
                         },
-                    },
+                    ),
                 },
-                "target": {"entity": [{"domain": ["light"]}]},
-            },
-            "turn_off": {
-                "name": "Turn off",
-                "description": "Turn off one or more lights.",
-                "fields": {},
-                "target": {"entity": [{"domain": ["light"]}]},
-            },
+                target=_aimed_at("light"),
+            ),
+            "turn_off": elements.service(
+                name="Turn off",
+                description="Turn off one or more lights.",
+                fields={},
+                target=_aimed_at("light"),
+            ),
         },
-    },
-    {
-        # The ordinary case on a real installation, and the one the rest of this
-        # table gets wrong: almost no service publishes a `name` or a
-        # `description`, and almost no field publishes one either. They moved to
-        # the translation files, which `/api/services` does not serve. A model
-        # where everything documents itself let `service get` be designed around
-        # a column that is empty on every row of a real instance.
-        "domain": "switch",
-        "services": {
-            "toggle": {
-                "fields": {"delay": {"selector": {"number": {"min": 0, "max": 60}}}},
-                "target": {"entity": [{"domain": ["switch"]}]},
-            }
+    ),
+    # The ordinary case on a real installation, and the one the rest of this
+    # table gets wrong: almost no service publishes a `name` or a
+    # `description`, and almost no field publishes one either. They moved to
+    # the translation files, which `/api/services` does not serve. A model
+    # where everything documents itself let `service get` be designed around
+    # a column that is empty on every row of a real instance.
+    elements.service_domain(
+        domain="switch",
+        services={
+            "toggle": elements.service(
+                fields={"delay": elements.service_field(selector=_number(0, 60))},
+                target=_aimed_at("switch"),
+            )
         },
-    },
-    {
-        "domain": "media_player",
-        "services": {
-            "media_next_track": {
-                "name": "Next track",
-                "description": "Skip to the next track.",
-                "fields": {},
+    ),
+    elements.service_domain(
+        domain="media_player",
+        services={
+            "media_next_track": elements.service(
+                name="Next track",
+                description="Skip to the next track.",
+                fields={},
                 # One acceptable mask, so there is no alternative to fall back
                 # on: an entity without it cannot be reached by this service.
-                "target": {
-                    "entity": [
-                        {"domain": ["media_player"], "supported_features": [FEATURE_NEXT_TRACK]}
-                    ]
-                },
+                target=_aimed_at("media_player", FEATURE_NEXT_TRACK),
                 # A response mode alongside that mask, so the one refusal whose
                 # reason lives only in the filtering rule is reachable in both
                 # of its forms: an `unavailable` candidate and an incapable one
@@ -298,90 +261,80 @@ SERVICES = [
                 # turns the empty result into the bodyless 500. Without one
                 # service publishing both keys, the capability half of that
                 # verdict could never be exercised against the double.
-                "response": {"optional": True},
-            },
-            "volume_up": {
-                "name": "Turn up volume",
-                "description": "Turn the volume up.",
-                "fields": {},
+                response=elements.service_response(optional=True),
+            ),
+            "volume_up": elements.service(
+                name="Turn up volume",
+                description="Turn the volume up.",
+                fields={},
                 # Two acceptable masks: Home Assistant backs a player that
                 # cannot step with one that can set, so declaring both is how
                 # the fallback is published.
-                "target": {
-                    "entity": [
-                        {
-                            "domain": ["media_player"],
-                            "supported_features": [FEATURE_VOLUME_SET, FEATURE_VOLUME_STEP],
-                        }
-                    ]
-                },
-            },
+                target=_aimed_at("media_player", FEATURE_VOLUME_SET, FEATURE_VOLUME_STEP),
+            ),
         },
-    },
-    {
-        "domain": "climate",
-        "services": {
-            "set_temperature": {
-                "name": "Set target temperature",
-                "description": "Set the target temperature.",
-                "fields": {
-                    "temperature": {
-                        "description": "The target temperature.",
-                        "filter": {"supported_features": [FEATURE_TARGET_TEMPERATURE]},
-                        "selector": {"number": {"min": 0, "max": 250}},
-                    },
-                    "hvac_mode": {
-                        "description": "The mode to switch to first.",
-                        "selector": {"select": {"options": ["off", "heat", "cool"]}},
-                    },
+    ),
+    elements.service_domain(
+        domain="climate",
+        services={
+            "set_temperature": elements.service(
+                name="Set target temperature",
+                description="Set the target temperature.",
+                fields={
+                    "temperature": elements.service_field(
+                        description="The target temperature.",
+                        filter=elements.service_field_filter(
+                            supported_features=[FEATURE_TARGET_TEMPERATURE]
+                        ),
+                        selector=_number(0, 250),
+                    ),
+                    "hvac_mode": elements.service_field(
+                        description="The mode to switch to first.",
+                        selector=elements.selector(
+                            select=elements.select_selector(options=["off", "heat", "cool"])
+                        ),
+                    ),
                 },
-                "target": {
-                    "entity": [
-                        {
-                            "domain": ["climate"],
-                            "supported_features": [FEATURE_TARGET_TEMPERATURE],
-                        }
-                    ]
-                },
-            }
+                target=_aimed_at("climate", FEATURE_TARGET_TEMPERATURE),
+            )
         },
-    },
-    {
-        "domain": "calendar",
-        "services": {
-            "get_events": {
-                "name": "Get events",
-                "description": "List events in a window.",
-                "fields": {
-                    "start_date_time": {
-                        "required": True,
-                        "description": "The start of the window.",
-                        "selector": {"datetime": None},
-                    }
+    ),
+    elements.service_domain(
+        domain="calendar",
+        services={
+            "get_events": elements.service(
+                name="Get events",
+                description="List events in a window.",
+                fields={
+                    "start_date_time": elements.service_field(
+                        required=True,
+                        description="The start of the window.",
+                        selector=elements.selector(datetime=None),
+                    )
                 },
-                "target": {"entity": [{"domain": ["calendar"]}]},
+                target=_aimed_at("calendar"),
                 # Changed to optional:true so the unavailable-entity test can
                 # exercise both sides of the verdict: with --response (bodyless
                 # 500) and without (empty change set with diagnostic).
-                "response": {"optional": True},
-            },
-            "list_events": {
-                "name": "List events",
-                "description": "List events (response-only service for testing).",
-                "fields": {
-                    "start_date_time": {
-                        "required": True,
-                        "description": "The start of the window.",
-                        "selector": {"datetime": None},
-                    }
+                response=elements.service_response(optional=True),
+            ),
+            "list_events": elements.service(
+                name="List events",
+                description="List events (response-only service for testing).",
+                fields={
+                    "start_date_time": elements.service_field(
+                        required=True,
+                        description="The start of the window.",
+                        selector=elements.selector(datetime=None),
+                    )
                 },
-                "target": {"entity": [{"domain": ["calendar"]}]},
+                target=_aimed_at("calendar"),
                 # Response-required service for testing the error message when
                 # --response is omitted.
-                "response": {"optional": False},
-            },
+                response=elements.service_response(optional=False),
+            ),
         },
-    },
+    ),
 ]
 
 
@@ -424,7 +377,7 @@ def _registry_entry(**overrides) -> dict:
         "unique_id": "",
     }
     entry.update(overrides)
-    return entry
+    return elements.entity_entry(**entry)
 
 
 ENTITY_REGISTRY = [
@@ -541,86 +494,86 @@ ENTITY_REGISTRY = [
 ]
 
 AREA_REGISTRY = [
-    {
-        "area_id": "example_room",
-        "name": "Example Room",
-        "icon": None,
-        "floor_id": None,
-        "aliases": [],
-    },
-    {
-        "area_id": "example_hall",
-        "name": "Example Hall",
-        "icon": "mdi:door",
-        "floor_id": "ground",
-        "aliases": [],
-    },
+    elements.area_entry(
+        area_id="example_room",
+        name="Example Room",
+        icon=None,
+        floor_id=None,
+        aliases=[],
+    ),
+    elements.area_entry(
+        area_id="example_hall",
+        name="Example Hall",
+        icon="mdi:door",
+        floor_id="ground",
+        aliases=[],
+    ),
 ]
 
 #: The floor registry, as `config/floor_registry/list` publishes an entry. One
 #: floor holds an area and one holds none, so "a floor that exists" and "a
 #: floor in use" are two cases rather than one.
 FLOOR_REGISTRY = [
-    {
-        "aliases": [],
-        "created_at": 1767225600.0,
-        "floor_id": "ground",
-        "icon": None,
-        "level": 0,
-        "name": "Example Ground Floor",
-        "modified_at": 1767225600.0,
-    },
-    {
-        "aliases": [],
-        "created_at": 1767225600.0,
-        "floor_id": "example_upper_floor",
-        "icon": "mdi:home-floor-1",
-        "level": 1,
-        "name": "Example Upper Floor",
-        "modified_at": 1767225600.0,
-    },
+    elements.floor_entry(
+        aliases=[],
+        created_at=1767225600.0,
+        floor_id="ground",
+        icon=None,
+        level=0,
+        name="Example Ground Floor",
+        modified_at=1767225600.0,
+    ),
+    elements.floor_entry(
+        aliases=[],
+        created_at=1767225600.0,
+        floor_id="example_upper_floor",
+        icon="mdi:home-floor-1",
+        level=1,
+        name="Example Upper Floor",
+        modified_at=1767225600.0,
+    ),
 ]
 
 DEVICE_REGISTRY = [
-    {
-        "id": "device_one",
-        "name": "Example Lamp Fitting",
-        "name_by_user": None,
-        "disabled_by": None,
-        "area_id": "example_room",
-        "manufacturer": "Example Co",
-        "model": "Model X",
-    },
-    {
-        # A user rename, which is what the display name is composed from -- the
-        # integration's own name is never what gets shown once one exists.
-        "id": "device_two",
-        "name": "Ceiling Fitting",
-        "name_by_user": "Example Ceiling",
-        "disabled_by": None,
-        "area_id": "example_hall",
-        "manufacturer": "Example Co",
-        "model": "Model Y",
-    },
-    {
-        # A device in no area, which supplies entities in no area.
-        "id": "device_three",
-        "name": "Example Hub",
-        "name_by_user": None,
-        "disabled_by": None,
-        "area_id": None,
-        "manufacturer": "Example Co",
-        "model": "Hub 1",
-    },
-    {
-        "id": "device_four",
-        "name": "Example Doorway",
-        "name_by_user": None,
-        "disabled_by": None,
-        "area_id": "example_room",
-        "manufacturer": "Example Co",
-        "model": "Model Z",
-    },
+    elements.device_entry(
+        id="device_one",
+        name="Example Lamp Fitting",
+        name_by_user=None,
+        disabled_by=None,
+        area_id="example_room",
+        manufacturer="Example Co",
+        model="Model X",
+    ),
+    # A user rename, which is what the display name is composed from -- the
+    # integration's own name is never what gets shown once one exists.
+    elements.device_entry(
+        id="device_two",
+        name="Ceiling Fitting",
+        name_by_user="Example Ceiling",
+        disabled_by=None,
+        area_id="example_hall",
+        manufacturer="Example Co",
+        model="Model Y",
+    ),
+    # A device in no area, which supplies entities in no area.
+    elements.device_entry(
+        id="device_three",
+        name="Example Hub",
+        name_by_user=None,
+        disabled_by=None,
+        area_id=None,
+        manufacturer="Example Co",
+        model="Hub 1",
+    ),
+    elements.device_entry(
+        id="device_four",
+        name="Example Doorway",
+        name_by_user=None,
+        disabled_by=None,
+        area_id="example_room",
+        manufacturer="Example Co",
+        model="Model Z",
+    ),
 ]
 
 # ------------------------------------------------------------- the recorder
@@ -664,46 +617,46 @@ HISTORY = {
 #: `state` and no `message`, an event carries `message`, and the cause arrives
 #: spread across `context_*` keys -- or not at all.
 LOGBOOK = [
-    {
-        "when": _at(6),
-        "name": "Example Morning",
-        "message": "triggered by time",
-        "domain": "automation",
-        "entity_id": "automation.example_morning",
-        "source": "time",
-        "context_id": "01EXAMPLELOGBOOK0000000001",
-    },
-    {
-        "when": _at(6),
-        "state": "off",
-        "entity_id": "light.example_lamp",
-        "name": "Example Lamp",
-        "context_id": "01EXAMPLELOGBOOK0000000001",
-        "context_event_type": "automation_triggered",
-        "context_domain": "automation",
-        "context_name": "Example Morning",
-        "context_entity_id": "automation.example_morning",
-        "context_entity_id_name": "Example Morning",
-        "context_source": "time",
-        "context_message": "triggered by time",
-    },
-    {
-        "when": _at(12),
-        "state": "on",
-        "entity_id": "binary_sensor.example_doorway",
-        "name": "Example Doorway",
-    },
-    {
-        "when": _at(18),
-        "state": "on",
-        "entity_id": "light.example_lamp",
-        "name": "Example Lamp",
-        "context_id": "01EXAMPLELOGBOOK0000000002",
-        "context_user_id": "example-user",
-        "context_event_type": "call_service",
-        "context_domain": "light",
-        "context_service": "turn_on",
-    },
+    elements.logbook_entry(
+        when=_at(6),
+        name="Example Morning",
+        message="triggered by time",
+        domain="automation",
+        entity_id="automation.example_morning",
+        source="time",
+        context_id="01EXAMPLELOGBOOK0000000001",
+    ),
+    elements.logbook_entry(
+        when=_at(6),
+        state="off",
+        entity_id="light.example_lamp",
+        name="Example Lamp",
+        context_id="01EXAMPLELOGBOOK0000000001",
+        context_event_type="automation_triggered",
+        context_domain="automation",
+        context_name="Example Morning",
+        context_entity_id="automation.example_morning",
+        context_entity_id_name="Example Morning",
+        context_source="time",
+        context_message="triggered by time",
+    ),
+    elements.logbook_entry(
+        when=_at(12),
+        state="on",
+        entity_id="binary_sensor.example_doorway",
+        name="Example Doorway",
+    ),
+    elements.logbook_entry(
+        when=_at(18),
+        state="on",
+        entity_id="light.example_lamp",
+        name="Example Lamp",
+        context_id="01EXAMPLELOGBOOK0000000002",
+        context_user_id="example-user",
+        context_event_type="call_service",
+        context_domain="light",
+        context_service="turn_on",
+    ),
 ]
 
 #: `recorder/list_statistic_ids` rows, flattened the way
@@ -712,39 +665,39 @@ LOGBOOK = [
 #: a mean and no sum, and an external statistic has a `source` that is not the
 #: recorder and an id that is not an entity's.
 STATISTICS_METADATA = [
-    {
-        "statistic_id": "sensor.example_legacy_meter",
-        "display_unit_of_measurement": "kWh",
-        "has_mean": False,
-        "mean_type": 0,
-        "has_sum": True,
-        "name": None,
-        "source": "recorder",
-        "statistics_unit_of_measurement": "kWh",
-        "unit_class": "energy",
-    },
-    {
-        "statistic_id": "sensor.example_temperature",
-        "display_unit_of_measurement": "C",
-        "has_mean": True,
-        "mean_type": 1,
-        "has_sum": False,
-        "name": None,
-        "source": "recorder",
-        "statistics_unit_of_measurement": "C",
-        "unit_class": "temperature",
-    },
-    {
-        "statistic_id": "example:grid_import",
-        "display_unit_of_measurement": "kWh",
-        "has_mean": False,
-        "mean_type": 0,
-        "has_sum": True,
-        "name": "Example Grid Import",
-        "source": "example",
-        "statistics_unit_of_measurement": "kWh",
-        "unit_class": "energy",
-    },
+    elements.statistic_meta(
+        statistic_id="sensor.example_legacy_meter",
+        display_unit_of_measurement="kWh",
+        has_mean=False,
+        mean_type=0,
+        has_sum=True,
+        name=None,
+        source="recorder",
+        statistics_unit_of_measurement="kWh",
+        unit_class="energy",
+    ),
+    elements.statistic_meta(
+        statistic_id="sensor.example_temperature",
+        display_unit_of_measurement="C",
+        has_mean=True,
+        mean_type=1,
+        has_sum=False,
+        name=None,
+        source="recorder",
+        statistics_unit_of_measurement="C",
+        unit_class="temperature",
+    ),
+    elements.statistic_meta(
+        statistic_id="example:grid_import",
+        display_unit_of_measurement="kWh",
+        has_mean=False,
+        mean_type=0,
+        has_sum=True,
+        name="Example Grid Import",
+        source="example",
+        statistics_unit_of_measurement="kWh",
+        unit_class="energy",
+    ),
 ]
 
 
@@ -760,7 +713,7 @@ def hourly_rows(values) -> list:
         if value is None:
             continue
         start = _DAY_EPOCH * 1000 + hour * HOUR_MS
-        rows.append({"start": start, "end": start + HOUR_MS, **value})
+        rows.append(elements.statistics_row(start=start, end=start + HOUR_MS, **value))
     return rows
 
 
@@ -1141,14 +1094,16 @@ def extended_entry(entry: dict) -> dict:
     serialised rather than dropped. Nothing in `hass-axi` reads any of this today;
     it is here so that a client which starts to has something honest to read.
     """
-    return {
-        **entry,
-        "aliases": list(entry.get("aliases") or [None]),
-        "capabilities": None,
-        "device_class": None,
-        "original_device_class": None,
-        "original_icon": None,
-    }
+    return elements.entity_entry(
+        **{
+            **entry,
+            "aliases": list(entry.get("aliases") or [None]),
+            "capabilities": None,
+            "device_class": None,
+            "original_device_class": None,
+            "original_icon": None,
+        }
+    )
 
 
 def slugify(name: str) -> str:
@@ -1291,9 +1246,11 @@ class FakeRestServer:
                     return self._send(401, "401: Unauthorized", content_type="text/plain")
 
                 if path == "/api/":
-                    return self._send(200, {"message": "API running."})
+                    return self._send(200, elements.api_root(message="API running."))
                 if path == "/api/config":
-                    return self._send(200, {"version": "2026.1.0", "location_name": "Example Home"})
+                    return self._send(
+                        200, elements.config(version="2026.1.0", location_name="Example Home")
+                    )
                 if path == "/api/states":
                     return self._send(200, outer.state["states"])
                 if path.startswith("/api/states/"):
@@ -1305,7 +1262,7 @@ class FakeRestServer:
                     # An unrouted one does not -- see `_not_found` below. The two
                     # are different answers and a client that flattens them tells
                     # an agent to go looking for a typo in a path that was fine.
-                    return self._send(404, {"message": "Entity not found."})
+                    return self._send(404, elements.rest_error(message="Entity not found."))
                 if path == "/api/services" and method == "GET":
                     return self._send(200, outer.state["services"])
                 if path.startswith("/api/services/") and method == "POST":
@@ -1350,18 +1307,20 @@ class FakeRestServer:
                 if suffix.startswith("/"):
                     start = self._instant(suffix[1:])
                     if start is None:
-                        return self._send(400, {"message": "Invalid datetime"})
+                        return self._send(400, elements.rest_error(message="Invalid datetime"))
                 wanted = (query.get("filter_entity_id") or [""])[0].strip().lower()
                 if not wanted:
-                    return self._send(400, {"message": "filter_entity_id is missing"})
+                    return self._send(
+                        400, elements.rest_error(message="filter_entity_id is missing")
+                    )
                 ids = wanted.split(",")
                 if any("." not in entity_id for entity_id in ids):
-                    return self._send(400, {"message": "Invalid filter_entity_id"})
+                    return self._send(400, elements.rest_error(message="Invalid filter_entity_id"))
                 end = start + timedelta(days=1)
                 if "end_time" in query:
                     end = self._instant(query["end_time"][0])
                     if end is None:
-                        return self._send(400, {"message": "Invalid end_time"})
+                        return self._send(400, elements.rest_error(message="Invalid end_time"))
                 minimal = "minimal_response" in query
                 states = {s["entity_id"]: s for s in outer.state["states"]}
                 answer = []
@@ -1377,17 +1336,17 @@ class FakeRestServer:
                     rows = []
                     for index, (when, value) in enumerate(within):
                         if index and minimal:
-                            rows.append({"state": value, "last_changed": when})
+                            rows.append(elements.history_state(state=value, last_changed=when))
                             continue
                         attributes = (states.get(entity_id) or {}).get("attributes") or {}
                         rows.append(
-                            {
-                                "entity_id": entity_id,
-                                "state": value,
-                                "attributes": attributes,
-                                "last_changed": when,
-                                "last_updated": when,
-                            }
+                            elements.history_state(
+                                entity_id=entity_id,
+                                state=value,
+                                attributes=attributes,
+                                last_changed=when,
+                                last_updated=when,
+                            )
                         )
                     answer.append(rows)
                 return self._send(200, answer)
@@ -1398,12 +1357,12 @@ class FakeRestServer:
                 if suffix.startswith("/"):
                     start = self._instant(suffix[1:])
                     if start is None:
-                        return self._send(400, {"message": "Invalid datetime"})
+                        return self._send(400, elements.rest_error(message="Invalid datetime"))
                 end = start + timedelta(days=1)
                 if "end_time" in query:
                     end = self._instant(query["end_time"][0])
                     if end is None:
-                        return self._send(400, {"message": "Invalid end_time"})
+                        return self._send(400, elements.rest_error(message="Invalid end_time"))
                 ids = [i for i in (query.get("entity") or [""])[0].split(",") if i]
                 rows = [
                     entry
@@ -1433,10 +1392,10 @@ class FakeRestServer:
                 if isinstance(template, str) and "undefined_helper" in template:
                     return self._send(
                         400,
-                        {
-                            "message": "Error rendering template: UndefinedError: "
+                        elements.rest_error(
+                            message="Error rendering template: UndefinedError: "
                             "'undefined_helper' is undefined"
-                        },
+                        ),
                     )
                 return self._send(200, outer.state["template"], content_type="text/plain")
 
@@ -1482,18 +1441,18 @@ class FakeRestServer:
                 if wants_response and response is None:
                     return self._send(
                         400,
-                        {
-                            "message": "Service does not support responses. "
+                        elements.rest_error(
+                            message="Service does not support responses. "
                             "Remove return_response from request."
-                        },
+                        ),
                     )
                 if not wants_response and response is not None and not response.get("optional"):
                     return self._send(
                         400,
-                        {
-                            "message": "Service call requires responses but caller did not "
+                        elements.rest_error(
+                            message="Service call requires responses but caller did not "
                             "ask for responses. Add ?return_response to query parameters."
-                        },
+                        ),
                     )
 
                 # Entity service schemas are PREVENT_EXTRA, so a key that is
@@ -1583,7 +1542,10 @@ class FakeRestServer:
                     # no real instance sends.
                     answered = {entity_id: {} for entity_id in selected}
                     return self._send(
-                        200, {"changed_states": changed, "service_response": answered}
+                        200,
+                        elements.service_call_result(
+                            changed_states=changed, service_response=answered
+                        ),
                     )
                 return self._send(200, changed)
 
@@ -1652,16 +1614,16 @@ def _roll_up(rows: list, period: str) -> list:
         means = [h["mean"] for h in hours if h.get("mean") is not None]
         changes = [h["change"] for h in hours if h.get("change") is not None]
         rolled.append(
-            {
-                "start": int(start_ms),
-                "end": int(end_ms),
-                "mean": sum(means) / len(means) if means else None,
-                "min": min((h["min"] for h in hours if h.get("min") is not None), default=None),
-                "max": max((h["max"] for h in hours if h.get("max") is not None), default=None),
-                "change": sum(changes) if changes else None,
-                "state": hours[-1].get("state"),
-                "sum": hours[-1].get("sum"),
-            }
+            elements.statistics_row(
+                start=int(start_ms),
+                end=int(end_ms),
+                mean=sum(means) / len(means) if means else None,
+                min=min((h["min"] for h in hours if h.get("min") is not None), default=None),
+                max=max((h["max"] for h in hours if h.get("max") is not None), default=None),
+                change=sum(changes) if changes else None,
+                state=hours[-1].get("state"),
+                sum=hours[-1].get("sum"),
+            )
         )
     return rolled
 
@@ -1706,22 +1668,28 @@ class FakeWsServer:
 
     # -- protocol ----------------------------------------------------------
 
+    @staticmethod
+    def _auth_invalid() -> dict:
+        return elements.auth_invalid(type="auth_invalid", message="Invalid access token")
+
     def _handler(self, websocket):
         if self.greeting is not None:
             websocket.send(json.dumps(self.greeting))
             return
-        websocket.send(json.dumps({"type": "auth_required", "ha_version": "2026.1.0"}))
+        websocket.send(
+            json.dumps(elements.auth_required(type="auth_required", ha_version="2026.1.0"))
+        )
         message = json.loads(websocket.recv())
         if message.get("type") != "auth" or message.get("access_token") != self.token:
-            websocket.send(json.dumps({"type": "auth_invalid", "message": "Invalid access token"}))
+            websocket.send(json.dumps(self._auth_invalid()))
             return
         if self.reject_auth:
-            websocket.send(json.dumps({"type": "auth_invalid", "message": "Invalid access token"}))
+            websocket.send(json.dumps(self._auth_invalid()))
             return
         if self.mid_auth is not None:
             websocket.send(json.dumps(self.mid_auth))
             return
-        websocket.send(json.dumps({"type": "auth_ok", "ha_version": "2026.1.0"}))
+        websocket.send(json.dumps(elements.auth_ok(type="auth_ok", ha_version="2026.1.0")))
 
         while True:
             try:
@@ -1751,36 +1719,30 @@ class FakeWsServer:
 
     def _respond(self, command):
         message_id, type_ = command.get("id"), command.get("type")
+
+        def refused(error):
+            return elements.error_message(id=message_id, type="result", success=False, error=error)
+
         if self.fail_next is not None:
             error = self.fail_next
             self.fail_next = None
-            return {"id": message_id, "type": "result", "success": False, "error": error}
+            return refused(error)
         if self.fail_all is not None:
-            return {
-                "id": message_id,
-                "type": "result",
-                "success": False,
-                "error": self.fail_all,
-            }
+            return refused(self.fail_all)
 
         def fail(code, message):
-            return {
-                "id": message_id,
-                "type": "result",
-                "success": False,
-                "error": {"code": code, "message": message},
-            }
+            return refused(elements.error_detail(code=code, message=message))
 
         def ok(result):
             # Serialized on the way out, as a real instance necessarily is: a
             # client can never end up holding a reference into server state,
             # so a test cannot pass because both sides share one object.
-            return {
-                "id": message_id,
-                "type": "result",
-                "success": True,
-                "result": json.loads(json.dumps(result)),
-            }
+            return elements.result_message(
+                id=message_id,
+                type="result",
+                success=True,
+                result=json.loads(json.dumps(result)),
+            )
 
         allowed = WS_COMMAND_KEYS.get(type_)
         if allowed is not None:
@@ -1824,17 +1786,15 @@ class FakeWsServer:
                     f"The name {command['name']} ({normalized_name(taken['name'])}) "
                     "is already in use",
                 )
-            floor = {
-                "aliases": [a.strip() for a in command.get("aliases") or [] if a.strip()],
-                "created_at": 1767312000.0,
-                "floor_id": unique_id_from_name(
-                    command["name"], {f["floor_id"] for f in self.floors}
-                ),
-                "icon": command.get("icon"),
-                "level": command.get("level"),
-                "name": command["name"],
-                "modified_at": 1767312000.0,
-            }
+            floor = elements.floor_entry(
+                aliases=[a.strip() for a in command.get("aliases") or [] if a.strip()],
+                created_at=1767312000.0,
+                floor_id=unique_id_from_name(command["name"], {f["floor_id"] for f in self.floors}),
+                icon=command.get("icon"),
+                level=command.get("level"),
+                name=command["name"],
+                modified_at=1767312000.0,
+            )
             self.floors.append(floor)
             return ok(floor)
         if type_ == "config/floor_registry/update":
@@ -1909,7 +1869,11 @@ class FakeWsServer:
                 if enabling:
                     # Enabling needs a reload of the entry that supplies the
                     # entity, and the answer says so beside the entry.
-                    return ok({"entity_entry": extended_entry(entry), "reload_delay": 30})
+                    return ok(
+                        elements.entity_update_result(
+                            entity_entry=extended_entry(entry), reload_delay=30
+                        )
+                    )
                 # Home Assistant answers with the registry entry that now
                 # exists, not with the request that produced it: every stored
                 # field, including the ones the request never mentioned, and an
@@ -1917,7 +1881,7 @@ class FakeWsServer:
                 # its device. A double that echoed the request instead would
                 # let a client report an entity's area from its own payload and
                 # never be contradicted.
-                return ok({"entity_entry": extended_entry(entry)})
+                return ok(elements.entity_update_result(entity_entry=extended_entry(entry)))
             return fail("not_found", "Entity not found")
         if type_ == "config/area_registry/create":
             taken = next(
@@ -1937,13 +1901,13 @@ class FakeWsServer:
                     f"The name {command['name']} ({normalized_name(taken['name'])}) "
                     "is already in use",
                 )
-            area = {
-                "area_id": unique_id_from_name(command["name"], {a["area_id"] for a in self.areas}),
-                "name": command["name"],
-                "icon": command.get("icon"),
-                "floor_id": command.get("floor_id"),
-                "aliases": [],
-            }
+            area = elements.area_entry(
+                area_id=unique_id_from_name(command["name"], {a["area_id"] for a in self.areas}),
+                name=command["name"],
+                icon=command.get("icon"),
+                floor_id=command.get("floor_id"),
+                aliases=[],
+            )
             self.areas.append(area)
             return ok(area)
         if type_ == "config/area_registry/update":
@@ -1996,7 +1960,7 @@ class FakeWsServer:
         if type_ == "config/label_registry/list":
             return ok([])
         if type_ == "get_config":
-            return ok({"version": "2026.1.0", "location_name": "Example Home"})
+            return ok(elements.config(version="2026.1.0", location_name="Example Home"))
         if type_ == "get_services":
             return ok({entry["domain"]: entry["services"] for entry in SERVICES})
         if type_ == "get_states":
@@ -2084,7 +2048,9 @@ class FakeWsServer:
                 rows = []
             if rows:
                 answer[statistic_id] = [
-                    {"start": r["start"], "end": r["end"], **{t: r.get(t) for t in types}}
+                    elements.statistics_row(
+                        start=r["start"], end=r["end"], **{t: r.get(t) for t in types}
+                    )
                     for r in rows
                 ]
         return ok(answer)

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from ..argspec import Command, Flag, Sub
 from ..errors import NotFound, UsageError
+from ..model import rows as vocabulary
 from ..output import HelpBlock
 from ..readonly import READ
 from ..toolkit.recorder import (
@@ -47,8 +48,9 @@ from ._common import (
 )
 
 DEFAULT_LIMIT = 100
-LIST_FIELDS = ["statistic_id", "name", "kind", "unit", "source", "unit_class"]
-DEFAULT_LIST_FIELDS = ["statistic_id", "name", "kind", "unit"]
+#: Declared in ``metaobjects/meta.rows.yaml``, generated into :mod:`hass_axi.model.rows`.
+LIST_FIELDS = vocabulary.FIELDS["statistic"]
+DEFAULT_LIST_FIELDS = vocabulary.DEFAULT["statistic"]
 
 COMMAND = Command(
     name="statistics",

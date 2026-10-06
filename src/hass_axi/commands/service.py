@@ -21,6 +21,7 @@ from axi_toolkit.ha import services as model
 
 from ..argspec import Command, Flag, Sub
 from ..errors import ApiError, AxiError, NotFound, UsageError
+from ..model import rows as vocabulary
 from ..output import HelpBlock, truncate
 from ..readonly import DYNAMIC, READ, WRITE
 from ._common import (
@@ -45,7 +46,9 @@ GET_FIELDS = ["field", "required", "type", "description", "options", "example", 
 DEFAULT_GET_FIELDS = ["field", "required", "type", "description"]
 #: `service list` is two views -- the domains, and one domain's services -- and
 #: `--fields` selects from whichever one is being shown.
-DOMAIN_FIELDS = ["domain", "services"]
+#: The domain view is declared in ``metaobjects/meta.rows.yaml`` and generated into
+#: :mod:`hass_axi.model.rows`. Its default set is every column, so it is asked for by one name.
+DOMAIN_FIELDS = vocabulary.FIELDS["service_domain"]
 SERVICE_FIELDS = ["service", "name", "fields", "response", "target"]
 DEFAULT_SERVICE_FIELDS = ["service", "name", "fields"]
 

@@ -1,0 +1,22 @@
+# What `metaobjects gen` and `metaobjects verify --codegen` run, with no flags.
+#
+# The model is under metaobjects/ and the generators are axi-toolkit's, named below as
+# axi_toolkit.metagen:<generator> and pinned from PyPI. The generated files are committed,
+# with .metaobjects/.gen-state/.hashes.json beside them: that manifest is how a hand edit
+# is told from generated output.
+#
+#   uvx --python 3.12 --from metaobjects==1.0.13 --with 'axi-toolkit[metagen]==0.5.0' metaobjects gen
+#   scripts/ci-local.sh --only model                                  # the drift check
+#
+# The toolchain needs Python 3.11 or newer, which is why it runs under `uvx` and is in no
+# dependency list: nothing generated imports it, and the package floor is unmoved.
+metadata: metaobjects
+targets:
+  # Ships in the wheel: the column vocabularies the commands read.
+  package:
+    outDir: src/hass_axi/model
+    generators: ["axi_toolkit.metagen:rows"]
+  # Test support: the builders the doubles make their answers through.
+  tests:
+    outDir: tests/hamodel
+    generators: ["axi_toolkit.metagen:elements"]

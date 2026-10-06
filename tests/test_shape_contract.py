@@ -22,6 +22,12 @@ required, and an entry the capture has since caught up with fails too.
 
 Whether the capture still matches a server is a different question, asked by
 ``scripts/shapecapture.py --check``.
+
+**The model.** What Home Assistant answers is declared in ``metaobjects/``, and two
+things here are generated from it: the column vocabularies in
+:mod:`hass_axi.model.rows`, and the builders in ``tests/hamodel/`` that the doubles
+make their answers through. The last section holds both to what the commands print
+and to what a builder refuses.
 """
 
 from __future__ import annotations
@@ -39,7 +45,10 @@ import pytest
 
 import conftest
 from conftest import FAKE_TOKEN, RECORDER_DAY, RECORDER_NOW, synthetic_jwt
-from hass_axi import ws
+from hamodel import elements
+from hass_axi import commands, ws
+from hass_axi.commands import _window
+from hass_axi.model import rows as vocabulary
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src" / "hass_axi"
@@ -123,6 +132,8 @@ LOCAL = {
 
 #: The parsed command line, which every command module reads by this name.
 ARGUMENTS = "parsed"
+#: The generated column vocabularies, which a command module reads by row.
+VOCABULARY = ("vocabulary.FIELDS", "vocabulary.DEFAULT")
 
 AREA = "registry.area"
 DEVICE = "registry.device"
@@ -330,7 +341,8 @@ def _scanned() -> dict:
             continue
         reads = key_reads(path)
         if name.startswith("commands/"):
-            reads.pop(ARGUMENTS, None)
+            for own in (ARGUMENTS, *VOCABULARY):
+                reads.pop(own, None)
         found[name] = reads
     return found
 
@@ -697,3 +709,56 @@ def test_every_exception_states_why_and_is_still_needed(doubles):
         assert kind in sent[name][key], f"no double sends {name}.{key} as {kind}"
     for name, reason in NOT_MODELLED.items():
         assert len(reason) > 40 and name in OBJECTS, name
+
+
+# -------------------------------------------------------------------------- the model
+
+#: Each generated vocabulary: the command module that prints the row, and a command
+#: that prints at least one against the doubles.
+PRINTED = {
+    "state": ("state", ["state", "list"]),
+    "entity": ("entity", ["entity", "list"]),
+    "device": ("device", ["device", "list"]),
+    "area": ("area", ["area", "list"]),
+    "logbook": ("logbook", ["logbook", "get"]),
+    "statistic": ("statistics", ["statistics", "list"]),
+    "service_domain": ("service", ["service", "list"]),
+}
+
+
+def test_every_generated_vocabulary_is_printed_by_a_command():
+    assert set(vocabulary.FIELDS) == set(PRINTED) == set(vocabulary.DEFAULT)
+
+
+@pytest.mark.parametrize("key", sorted(PRINTED))
+def test_a_row_is_built_with_the_columns_the_model_declares(
+    key, monkeypatch, run_cli, installation_env
+):
+    """The declared columns and the row a command builds are two statements of one set.
+
+    `project` reads a column with `.get`, so a column the model declares and the
+    builder forgot would print as null and fail nothing.
+    """
+    name, argv = PRINTED[key]
+    module = importlib.import_module(f"{commands.__name__}.{name}")
+    built = []
+
+    def spy(rows, fields):
+        built.extend(list(row) for row in rows)
+        return project(rows, fields)
+
+    project = module.project
+    monkeypatch.setattr(module, "project", spy)
+    monkeypatch.setattr(_window, "now", lambda: datetime.datetime.fromisoformat(RECORDER_NOW))
+    code, _out = run_cli(argv, installation_env)
+    assert code == 0 and built
+    assert {tuple(row) for row in built} == {vocabulary.FIELDS[key]}
+    assert set(vocabulary.DEFAULT[key]) <= set(vocabulary.FIELDS[key])
+    assert set(vocabulary.READS[key]) == set(vocabulary.FIELDS[key])
+
+
+def test_a_builder_refuses_a_name_the_model_does_not_declare():
+    with pytest.raises(KeyError, match="example_invented_key"):
+        elements.state_attributes(friendly_name="Example Lamp", example_invented_key=1)
+    with pytest.raises(KeyError, match="entity_id"):
+        elements.state(state="on", attributes={})

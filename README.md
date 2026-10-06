@@ -589,6 +589,42 @@ recorder.summarize(meta, buckets, start, "day", end=end, hourly=hourly_rows)
 
 The CLI's own commands are built on it, so the two cannot disagree.
 
+## The model: what Home Assistant answers, declared once
+
+What a Home Assistant sends, and the rows this tool prints from it, are declared in `metaobjects/`
+as [MetaObjects](https://metaobjects.dev) metadata. Every name there is Home Assistant's own, taken
+from a names-only capture of a real server (`tests/fixtures/ha-shape/capture.json`), and an object
+declares the keys this tool reads or its test doubles send rather than everything the server
+publishes: 31 objects, 153 keys. A row column either extends the one key it is read from, so a
+renamed or retyped key fails at load, or names the keys it is computed from.
+
+Two things are generated from it and committed:
+
+- **`src/hass_axi/model/rows.py`**, which ships in the wheel: the `--fields` vocabulary and default
+  set of each row, and the keys each column reads. `state list`, `entity list`, `device list`,
+  `area list`, `logbook get`, `statistics list` and `service list` read their columns from it.
+- **`tests/hamodel/elements.py`**: one builder per declared object. The test doubles make their
+  answers through these, and a builder refuses a key the model does not declare.
+
+Change the metadata, never a generated file:
+
+```sh
+uvx --python 3.12 --from metaobjects==1.0.13 --with 'axi-toolkit[metagen]==0.5.0' metaobjects gen   # regenerate, then commit
+scripts/ci-local.sh --only model                               # fails on a hand edit or a stale file
+```
+
+The generators are [`axi-toolkit`](https://github.com/dmealing/axi-toolkit)'s, shared with the
+sibling AXI CLI, and run under `uvx` because the toolchain needs Python 3.11 or newer. Nothing
+generated imports it: the package still supports Python 3.9 and gains no dependency.
+
+**Not generated yet.** Three vocabularies are still written by hand in their command modules —
+`sensor list`, and the two `service` views of one domain's services and one service's fields —
+because some of their columns are read from a second object or are the key an object is filed
+under, which the generators cannot yet declare. The check that holds every declared key to the
+capture, and typed readers in place of the `dict.get` chains in the row builders, wait on the same
+generators. Until then `tests/test_shape_contract.py` is what holds the readers and the doubles to
+the capture.
+
 ## Output format
 
 Structured [TOON](https://toonformat.dev/) on stdout by default, which is roughly 40% cheaper in
@@ -1054,7 +1090,7 @@ GitHub Actions is disabled on this repository, so none of these workflows runs t
 
 | Workflow | Runner | Triggers | What runs |
 | --- | --- | --- | --- |
-| `ci.yml` | self-hosted | push to `main`, nightly, manual | each section of `scripts/ci-local.sh`: leak scan, commit audit, lint, `pytest` on 3.9–3.12, generated-skill check |
+| `ci.yml` | self-hosted | push to `main`, nightly, manual | each section of `scripts/ci-local.sh`: leak scan, commit audit, lint, `pytest` on 3.9–3.12, generated-skill check, model drift check |
 | `hygiene.yml` | `ubuntu-latest` | `pull_request`, including `edited` | the leak scan of the tree, and the two checks that read the pull request's own title and body |
 | `release.yml` | `ubuntu-latest` | push to `main`, manual | release-please, and an OIDC publish when a release PR merges |
 
@@ -1072,10 +1108,11 @@ Version bumps and the changelog are driven from conventional commits by
 [release-please](https://github.com/googleapis/release-please), which prepares a release PR when
 `main` carries user-facing commits.
 
-**Releases are published by hand today.** GitHub Actions is disabled on this repository, so
-`release.yml` does not run: 0.8.0 and 0.9.0 were built, smoke-tested and uploaded to PyPI from the
-maintainer's workstation, authenticated with a PyPI API token. That token is held on that
-workstation and is in no file in this repository.
+**Releases are cut and uploaded locally while GitHub Actions is disabled.** `release.yml` does not
+run, so nothing on GitHub opens the release PR or publishes one: release-please is run from the
+maintainer's workstation, and every release since 0.8.0 has been built, smoke-tested and uploaded
+to PyPI from there, authenticated with a PyPI API token. That token is held on that workstation
+and is in no file in this repository.
 
 `release.yml` describes the other route, which is not in use: with Actions enabled, merging the
 release PR builds the distribution, smoke-tests the built wheel, and publishes through

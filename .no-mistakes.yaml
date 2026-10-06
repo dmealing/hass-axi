@@ -7,8 +7,8 @@
 #
 # The two commands together are a bare `scripts/ci-local.sh`, cut along its
 # `--only` sections so neither step repeats the other: ruff is the lint step,
-# and everything else — the leak scan, the commit-message audit, pytest and the
-# generated-skill check — is the test step. `scripts/ci-local.sh --help` says
+# and everything else — the leak scan, the commit-message audit, pytest, the
+# generated-skill check and the model drift check — is the test step. `scripts/ci-local.sh --help` says
 # what each section runs. The gate runs pytest once, on the interpreter that
 # builds .venv; the 3.9-3.12 matrix is `scripts/ci-local.sh --matrix`, run by
 # hand (see the script's header for why).
@@ -20,5 +20,5 @@
 # default branch, so an edit here takes effect only once it is merged to main.
 
 commands:
-  test: "scripts/ci-local.sh --only leakcheck --only commits --only test --only skill"
+  test: "scripts/ci-local.sh --only leakcheck --only commits --only test --only skill --only model"
   lint: "scripts/ci-local.sh --only lint"
