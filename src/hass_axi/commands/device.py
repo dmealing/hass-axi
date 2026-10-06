@@ -18,6 +18,7 @@ from __future__ import annotations
 from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
 from ..model import rows as vocabulary
+from ..model.readers import AreaEntry, DeviceEntry, EntityEntry
 from ..output import HelpBlock
 from ..readonly import DYNAMIC, READ
 from ._common import (
@@ -34,10 +35,12 @@ from ._common import (
     preview_help,
     preview_note,
     project,
+    read_each,
     reject_conflicting_flags,
     resolve_area,
     resolve_device_ref,
     see_all_line,
+    sent_or,
     write_access,
 )
 
@@ -122,9 +125,9 @@ def run(ctx, sub: str, parsed):
 
 
 def _snapshot(client) -> tuple:
-    devices = client.run("device.list") or []
-    areas = client.run("area.list") or []
-    entities = client.run("entity.list") or []
+    devices = read_each(DeviceEntry, client.run("device.list"))
+    areas = read_each(AreaEntry, client.run("area.list"))
+    entities = read_each(EntityEntry, client.run("entity.list"))
     return devices, areas, entities
 
 
@@ -132,33 +135,33 @@ def _entity_counts(entities: list) -> dict:
     """How many registry entries each device supplies."""
     counts: dict = {}
     for entry in entities:
-        device_id = entry.get("device_id")
+        device_id = entry.device_id
         if device_id:
             counts[device_id] = counts.get(device_id, 0) + 1
     return counts
 
 
-def _row(device: dict, area_names: dict, entity_counts: dict) -> dict:
+def _row(device: DeviceEntry, area_names: dict, entity_counts: dict) -> dict:
     """The one device row shape, built in one place.
 
     `list`, `get` and `update` all report a device through this, so a field
     added later cannot reach some of them and miss others -- and an update
     cannot answer from its own request while `get` answers from the registry.
     """
-    device_id = device.get("id", "")
-    area_id = device.get("area_id") or ""
+    device_id = sent_or(device, "id")
+    area_id = device.area_id or ""
     return {
         "device_id": device_id,
         "name": displayed_device_name(device),
         "area": area_names.get(area_id, ""),
         "area_id": area_id,
-        "manufacturer": device.get("manufacturer") or "",
-        "model": device.get("model") or "",
+        "manufacturer": device.manufacturer or "",
+        "model": device.model or "",
         "entities": entity_counts.get(device_id, 0),
     }
 
 
-def _area_source(device: dict, areas: list) -> str:
+def _area_source(device: DeviceEntry, areas: list) -> str:
     """Whether a device's `area_id` is a placement, an absence, or a dangling id.
 
     A device has no area to inherit, so the interesting case is the third one:
@@ -167,7 +170,7 @@ def _area_source(device: dict, areas: list) -> str:
     carrying an id. `area` is empty either way, and the two are not the same
     fact.
     """
-    area_id = device.get("area_id") or ""
+    area_id = device.area_id or ""
     if area_id and not area_is_placed(area_id, areas):
         return "no area has this id"
     return "device" if area_id else ""
@@ -225,10 +228,10 @@ def _get(ctx, parsed):
     # Both names, because they are different fields with different owners and
     # only one of them is writable: `name` is what Home Assistant displays,
     # `name_by_user` is the override `--name` sets and `--clear-name` removes.
-    row["name_by_user"] = device.get("name_by_user") or ""
-    row["name_source"] = "user" if device.get("name_by_user") else "integration"
+    row["name_by_user"] = device.name_by_user or ""
+    row["name_source"] = "user" if device.name_by_user else "integration"
     row["area_source"] = _area_source(device, areas)
-    row["disabled"] = bool(device.get("disabled_by"))
+    row["disabled"] = bool(device.disabled_by)
     return {
         "device": row,
         "help": HelpBlock(
@@ -242,7 +245,7 @@ def _get(ctx, parsed):
     }
 
 
-def _resulting_device(result, current: dict, pending: dict) -> dict:
+def _resulting_device(result, current: DeviceEntry, pending: dict) -> DeviceEntry:
     """The registry entry as it stands after an update.
 
     `websocket_update_device` answers with `entry.dict_repr` -- the stored
@@ -251,12 +254,9 @@ def _resulting_device(result, current: dict, pending: dict) -> dict:
     absent; if the response carries no device at all, apply the pending changes
     locally. Either way what is reported is the device's state, never the ask.
     """
-    entry = dict(current)
-    if isinstance(result, dict) and result.get("id"):
-        entry.update(result)
-        return entry
-    entry.update(pending)
-    return entry
+    if isinstance(result, dict) and DeviceEntry.read(result).id:
+        return DeviceEntry.read({**current.raw, **result})
+    return DeviceEntry.read({**current.raw, **pending})
 
 
 def _update(ctx, parsed):
@@ -294,20 +294,20 @@ def _update(ctx, parsed):
         if clear_area:
             changes["area_id"] = None
         elif area_arg is not None:
-            changes["area_id"] = resolve_area(areas, area_arg).get("area_id")
+            changes["area_id"] = resolve_area(areas, area_arg).area_id
 
         # Idempotent: a request that asks for the state already stored is a no-op.
-        pending = {k: v for k, v in changes.items() if (current.get(k) or None) != (v or None)}
+        pending = {k: v for k, v in changes.items() if (getattr(current, k) or None) != (v or None)}
         if pending and not parsed.get("write"):
             return {
-                "device": current.get("id", ""),
+                "device": sent_or(current, "id"),
                 "name": displayed_device_name(current),
                 "preview": preview_note(ctx.environ),
                 "would_change": change_rows(current, pending),
                 "help": HelpBlock(preview_help(ctx.environ)),
             }
         if pending:
-            result = client.run("device.update", {"device_id": current.get("id", ""), **pending})
+            result = client.run("device.update", {"device_id": sent_or(current, "id"), **pending})
             entry = _resulting_device(result, current, pending)
             updated: object = sorted(pending)
         else:
@@ -322,7 +322,7 @@ def _update(ctx, parsed):
         "device": row["device_id"],
         "updated": updated,
         "name": row["name"],
-        "name_by_user": entry.get("name_by_user") or "",
+        "name_by_user": entry.name_by_user or "",
         "area": row["area"],
         "area_id": row["area_id"],
         "area_source": _area_source(entry, areas),

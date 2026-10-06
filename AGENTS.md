@@ -154,8 +154,8 @@ that are neither JWT-shaped nor bearer-prefixed, and anything inside a binary.
   "The service model is a dependency now" below.
 - `model/` — generated from MetaObjects metadata in `metaobjects/`. See "The model: what Home
   Assistant answers, declared once" in the README for what is generated, how to edit it, and what
-  the generators do. `src/hass_axi/model/rows.py` ships in the wheel; test generators live in
-  `tests/hamodel/`.
+  the generators do. `src/hass_axi/model/rows.py` and `readers.py` ship in the wheel; test
+  generators live in `tests/hamodel/`.
 - `commands/context.py` — the document a session hook prints, in both halves of a session's
   lifecycle, and the only command whose contract is *when* it runs rather than what it answers:
   `context` describes the installation without connecting to it, and `context end` records what

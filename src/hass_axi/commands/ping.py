@@ -14,6 +14,7 @@ import time
 
 from ..argspec import Command, Sub
 from ..errors import AxiError
+from ..model.readers import Config
 from ..output import HelpBlock
 from ..readonly import READ
 
@@ -50,7 +51,8 @@ def run(ctx, sub: str, parsed):
         # question asked. A version that could not be read is not a reason to
         # report an installation that just answered as down.
         info = None
-    if isinstance(info, dict) and info.get("version"):
-        doc["version"] = info["version"]
+    version = Config.read(info).version if isinstance(info, dict) else None
+    if version:
+        doc["version"] = version
     doc["help"] = HelpBlock(["Run `hass-axi` for this installation at a glance"])
     return doc

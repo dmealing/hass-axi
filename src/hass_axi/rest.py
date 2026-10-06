@@ -26,6 +26,7 @@ from .errors import (
     Forbidden,
     NotFound,
 )
+from .model.readers import RestError
 from .output import debug
 from .readonly import READ, WRITE, guard
 from .toolkit.shapes import describe, health_fault, is_entity_id, is_text, shape_fault
@@ -345,7 +346,7 @@ class RestClient:
             # the only one a refusal was observed to carry. A body that says it
             # another way, or whose message is not text -- the mobile app's
             # webhook nests an object under `error` -- is quoted whole.
-            message = json.loads(raw).get("message")
+            message = RestError.read(json.loads(raw)).message
             detail = message if message and isinstance(message, str) else raw
         except Exception:
             detail = ""

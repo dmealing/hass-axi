@@ -10,12 +10,14 @@ from __future__ import annotations
 from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
 from ..model import rows as vocabulary
+from ..model.readers import AreaEntry, DeviceEntry, EntityEntry, State
 from ..output import HelpBlock, truncate
 from ..readonly import READ
 from ..rest import require_entity_id
 from . import _window
 from ._common import (
     PREVIEW_CHARS,
+    attributes_of,
     count_line,
     device_area_map,
     domain_of,
@@ -28,7 +30,9 @@ from ._common import (
     matches_search,
     not_reported_for,
     project,
+    read_each,
     see_all_line,
+    sent_or,
 )
 
 DEFAULT_LIMIT = 100
@@ -84,7 +88,7 @@ def run(ctx, sub: str, parsed):
     return _get(ctx, parsed)
 
 
-def _row(state: dict, current) -> dict:
+def _row(state: State, current) -> dict:
     """The one place a state row is built -- `list` and `get` both come here.
 
     The missing-`entity_id` default is `""` rather than the id `get` was asked
@@ -95,12 +99,12 @@ def _row(state: dict, current) -> dict:
     subject is a 404 raised as `NO_SUCH_ENTITY` before any row is built.
     """
     return {
-        "entity_id": state.get("entity_id", ""),
+        "entity_id": sent_or(state, "entity_id"),
         "name": friendly_name(state),
-        "state": state.get("state", ""),
-        "domain": domain_of(state.get("entity_id", "")),
-        "last_changed": state.get("last_changed", ""),
-        "last_updated": state.get("last_updated", ""),
+        "state": sent_or(state, "state"),
+        "domain": domain_of(sent_or(state, "entity_id")),
+        "last_changed": sent_or(state, "last_changed"),
+        "last_updated": sent_or(state, "last_updated"),
         "last_reported": last_reported(state),
         "age": _window.age_of(last_reported(state), current),
     }
@@ -116,7 +120,7 @@ def _list(ctx, parsed):
     )
     stale = parsed.get("stale")
     threshold = _stale_threshold(stale) if stale else None
-    states = ctx.rest().states()
+    states = read_each(State, ctx.rest().states())
     current = _window.now()
     rows = [_row(state, current) for state in states]
     total = len(rows)
@@ -137,7 +141,17 @@ def _list(ctx, parsed):
         rows = [row for row in rows if matches_search(search, row["entity_id"], row["name"])]
         scope.append(f"matching {search!r}")
     if stale:
-        rows = [row for _, row in not_reported_for(rows, threshold, current)]
+        # A row carries the time `last_reported` gave for its state, so it is not asked again.
+        rows = [
+            row
+            for _, row in not_reported_for(
+                rows,
+                threshold,
+                current,
+                state=lambda row: row["state"],
+                reported=lambda row: row["last_reported"],
+            )
+        ]
         scope.append(f"not reported in {stale}")
 
     matched = len(rows)
@@ -196,11 +210,11 @@ def _narrow_to_area(ctx, rows: list, area_filter, scope: list) -> list:
     if not area_filter:
         return rows
     with ctx.ws() as client:
-        entities = client.run("entity.list") or []
-        areas = client.run("area.list") or []
-        devices = client.run("device.list") or []
+        entities = read_each(EntityEntry, client.run("entity.list"))
+        areas = read_each(AreaEntry, client.run("area.list"))
+        devices = read_each(DeviceEntry, client.run("device.list"))
     device_areas = device_area_map(devices)
-    area_of = {entry.get("entity_id"): effective_area_id(entry, device_areas) for entry in entities}
+    area_of = {entry.entity_id: effective_area_id(entry, device_areas) for entry in entities}
     for row in rows:
         row["area_id"] = area_of.get(row["entity_id"], "")
     return filter_by_area(rows, areas, area_filter, scope)
@@ -209,8 +223,9 @@ def _narrow_to_area(ctx, rows: list, area_filter, scope: list) -> list:
 def _get(ctx, parsed):
     entity_id = parsed.positionals[0]
     require_entity_id(entity_id)
-    state = ctx.rest().state(entity_id)
-    attributes = dict(state.get("attributes") or {})
+    state = State.read(ctx.rest().state(entity_id))
+    # Every attribute is printed, whatever an integration chose to publish.
+    attributes = dict(attributes_of(state).raw)
     full = parsed.get("full", False)
 
     hint = ""

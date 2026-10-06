@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..argspec import Command, Flag, Sub
 from ..errors import UsageError
 from ..model import rows as vocabulary
+from ..model.readers import AreaEntry, DeviceEntry, EntityEntry, FloorEntry
 from ..output import HelpBlock
 from ..readonly import DYNAMIC, READ
 from ._common import (
@@ -20,10 +21,12 @@ from ._common import (
     preview_help,
     preview_note,
     project,
+    read_each,
     reject_conflicting_flags,
     resolve_area,
     resolve_floor,
     select_fields,
+    sent_or,
     write_access,
 )
 
@@ -131,9 +134,9 @@ def _list(ctx, parsed):
     # not the installation answers.
     fields = select_fields(parsed.get("fields"), LIST_FIELDS, DEFAULT_LIST_FIELDS)
     with ctx.ws() as client:
-        areas = client.run("area.list") or []
-        entities = client.run("entity.list") or []
-        devices = client.run("device.list") or []
+        areas = read_each(AreaEntry, client.run("area.list"))
+        entities = read_each(EntityEntry, client.run("entity.list"))
+        devices = read_each(DeviceEntry, client.run("device.list"))
 
     if not areas:
         return {
@@ -144,16 +147,16 @@ def _list(ctx, parsed):
     counts, unassigned = _entity_counts(entities, devices, areas)
     device_counts: dict = {}
     for device in devices:
-        if area_is_placed(device.get("area_id") or "", areas):
-            device_counts[device["area_id"]] = device_counts.get(device["area_id"], 0) + 1
+        if area_is_placed(device.area_id or "", areas):
+            device_counts[device.area_id] = device_counts.get(device.area_id, 0) + 1
 
     rows = [
         {
-            "area_id": area.get("area_id", ""),
-            "name": area.get("name") or "",
-            "entities": counts.get(area.get("area_id"), 0),
-            "devices": device_counts.get(area.get("area_id"), 0),
-            "floor_id": area.get("floor_id") or "",
+            "area_id": sent_or(area, "area_id"),
+            "name": area.name or "",
+            "entities": counts.get(area.area_id, 0),
+            "devices": device_counts.get(area.area_id, 0),
+            "floor_id": area.floor_id or "",
         }
         for area in areas
     ]
@@ -177,22 +180,22 @@ def _list(ctx, parsed):
 def _get(ctx, parsed):
     needle = parsed.positionals[0]
     with ctx.ws() as client:
-        areas = client.run("area.list") or []
-        entities = client.run("entity.list") or []
-        devices = client.run("device.list") or []
+        areas = read_each(AreaEntry, client.run("area.list"))
+        entities = read_each(EntityEntry, client.run("entity.list"))
+        devices = read_each(DeviceEntry, client.run("device.list"))
 
     area = resolve_area(areas, needle, offer_create=True)
-    area_id = area.get("area_id", "")
+    area_id = sent_or(area, "area_id")
     counts, _ = _entity_counts(entities, devices, areas)
     return {
         "area": {
             "area_id": area_id,
-            "name": area.get("name") or "",
-            "icon": area.get("icon") or "",
-            "floor_id": area.get("floor_id") or "",
+            "name": area.name or "",
+            "icon": area.icon or "",
+            "floor_id": area.floor_id or "",
             "entities": counts.get(area_id, 0),
-            "devices": sum(1 for d in devices if d.get("area_id") == area_id),
-            "aliases": list(area.get("aliases") or []),
+            "devices": sum(1 for d in devices if d.area_id == area_id),
+            "aliases": list(area.aliases or ()),
         },
         "help": HelpBlock([f"Run `hass-axi entity list --area {area_id}` to list its entities"]),
     }
@@ -200,8 +203,8 @@ def _get(ctx, parsed):
 
 def _floor_id(client, raw) -> str:
     """The id of the floor ``raw`` names, read from the floor registry."""
-    floors = client.run("floor.list") or []
-    return resolve_floor(floors, raw).get("floor_id", "")
+    floors = read_each(FloorEntry, client.run("floor.list"))
+    return sent_or(resolve_floor(floors, raw), "floor_id")
 
 
 def _create(ctx, parsed):
@@ -218,14 +221,14 @@ def _create(ctx, parsed):
         params["icon"] = parsed.get("icon")
 
     with ctx.ws() as client:
-        areas = client.run("area.list") or []
-        existing = next((a for a in areas if fold(a.get("name")) == fold(name)), None)
+        areas = read_each(AreaEntry, client.run("area.list"))
+        existing = next((a for a in areas if fold(a.name) == fold(name)), None)
         # Idempotent: creating an area that already exists reports the existing one.
         if existing is not None:
             return {
                 "area": {
-                    "area_id": existing.get("area_id", ""),
-                    "name": existing.get("name") or "",
+                    "area_id": sent_or(existing, "area_id"),
+                    "name": existing.name or "",
                 },
                 "created": "an area with this name already exists, no change made",
             }
@@ -238,14 +241,14 @@ def _create(ctx, parsed):
                 "would_create": params,
                 "help": HelpBlock(preview_help(ctx.environ)),
             }
-        result = client.run("area.create", params) or {}
+        result = AreaEntry.read(client.run("area.create", params) or {})
 
     return {
-        "area": {"area_id": result.get("area_id", ""), "name": result.get("name") or name},
+        "area": {"area_id": sent_or(result, "area_id"), "name": result.name or name},
         "created": True,
         "help": HelpBlock(
             [
-                f"Run `hass-axi entity update <entity_id> --area {result.get('area_id', '')} "
+                f"Run `hass-axi entity update <entity_id> --area {sent_or(result, 'area_id')} "
                 "--write` to fill it"
             ]
         ),
@@ -284,35 +287,35 @@ def _update(ctx, parsed):
         )
 
     with ctx.ws() as client:
-        areas = client.run("area.list") or []
+        areas = read_each(AreaEntry, client.run("area.list"))
         area = resolve_area(areas, needle)
-        area_id = area.get("area_id", "")
+        area_id = sent_or(area, "area_id")
         if floor_arg is not None:
             # Resolved against the floor registry: Home Assistant stores any
             # `floor_id` it is handed, so a typo is otherwise a floor nothing
             # answers to, stored at exit 0.
             changes["floor_id"] = _floor_id(client, floor_arg)
-        pending = {k: v for k, v in changes.items() if (area.get(k) or None) != (v or None)}
+        pending = {k: v for k, v in changes.items() if (getattr(area, k) or None) != (v or None)}
         if not pending:
             return {
-                "area": {"area_id": area_id, "name": area.get("name") or ""},
+                "area": {"area_id": area_id, "name": area.name or ""},
                 "updated": "already matches the requested values, no change made",
             }
         if not parsed.get("write"):
             return {
-                "area": {"area_id": area_id, "name": area.get("name") or ""},
+                "area": {"area_id": area_id, "name": area.name or ""},
                 "preview": preview_note(ctx.environ),
                 "would_change": change_rows(area, pending),
                 "help": HelpBlock(preview_help(ctx.environ)),
             }
-        result = client.run("area.update", {"area_id": area_id, **pending}) or {}
+        result = AreaEntry.read(client.run("area.update", {"area_id": area_id, **pending}) or {})
 
     return {
         "area": {
-            "area_id": result.get("area_id", area_id),
-            "name": result.get("name") or area.get("name") or "",
-            "icon": result.get("icon") or "",
-            "floor_id": result.get("floor_id") or "",
+            "area_id": sent_or(result, "area_id", area_id),
+            "name": result.name or area.name or "",
+            "icon": result.icon or "",
+            "floor_id": result.floor_id or "",
         },
         "updated": sorted(pending),
     }

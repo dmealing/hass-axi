@@ -598,11 +598,17 @@ declares the keys this tool reads or its test doubles send rather than everythin
 publishes: 31 objects, 153 keys. A row column either extends the one key it is read from, so a
 renamed or retyped key fails at load, or names the keys it is computed from.
 
-Three things are generated from it and committed:
+Four things are generated from it and committed:
 
 - **`src/hass_axi/model/rows.py`**, which ships in the wheel: the `--fields` vocabulary and default
   set of all ten rows the list commands print, and the keys each column reads — of the row's own
   object and of any other it is joined to. No command module keeps a column list of its own.
+- **`src/hass_axi/model/readers.py`**, which ships in the wheel too: one frozen reader per declared
+  object, importing the standard library alone. `read(raw)` gives each declared key as an attribute,
+  `sent(name)` tells a key sent as null from one not sent, and `raw` is the answer untouched, which
+  is what a command prints when it prints an open bag such as a state's attributes. The commands
+  read an answer through these, so a key a command reads is a key the capture check holds to a
+  real server, and a misspelt one is an error rather than a blank.
 - **`tests/hamodel/elements.py`**: one builder per declared object. The test doubles make their
   answers through these, and a builder refuses a key the model does not declare.
 - **`tests/hamodel/capture_contract.py`** and its tests: the check that every declared key is one
@@ -625,9 +631,13 @@ The generators are [`axi-toolkit`](https://github.com/dmealing/axi-toolkit)'s, s
 sibling AXI CLI, and run under `uvx` because the toolchain needs Python 3.11 or newer. Nothing
 generated imports it: the package still supports Python 3.9 and gains no dependency.
 
-**Not generated yet: the readers.** The row builders still read an answer with `dict.get`, because
-the shared generators emit no typed reader. Until they do, the scan in
-`tests/test_shape_contract.py` is what holds every key a command reads to the capture.
+**Two places still read an answer by key**, and the scan in `tests/test_shape_contract.py` holds
+exactly those to the capture. `service` reads the published service model by key, because it hands
+the same objects on to the hand-written reader in `axi_toolkit.ha.services`, and one name there is
+accepted as a list or as a single string, which a generated reader of a list gives as nothing. And
+the WebSocket client reads a frame by key, because a frame is one of five objects until its `type`
+has been read. Everywhere else that scan finds only the tool's own rows, and it fails if an answer
+is read by key again.
 
 ## Output format
 
@@ -1034,8 +1044,9 @@ pinned lab container sent, reduced by `scripts/shapecapture.py` to the keys each
 the JSON type of each: a state, the registry entries, a service definition, the recorder's
 statistics, history and logbook rows, and the WebSocket frames. It holds no value and nobody's
 house. `tests/test_shape_contract.py` reads the doubles with the same script and scans the source
-for every key the tool reads, and fails on a name the capture does not have unless the name is
-listed with the reason the lab could not show it.
+for every key still read off an answer by name, and fails on a name the capture does not have
+unless the name is listed with the reason the lab could not show it. A key read through a generated
+reader is held to the same capture by the generated check.
 
 ```sh
 .venv/bin/python scripts/shapecapture.py --check           # has the lab drifted from the capture
@@ -1096,7 +1107,7 @@ GitHub Actions is disabled on this repository, so none of these workflows runs t
 | --- | --- | --- | --- |
 | `ci.yml` | self-hosted | push to `main`, nightly, manual | each section of `scripts/ci-local.sh`: leak scan, commit audit, lint, `pytest` on 3.9–3.12, generated-skill check, model drift check |
 | `hygiene.yml` | `ubuntu-latest` | `pull_request`, including `edited` | the leak scan of the tree, and the two checks that read the pull request's own title and body |
-| `release.yml` | `ubuntu-latest` | push to `main`, manual | release-please, and an OIDC publish when a release PR merges |
+| `release.yml` | `ubuntu-latest` | push to `main`, manual | release-please, and an OIDC publish when a release PR merges; not the route in use, see [Releasing](#releasing) |
 
 With Actions enabled, a pull request shows **one** hosted check, and that is deliberate. The leak scan is the
 gate that has to run before a human reads a diff; everything heavier runs on the maintainer's own
@@ -1115,13 +1126,15 @@ Version bumps and the changelog are driven from conventional commits by
 **Releases are cut and uploaded locally while GitHub Actions is disabled.** `release.yml` does not
 run, so nothing on GitHub opens the release PR or publishes one: release-please is run from the
 maintainer's workstation, and every release since 0.8.0 has been built, smoke-tested and uploaded
-to PyPI from there, authenticated with a PyPI API token. That token is held on that workstation
-and is in no file in this repository.
+to PyPI from there, authenticated with a long-lived PyPI API token. That token is held on that
+workstation and is in no file in this repository. A release uploaded this way carries no
+attestations: nothing published beside the files says which commit or which build produced them.
 
 `release.yml` describes the other route, which is not in use: with Actions enabled, merging the
 release PR builds the distribution, smoke-tests the built wheel, and publishes through
 [trusted publishing](https://docs.pypi.org/trusted-publishers/) — an OIDC exchange that needs no
-stored token. It requires a one-time configuration on PyPI by the repository owner (project
+stored token and attests what it uploads. No release of `hass-axi` has been published that way.
+It requires a one-time configuration on PyPI by the repository owner (project
 `hass-axi`, owner `dmealing`, workflow `release.yml`, environment `pypi`); the trusted publisher
 registered for `ha-axi` does not carry over. The transitional `ha-axi` package under
 `legacy/ha-axi/` is not built by the workflow — see [Moving from `ha-axi`](#moving-from-ha-axi).

@@ -23,6 +23,7 @@ from __future__ import annotations
 from ..argspec import Command, Flag, Sub
 from ..errors import NotFound, UsageError
 from ..model import rows as vocabulary
+from ..model.readers import State, StatisticMeta
 from ..output import HelpBlock
 from ..readonly import READ
 from ..toolkit.recorder import (
@@ -38,6 +39,7 @@ from ..toolkit.recorder import (
 )
 from . import _window
 from ._common import (
+    attributes_of,
     count_line,
     empty_listing,
     listing_args,
@@ -45,6 +47,7 @@ from ._common import (
     project,
     search_term,
     see_all_line,
+    sent_or,
 )
 
 DEFAULT_LIMIT = 100
@@ -112,11 +115,13 @@ def run(ctx, sub: str, parsed):
 
 
 def _names(states: list) -> dict:
-    return {
-        s.get("entity_id"): (s.get("attributes") or {}).get("friendly_name") or ""
-        for s in states
-        if isinstance(s, dict)
-    }
+    read = (State.read(s) for s in states if isinstance(s, dict))
+    return {s.entity_id: attributes_of(s).friendly_name or "" for s in read}
+
+
+def _metadata(answer) -> list:
+    """What the recorder says of each statistic, as the reader of one."""
+    return [StatisticMeta.read(m) for m in answer or [] if isinstance(m, dict)]
 
 
 def _list(ctx, parsed):
@@ -133,20 +138,20 @@ def _list(ctx, parsed):
     with ctx.ws() as client:
         # Every statistic is read and the kind is filtered here, so `total` is
         # the installation's and not the size of the filtered answer.
-        metadata = client.run("statistics.list", {}) or []
+        metadata = _metadata(client.run("statistics.list", {}))
         names = _names(client.run("state.list") or [])
 
+    # The library takes what the recorder answered, as it was sent.
     rows = [
         {
-            "statistic_id": meta.get("statistic_id", ""),
-            "name": meta.get("name") or names.get(meta.get("statistic_id")) or "",
-            "kind": kind_of(meta),
-            "unit": unit_of(meta),
-            "source": meta.get("source") or "",
-            "unit_class": meta.get("unit_class") or "",
+            "statistic_id": sent_or(meta, "statistic_id"),
+            "name": meta.name or names.get(meta.statistic_id) or "",
+            "kind": kind_of(meta.raw),
+            "unit": unit_of(meta.raw),
+            "source": meta.source or "",
+            "unit_class": meta.unit_class or "",
         }
         for meta in metadata
-        if isinstance(meta, dict)
     ]
     rows.sort(key=lambda row: row["statistic_id"])
     total = len(rows)
@@ -206,8 +211,8 @@ def _get(ctx, parsed):
     period = _period(parsed, (end - start).total_seconds())
 
     with ctx.ws() as client:
-        metadata = client.run("statistics.metadata", {"statistic_ids": requested}) or []
-        known = {m.get("statistic_id"): m for m in metadata if isinstance(m, dict)}
+        metadata = _metadata(client.run("statistics.metadata", {"statistic_ids": requested}))
+        known = {m.statistic_id: m for m in metadata}
         missing = [sid for sid in requested if sid not in known]
         if missing:
             raise NotFound(
@@ -223,7 +228,7 @@ def _get(ctx, parsed):
         # keep comes back as an empty value rather than as an error.
         groups: dict = {}
         for sid in requested:
-            types = SUM_TYPES if kind_of(known[sid]) == "sum" else MEAN_TYPES
+            types = SUM_TYPES if kind_of(known[sid].raw) == "sum" else MEAN_TYPES
             groups.setdefault(tuple(types), []).append(sid)
         names = _names(client.run("state.list") or [])
         # The numbers come from the hourly rows inside the window whenever the
@@ -248,7 +253,7 @@ def _get(ctx, parsed):
 
     rows = [
         summarize(
-            {**known[sid], "name": known[sid].get("name") or names.get(sid)},
+            {**known[sid].raw, "name": known[sid].name or names.get(sid)},
             buckets.get(sid) or [],
             start,
             period,

@@ -15,10 +15,11 @@
 # dependency list: nothing generated imports it, and the package floor is unmoved.
 metadata: metaobjects
 targets:
-  # Ships in the wheel: the column vocabularies the commands read.
+  # Ships in the wheel: the column vocabularies the commands read, and the readers they
+  # read an answer through.
   package:
     outDir: src/hass_axi/model
-    generators: ["axi_toolkit.metagen:rows"]
+    generators: ["axi_toolkit.metagen:rows", "axi_toolkit.metagen:readers"]
   # Test support: the builders the doubles make their answers through, and the capture check.
   tests:
     outDir: tests/hamodel

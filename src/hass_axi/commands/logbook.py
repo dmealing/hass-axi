@@ -11,11 +11,12 @@ from __future__ import annotations
 
 from ..argspec import Command, Flag, Sub
 from ..model import rows as vocabulary
+from ..model.readers import LogbookEntry
 from ..output import HelpBlock
 from ..readonly import READ
 from ..rest import require_entity_id
 from . import _window
-from ._common import count_line, empty_listing, listing_args, matches_search, project
+from ._common import count_line, empty_listing, listing_args, matches_search, project, sent_or
 
 DEFAULT_LIMIT = 50
 LIST_FIELDS = vocabulary.FIELDS["logbook"]
@@ -68,7 +69,7 @@ def run(ctx, sub: str, parsed):
     for entity_id in ids:
         require_entity_id(entity_id)
     entries = ctx.rest().logbook(_window.iso(start), _window.iso(end), ids or None)
-    rows = [_row(entry) for entry in entries if isinstance(entry, dict)]
+    rows = [_row(LogbookEntry.read(entry)) for entry in entries if isinstance(entry, dict)]
     total = len(rows)
 
     search = parsed.get("search")
@@ -107,9 +108,9 @@ def run(ctx, sub: str, parsed):
     return doc
 
 
-def _row(entry: dict) -> dict:
-    state = entry.get("state")
-    message = entry.get("message")
+def _row(entry: LogbookEntry) -> dict:
+    state = entry.state
+    message = entry.message
     if message:
         event = str(message)
     elif state is not None:
@@ -117,17 +118,17 @@ def _row(entry: dict) -> dict:
     else:
         event = ""
     return {
-        "when": entry.get("when", ""),
-        "name": entry.get("name") or "",
-        "entity_id": entry.get("entity_id") or "",
+        "when": sent_or(entry, "when"),
+        "name": entry.name or "",
+        "entity_id": entry.entity_id or "",
         "event": event,
         "cause": cause(entry),
-        "domain": entry.get("domain") or "",
+        "domain": entry.domain or "",
         "state": "" if state is None else str(state),
     }
 
 
-def cause(entry: dict) -> str:
+def cause(entry: LogbookEntry) -> str:
     """What Home Assistant recorded as having caused an entry, in one phrase.
 
     The logbook carries the cause as a context: the event that started it, and
@@ -135,18 +136,18 @@ def cause(entry: dict) -> str:
     that was called, or the entity whose change set it off. A user acting from
     the interface leaves only an id, which says *that* a person did it.
     """
-    event_type = entry.get("context_event_type") or ""
-    name = entry.get("context_name") or entry.get("context_entity_id_name") or ""
+    event_type = entry.context_event_type or ""
+    name = entry.context_name or entry.context_entity_id_name or ""
     if event_type == "automation_triggered":
         return f"automation {name}".strip()
     if event_type == "script_started":
         return f"script {name}".strip()
     if event_type == "call_service":
-        domain, service = entry.get("context_domain"), entry.get("context_service")
+        domain, service = entry.context_domain, entry.context_service
         if domain and service:
             return f"service {domain}.{service}"
-    if entry.get("context_entity_id"):
-        return name or entry["context_entity_id"]
-    if entry.get("context_user_id"):
+    if entry.context_entity_id:
+        return name or entry.context_entity_id
+    if entry.context_user_id:
         return "a user"
     return ""
