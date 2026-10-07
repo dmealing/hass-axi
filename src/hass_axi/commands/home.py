@@ -9,10 +9,20 @@ from pathlib import Path
 from ..argspec import Command, Sub
 from ..config import missing_env_vars, setup_help
 from ..errors import AxiError, fault_class
+from ..model.readers import State
 from ..output import HelpBlock
 from ..readonly import READ, active_var
 from . import _window
-from ._common import domain_of, friendly_name, not_reported_for, plural
+from ._common import (
+    attributes_of,
+    domain_of,
+    friendly_name,
+    last_reported,
+    not_reported_for,
+    plural,
+    read_each,
+    sent_or,
+)
 
 DESCRIPTION = (
     "Agent CLI for Home Assistant. Reads and writes the registries REST cannot reach and "
@@ -91,7 +101,7 @@ def executable_path() -> str:
     return text
 
 
-def battery_level(state: dict):
+def battery_level(state: State):
     """An entity's battery percentage, or ``None`` when it does not report one.
 
     Two shapes carry one: a `battery_level` attribute on the entity itself, and
@@ -99,14 +109,14 @@ def battery_level(state: dict):
     that is not a number -- `unavailable`, `unknown`, `charging` -- is not a
     level.
     """
-    attributes = state.get("attributes") or {}
-    raw = attributes.get("battery_level")
+    attributes = attributes_of(state)
+    raw = attributes.battery_level
     if raw is None and (
-        domain_of(state.get("entity_id", "")) == "sensor"
-        and attributes.get("device_class") == "battery"
-        and attributes.get("unit_of_measurement") == "%"
+        domain_of(sent_or(state, "entity_id")) == "sensor"
+        and attributes.device_class == "battery"
+        and attributes.unit_of_measurement == "%"
     ):
-        raw = state.get("state")
+        raw = state.state
     if raw is None or isinstance(raw, bool):
         return None
     try:
@@ -118,13 +128,13 @@ def battery_level(state: dict):
 def low_batteries(states: list) -> list:
     rows = []
     for state in states:
-        if state.get("state") in ("unavailable", "unknown"):
+        if state.state in ("unavailable", "unknown"):
             continue
         level = battery_level(state)
         if level is not None and level < LOW_BATTERY:
             rows.append(
                 {
-                    "entity_id": state.get("entity_id", ""),
+                    "entity_id": sent_or(state, "entity_id"),
                     "name": friendly_name(state),
                     "battery": f"{level:g}%",
                 }
@@ -135,14 +145,21 @@ def low_batteries(states: list) -> list:
 
 def stale_entities(states: list, current, after: str = STALE_AFTER) -> list:
     """Sensors whose integration has reported nothing for ``after``, oldest first."""
-    sensors = [s for s in states if domain_of(s.get("entity_id", "")) in STALE_DOMAINS]
+    sensors = [s for s in states if domain_of(sent_or(s, "entity_id")) in STALE_DOMAINS]
+    silent = not_reported_for(
+        sensors,
+        _window.parse_age(after),
+        current,
+        state=lambda s: s.state,
+        reported=last_reported,
+    )
     return [
         {
-            "entity_id": state.get("entity_id", ""),
+            "entity_id": sent_or(state, "entity_id"),
             "name": friendly_name(state),
             "age": _window.age((current - moment).total_seconds()),
         }
-        for moment, state in not_reported_for(sensors, _window.parse_age(after), current)
+        for moment, state in silent
     ]
 
 
@@ -182,7 +199,7 @@ def run(ctx, sub: str, parsed):
         doc["read_only"] = "on"
 
     try:
-        states = ctx.rest().states()
+        states = read_each(State, ctx.rest().states())
     except AxiError as exc:
         # The same rule as the unconfigured branch above: this view reports
         # what it found, and an installation that did not answer is what it
@@ -206,11 +223,11 @@ def run(ctx, sub: str, parsed):
     unavailable = 0
     unknown = 0
     for state in states:
-        domain = domain_of(state.get("entity_id", ""))
+        domain = domain_of(sent_or(state, "entity_id"))
         counts[domain] = counts.get(domain, 0) + 1
-        if state.get("state") == "unavailable":
+        if state.state == "unavailable":
             unavailable += 1
-        elif state.get("state") == "unknown":
+        elif state.state == "unknown":
             unknown += 1
 
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
@@ -226,16 +243,16 @@ def run(ctx, sub: str, parsed):
     help_lines = []
     not_reporting = [
         {
-            "entity_id": state.get("entity_id", ""),
+            "entity_id": sent_or(state, "entity_id"),
             "name": friendly_name(state),
-            "state": state.get("state"),
-            "for": _window.age_of(state.get("last_changed"), current),
+            "state": state.state,
+            "for": _window.age_of(state.last_changed, current),
         }
         for state in states
-        if state.get("state") == "unavailable"
+        if state.state == "unavailable"
         or (
-            state.get("state") == "unknown"
-            and domain_of(state.get("entity_id", "")) not in STATELESS_DOMAINS
+            state.state == "unknown"
+            and domain_of(sent_or(state, "entity_id")) not in STATELESS_DOMAINS
         )
     ]
     if not_reporting:

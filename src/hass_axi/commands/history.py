@@ -11,11 +11,12 @@ opened -- counts for the time it held, and is not reported as a change.
 from __future__ import annotations
 
 from ..argspec import Command, Flag, Sub
+from ..model.readers import HistoryState
 from ..output import HelpBlock
 from ..readonly import READ
 from ..rest import require_entity_id
 from . import _window
-from ._common import parse_limit
+from ._common import attributes_of, parse_limit, sent_or
 
 DEFAULT_LIMIT = 20
 
@@ -72,12 +73,10 @@ def run(ctx, sub: str, parsed):
     for position, timeline in enumerate(timelines):
         if not isinstance(timeline, list) or not timeline:
             continue
-        first = timeline[0] if isinstance(timeline[0], dict) else {}
+        first = _first_row(timeline)
         # Every timeline's first row carries its entity_id; the outer list is in
         # the order requested, which is the fallback if one ever does not.
-        entity_id = first.get("entity_id") or (
-            requested[position] if position < len(requested) else ""
-        )
+        entity_id = first.entity_id or (requested[position] if position < len(requested) else "")
         by_id[entity_id.lower()] = timeline
 
     entities = []
@@ -113,18 +112,23 @@ def run(ctx, sub: str, parsed):
     return doc
 
 
+def _first_row(timeline: list) -> HistoryState:
+    """A timeline's first row, the one that is a whole state, or an empty one for none."""
+    return HistoryState.read(timeline[0] if isinstance(timeline[0], dict) else {})
+
+
 def summarize(entity_id: str, timeline: list, start, end) -> dict:
     """One entity's row: its name, its change count, its summary and its timeline."""
-    first = timeline[0] if isinstance(timeline[0], dict) else {}
-    name = (first.get("attributes") or {}).get("friendly_name") or ""
+    name = attributes_of(_first_row(timeline)).friendly_name or ""
     points = []
-    for row in timeline:
-        if not isinstance(row, dict):
+    for answer in timeline:
+        if not isinstance(answer, dict):
             continue
-        moment = _window.parse_timestamp(row.get("last_changed") or row.get("last_updated"))
+        row = HistoryState.read(answer)
+        moment = _window.parse_timestamp(row.last_changed or row.last_updated)
         if moment is None:
             continue
-        state = str(row.get("state", ""))
+        state = str(sent_or(row, "state"))
         # A row whose state repeats the previous one is an attribute change --
         # the recorder keeps whole states for climate and a few other domains --
         # and is neither a change nor a new timeline entry.

@@ -1,15 +1,17 @@
-"""The readers and the doubles are held to a capture of a real server: names and types.
+"""What reads an answer, and the doubles, are held to a capture of a real server.
 
 ``tests/fixtures/ha-shape/capture.json`` is what a real Home Assistant sent,
 reduced by ``scripts/shapecapture.py`` to the keys each object carries and the
 JSON type of each. It was read from the pinned lab container, so it holds no
 value and nobody's house. This file asks three questions of it, offline:
 
-- **Is every key the tool reads one a real server sends?** The readers are found
-  by scanning the source, not by a list somebody keeps: every expression a
-  string key is read off is classified in :data:`READERS` as an upstream object
-  or in :data:`OWN` as the tool's own structure, and one that is in neither
-  fails. A key read off an upstream object has to be in the capture.
+- **Is every key the tool reads one a real server sends?** A command reads an
+  answer through a generated reader, whose names the generated check holds to
+  the capture. What still reads an answer by key is found by scanning the
+  source, not by a list somebody keeps: every expression a string key is read
+  off is classified in :data:`READERS` as an upstream object or in :data:`OWN`
+  as the tool's own structure, and one that is in neither fails. A key read off
+  an upstream object has to be in the capture.
 - **Does every key the doubles send exist on a real server?** The script that
   read the lab reads the doubles, and the two answers are compared.
 - **Is the capture still only names?** A string that looks like a value fails.
@@ -24,13 +26,19 @@ A reason is required, and an entry the capture has since caught up with fails to
 Whether the capture still matches a server is a different question, asked by
 ``scripts/shapecapture.py --check``.
 
-**The model.** What Home Assistant answers is declared in ``metaobjects/``, and three
+**The model.** What Home Assistant answers is declared in ``metaobjects/``, and four
 things are generated from it: the column vocabularies in :mod:`hass_axi.model.rows`,
-the builders in ``tests/hamodel/`` that the doubles make their answers through, and
-the check beside them that every declared key is in the capture. The last section
-here holds the first two to what the commands print and to what a builder refuses.
-The scan of the readers stays until the readers are generated too: it is what holds
-a key read with ``.get`` to the capture.
+the readers in :mod:`hass_axi.model.readers`, the builders in ``tests/hamodel/`` that
+the doubles make their answers through, and the check beside them that every declared
+key is in the capture. The last section here holds the vocabularies and the builders
+to what the commands print and to what a builder refuses.
+
+**What the scan is still for.** Two places read an answer by key, and :data:`READERS`
+is exactly those: `service`'s reads of the published service model, which it hands on
+to the hand-written reader in the shared package, and the WebSocket client's reads of
+a frame, which is one of five objects until its ``type`` has been read. Everywhere
+else the scan finds only the tool's own structures, and it stays switched on there so
+that an answer read by key again is a failure rather than a habit.
 """
 
 from __future__ import annotations
@@ -117,6 +125,10 @@ NOT_MODELLED = {
     "websocket.pong": "the tool sends no ping, so the double has no answer to one",
 }
 
+#: The generated readers, where every declared name is read by key once. The generated
+#: capture check holds those names to the capture, so the scan is not shown the file.
+GENERATED = {"model/readers.py"}
+
 #: Modules that never hold an answer from Home Assistant. A new module has to
 #: be put here or have its readers classified below.
 LOCAL = {
@@ -145,10 +157,6 @@ ARGUMENTS = "parsed"
 
 AREA = "registry.area"
 DEVICE = "registry.device"
-ENTITY = ("registry.entity", "registry.entity.extended")
-FLOOR = "registry.floor"
-META = "recorder.statistic_meta"
-ROW = "recorder.statistics_row"
 ATTRIBUTES = "state.attributes"
 FRAMES = (
     "websocket.auth_invalid",
@@ -158,97 +166,25 @@ FRAMES = (
     "websocket.result",
 )
 
-#: Every expression an upstream answer is read off: module -> expression ->
-#: the object it holds, or the objects where one name holds several in turn.
+#: Every expression an upstream answer is still read off by key: module -> expression
+#: -> the object it holds, or the objects where one name holds several in turn. A
+#: module that is not here reads its answers through the generated readers.
 READERS = {
-    "commands/_common.py": {
-        "a": AREA,
-        "area": AREA,
-        "attributes": ATTRIBUTES,
-        "d": DEVICE,
-        "device": DEVICE,
-        "entry": ENTITY,
-        "f": FLOOR,
-        "floor": FLOOR,
-        "state": "state",
-    },
-    "commands/area.py": {
-        "a": AREA,
-        "area": AREA,
-        "d": DEVICE,
-        "device": DEVICE,
-        "existing": AREA,
-        "resolve_floor(floors, raw)": FLOOR,
-        "result": AREA,
-    },
-    "commands/device.py": {
-        "current": DEVICE,
-        "device": DEVICE,
-        "entry": (*ENTITY, DEVICE),
-        "resolve_area(areas, area_arg)": AREA,
-        "result": DEVICE,
-    },
-    "commands/doctor.py": {"health": "rest.api_root", "info": "rest.config"},
-    "commands/entity.py": {
-        "current": ENTITY,
-        "device": DEVICE,
-        "entry": ENTITY,
-        "resolve_area(areas, area_arg)": AREA,
-        "result": "websocket.entity_update",
-    },
-    "commands/history.py": {
-        "first": "history.first_row",
-        "first.get('attributes') or {}": ATTRIBUTES,
-        "row": ("history.first_row", "history.later_row"),
-    },
-    "commands/home.py": {"attributes": ATTRIBUTES, "s": "state", "state": "state"},
-    "commands/logbook.py": {"entry": "logbook.row"},
-    "commands/ping.py": {"info": "rest.config"},
-    "commands/sensor.py": {
-        "attributes": ATTRIBUTES,
-        "entry": ENTITY,
-        "entry or {}": ENTITY,
-        "s": "state",
-        "state": "state",
-    },
     "commands/service.py": {
-        "area": AREA,
-        "device": DEVICE,
-        "entry": (*ENTITY, "service.domain", "service.target.entity"),
+        "entry": ("service.domain", "service.target.entity"),
         "field": "service.field",
         "match": "service.domain",
-        "resolve_area_target(areas, value)": AREA,
-        "result": "service.call",
-        "s": "state",
         "spec": "service",
         "spec or {}": "service",
-        "state": "state",
         "target": "service.target",
     },
-    "commands/state.py": {"entry": ENTITY, "state": "state"},
-    "commands/statistics.py": {
-        "known[sid]": META,
-        "m": META,
-        "meta": META,
-        "s": "state",
-        "s.get('attributes') or {}": ATTRIBUTES,
-    },
-    "rest.py": {"json.loads(raw)": "rest.error"},
-    "toolkit/recorder.py": {
-        "meta": META,
-        "r": ROW,
-        "row": ROW,
-        "rows[-1]": ROW,
-        "rows[0]": ROW,
-    },
-    "toolkit/shapes.py": {"value": "rest.api_root"},
     "ws.py": {"error": "websocket.error.error", "message": FRAMES},
 }
 
-#: Expressions in those modules that hold the tool's own structures: a row it
-#: built, a document it is about to print, a message it composed.
+#: Expressions that hold the tool's own structures: a row it built, a document it
+#: is about to print, a message it composed.
 OWN = {
-    "commands/_common.py": {"item", "row"},
+    "commands/_common.py": {"row"},
     "commands/area.py": {"row"},
     "commands/device.py": {"row"},
     "commands/doctor.py": {"env"},
@@ -345,7 +281,7 @@ def _scanned() -> dict:
     """``module -> expression -> keys`` for every module that may hold an answer."""
     found = {}
     for name, path in _modules().items():
-        if name in LOCAL:
+        if name in LOCAL or name in GENERATED:
             continue
         reads = key_reads(path)
         if name.startswith("commands/"):
@@ -631,8 +567,8 @@ def test_reading_the_doubles_as_a_house_writes_nothing(monkeypatch, installation
 
 def test_every_module_is_local_or_has_its_readers_classified():
     modules = set(_modules())
-    assert modules >= LOCAL, "a module named as local is gone"
-    assert set(READERS) | set(OWN) <= modules - LOCAL
+    assert modules >= LOCAL | GENERATED, "a module named as local or as generated is gone"
+    assert set(READERS) | set(OWN) <= modules - LOCAL - GENERATED
     unclassified = {name for name, reads in _scanned().items() if reads and name not in READERS}
     assert unclassified - set(OWN) == set()
 
@@ -706,9 +642,37 @@ def _built_by_the_doubles() -> dict:
     return found
 
 
+def attribute_reads() -> set:
+    """Every name the source reads as an attribute, or hands to ``sent_or`` as one.
+
+    A command reads a declared name as an attribute of a generated reader. Which
+    reader is not something the source says, so this is the names alone.
+    """
+    found: set = set()
+    for name, path in _modules().items():
+        if name in GENERATED:
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Attribute):
+                found.add(node.attr)
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "sent_or"
+                and len(node.args) > 1
+                and isinstance(node.args[1], ast.Constant)
+            ):
+                found.add(node.args[1].value)
+    return found
+
+
 def _read_or_sent(doubles_document: dict) -> dict:
     """``object -> names`` somebody depends on: read by a reader or sent by a double."""
     found: dict = {}
+    through_a_reader = attribute_reads()
+    for entry in contract.DECLARED.values():
+        for name in entry["capture"]:
+            found.setdefault(name, set()).update(set(entry["fields"]) & through_a_reader)
     for module, holders in READERS.items():
         reads = key_reads(SOURCE / module)
         for holder, named in holders.items():

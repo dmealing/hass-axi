@@ -32,6 +32,8 @@ import math
 import statistics
 from datetime import datetime, timedelta, timezone
 
+from ..model.readers import StatisticMeta, StatisticsRow
+
 #: `mean_type` as the recorder publishes it.
 MEAN_NONE, MEAN_ARITHMETIC, MEAN_CIRCULAR = 0, 1, 2
 
@@ -98,21 +100,20 @@ def kind_of(meta: dict) -> str:
     ``has_mean`` is read as well as ``mean_type`` because instances before
     ``mean_type`` existed publish only the former.
     """
-    if meta.get("has_sum"):
+    read = StatisticMeta.read(meta)
+    if read.has_sum:
         return "sum"
-    mean_type = meta.get("mean_type")
-    if mean_type == MEAN_CIRCULAR:
+    if read.mean_type == MEAN_CIRCULAR:
         return "circular mean"
-    if mean_type == MEAN_ARITHMETIC or meta.get("has_mean"):
+    if read.mean_type == MEAN_ARITHMETIC or read.has_mean:
         return "mean"
     return ""
 
 
 def unit_of(meta: dict) -> str:
     """The unit the values arrive in: the display unit, which the recorder converts to."""
-    return (
-        meta.get("display_unit_of_measurement") or meta.get("statistics_unit_of_measurement") or ""
-    )
+    read = StatisticMeta.read(meta)
+    return read.display_unit_of_measurement or read.statistics_unit_of_measurement or ""
 
 
 def default_period(seconds: float) -> str:
@@ -138,23 +139,33 @@ def _round(value: float):
     return int(rounded) if rounded == int(rounded) else rounded
 
 
+def _buckets(rows: list) -> list:
+    """Each row as the bucket it is, read once for a rule that asks it several things."""
+    return [StatisticsRow.read(row) for row in rows]
+
+
+def _began(row):
+    """Where a row says it begins, for putting rows in order."""
+    return StatisticsRow.read(row).start or 0
+
+
 def inside(rows: list, start, end) -> list:
     """The rows that begin inside the window, oldest first."""
     kept = []
     for row in rows:
         if not isinstance(row, dict):
             continue
-        moment = parse_timestamp(row.get("start"))
+        moment = parse_timestamp(StatisticsRow.read(row).start)
         if moment is None or moment < start or (end is not None and moment >= end):
             continue
         kept.append(row)
-    return sorted(kept, key=lambda r: r.get("start") or 0)
+    return sorted(kept, key=_began)
 
 
 def overhang(rows: list, start, end) -> str:
     """Say so when the buckets summed cover more time than the window asked for."""
-    first = parse_timestamp(rows[0].get("start"))
-    last = parse_timestamp(rows[-1].get("end"))
+    first = parse_timestamp(StatisticsRow.read(rows[0]).start)
+    last = parse_timestamp(StatisticsRow.read(rows[-1]).end)
     early = first is not None and first < start
     late = last is not None and end is not None and last > end
     if not (early or late):
@@ -180,16 +191,17 @@ def summarize(meta: dict, rows: list, start, period: str, *, end=None, hourly=No
     """
     kind = kind_of(meta)
     unit = unit_of(meta)
-    rows = sorted((r for r in rows if isinstance(r, dict)), key=lambda r: r.get("start") or 0)
+    rows = sorted((r for r in rows if isinstance(r, dict)), key=_began)
     measured = rows if hourly is None else inside(hourly, start, end)
     if hourly is not None and rows and not measured:
         # Buckets, and no hourly rows behind them: the numbers cannot be read
         # from inside the window, so the buckets are summed as they came and
         # the summary says what they cover, exactly as when none were asked for.
         measured, hourly = rows, None
-    summary: dict = {"statistic_id": meta.get("statistic_id", "")}
-    if meta.get("name"):
-        summary["name"] = meta["name"]
+    named = StatisticMeta.read(meta)
+    summary: dict = {"statistic_id": named.statistic_id if named.sent("statistic_id") else ""}
+    if named.name:
+        summary["name"] = named.name
     summary["kind"] = kind or "none"
     summary["unit"] = unit
     summary["buckets"] = len(rows)
@@ -204,14 +216,15 @@ def summarize(meta: dict, rows: list, start, period: str, *, end=None, hourly=No
         caveats.append(f"the current {period} bucket has not been compiled yet")
 
     if rows or measured:
+        buckets = _buckets(measured)
         if kind == "sum":
-            changes = [c for c in (_number(r.get("change")) for r in measured) if c is not None]
+            changes = [c for c in (_number(b.change) for b in buckets) if c is not None]
             summary["total"] = _round(sum(changes)) if changes else None
             caveats.extend(sum_caveats(measured, unit))
         else:
-            means = [m for m in (_number(r.get("mean")) for r in measured) if m is not None]
-            lows = [m for m in (_number(r.get("min")) for r in measured) if m is not None]
-            highs = [m for m in (_number(r.get("max")) for r in measured) if m is not None]
+            means = [m for m in (_number(b.mean) for b in buckets) if m is not None]
+            lows = [m for m in (_number(b.min) for b in buckets) if m is not None]
+            highs = [m for m in (_number(b.max) for b in buckets) if m is not None]
             if kind == "circular mean":
                 # A bearing wraps at 360, so neither the arithmetic mean nor
                 # the smallest and largest value say anything: 350 and 10
@@ -251,7 +264,8 @@ def sum_caveats(rows: list, unit: str) -> list:
     them.
     """
     caveats = []
-    negative = [c for c in (_number(r.get("change")) for r in rows) if c is not None and c < 0]
+    buckets = _buckets(rows)
+    negative = [c for c in (_number(b.change) for b in buckets) if c is not None and c < 0]
     if negative:
         amount = " ".join(part for part in (str(_round(-sum(negative))), unit) if part)
         caveats.append(
@@ -263,14 +277,14 @@ def sum_caveats(rows: list, unit: str) -> list:
     # figure as a periodic one, or one period's genuine heavy use: the buckets
     # cannot say which, so the caveat states the shape and the total stays as it is.
     positive = [
-        (c, r) for c, r in ((_number(r.get("change")), r) for r in rows) if c is not None and c > 0
+        (c, b) for c, b in ((_number(b.change), b) for b in buckets) if c is not None and c > 0
     ]
     if len(positive) >= 3:
-        largest, row = max(positive, key=lambda pair: pair[0])
+        largest, bucket = max(positive, key=lambda pair: pair[0])
         median = statistics.median(c for c, _ in positive)
         whole = sum(c for c, _ in positive)
         if largest > OUTLIER_FACTOR * median and largest > whole / 2:
-            moment = parse_timestamp(row.get("start"))
+            moment = parse_timestamp(bucket.start)
             when = f" starting {iso(moment)}" if moment is not None else ""
             amount = " ".join(part for part in (str(_round(largest)), unit) if part)
             caveats.append(
@@ -287,12 +301,12 @@ def sum_caveats(rows: list, unit: str) -> list:
     # booked as a negative change is the case above, not a reset.
     resets = []
     previous = None
-    for row in rows:
-        state = _number(row.get("state"))
+    for bucket in buckets:
+        state = _number(bucket.state)
         if state is None:
             continue
-        change = _number(row.get("change"))
-        moment = parse_timestamp(row.get("start"))
+        change = _number(bucket.change)
+        moment = parse_timestamp(bucket.start)
         dropped = previous is not None and state < previous
         if dropped and (change is None or change >= 0) and moment is not None:
             resets.append(moment)
@@ -330,7 +344,7 @@ def missing_buckets(rows: list, start, period: str) -> str:
     step = PERIOD_SECONDS.get(period)
     if not step or not rows:
         return ""
-    starts = [parse_timestamp(r.get("start")) for r in rows]
+    starts = [parse_timestamp(bucket.start) for bucket in _buckets(rows)]
     starts = [s for s in starts if s is not None]
     if not starts:
         return ""

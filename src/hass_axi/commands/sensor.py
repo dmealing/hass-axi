@@ -19,11 +19,13 @@ from __future__ import annotations
 
 from ..argspec import Command, Flag, Sub
 from ..model import rows as vocabulary
+from ..model.readers import AreaEntry, DeviceEntry, EntityEntry, State
 from ..output import HelpBlock
 from ..readonly import READ
 from . import _window
 from ._common import (
     area_name_map,
+    attributes_of,
     count_line,
     device_area_map,
     device_name_map,
@@ -37,8 +39,10 @@ from ._common import (
     matches_search,
     plural,
     project,
+    read_each,
     registry_name,
     see_all_line,
+    sent_or,
 )
 
 DEFAULT_LIMIT = 100
@@ -95,13 +99,17 @@ def run(ctx, sub: str, parsed):
     limit, fields = listing_args(
         parsed, LIST_FIELDS, DEFAULT_LIST_FIELDS, default_limit=DEFAULT_LIMIT
     )
-    states = [s for s in ctx.rest().states() if domain_of(s.get("entity_id", "")) == "sensor"]
+    states = [
+        s
+        for s in read_each(State, ctx.rest().states())
+        if domain_of(sent_or(s, "entity_id")) == "sensor"
+    ]
     with ctx.ws() as client:
-        entities = client.run("entity.list") or []
-        areas = client.run("area.list") or []
-        devices = client.run("device.list") or []
+        entities = read_each(EntityEntry, client.run("entity.list"))
+        areas = read_each(AreaEntry, client.run("area.list"))
+        devices = read_each(DeviceEntry, client.run("device.list"))
 
-    registry = {entry.get("entity_id"): entry for entry in entities}
+    registry = {entry.entity_id: entry for entry in entities}
     device_areas = device_area_map(devices)
     device_names = device_name_map(devices)
     area_names = area_name_map(areas)
@@ -110,7 +118,7 @@ def run(ctx, sub: str, parsed):
     rows: list = []
     set_aside = 0
     for state in states:
-        entry = registry.get(state.get("entity_id"))
+        entry = registry.get(state.entity_id)
         if entry is not None and not parsed.get("all") and _set_aside(entry):
             set_aside += 1
             continue
@@ -173,25 +181,25 @@ def run(ctx, sub: str, parsed):
     return doc
 
 
-def _set_aside(entry: dict) -> bool:
-    return entry.get("entity_category") in EXCLUDED_CATEGORIES or bool(entry.get("hidden_by"))
+def _set_aside(entry: EntityEntry) -> bool:
+    return entry.entity_category in EXCLUDED_CATEGORIES or bool(entry.hidden_by)
 
 
-def _row(state, entry, device_names, device_areas, area_names, current) -> dict:
-    attributes = state.get("attributes") or {}
+def _row(state: State, entry, device_names, device_areas, area_names, current) -> dict:
+    attributes = attributes_of(state)
     name = registry_name(entry, device_names) if entry else ""
     area_id = effective_area_id(entry, device_areas) if entry else ""
     reported = last_reported(state)
     return {
-        "entity_id": state.get("entity_id", ""),
+        "entity_id": sent_or(state, "entity_id"),
         "name": name or friendly_name(state),
-        "value": state.get("state", ""),
-        "unit": attributes.get("unit_of_measurement") or "",
+        "value": sent_or(state, "state"),
+        "unit": attributes.unit_of_measurement or "",
         "area": area_names.get(area_id, "") if area_id else "",
         "area_id": area_id,
         "age": _window.age_of(reported, current),
-        "device_class": attributes.get("device_class") or "",
-        "state_class": attributes.get("state_class") or "",
+        "device_class": attributes.device_class or "",
+        "state_class": attributes.state_class or "",
         "last_reported": reported,
-        "entity_category": (entry or {}).get("entity_category") or "",
+        "entity_category": (entry.entity_category if entry else None) or "",
     }

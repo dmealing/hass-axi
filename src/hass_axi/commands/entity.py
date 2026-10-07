@@ -10,6 +10,7 @@ from __future__ import annotations
 from ..argspec import Command, Flag, Sub
 from ..errors import NotFound, UsageError
 from ..model import rows as vocabulary
+from ..model.readers import AreaEntry, DeviceEntry, EntityEntry, EntityUpdateResult
 from ..output import HelpBlock
 from ..readonly import DYNAMIC, READ
 from ._common import (
@@ -30,12 +31,14 @@ from ._common import (
     preview_help,
     preview_note,
     project,
+    read_each,
     registry_name,
     reject_conflicting_flags,
     resolve_area,
     resolve_device,
     search_term,
     see_all_line,
+    sent_or,
     write_access,
 )
 
@@ -117,27 +120,27 @@ def run(ctx, sub: str, parsed):
 
 
 def _snapshot(client):
-    entities = client.run("entity.list") or []
-    areas = client.run("area.list") or []
-    devices = client.run("device.list") or []
+    entities = read_each(EntityEntry, client.run("entity.list"))
+    areas = read_each(AreaEntry, client.run("area.list"))
+    devices = read_each(DeviceEntry, client.run("device.list"))
     return entities, areas, devices
 
 
-def _row(entry: dict, area_names: dict, device_areas: dict, device_names: dict) -> dict:
-    entity_id = entry.get("entity_id", "")
+def _row(entry: EntityEntry, area_names: dict, device_areas: dict, device_names: dict) -> dict:
+    entity_id = sent_or(entry, "entity_id")
     area_id = effective_area_id(entry, device_areas)
     return {
         "entity_id": entity_id,
         "name": registry_name(entry, device_names),
         "area": area_names.get(area_id, "") if area_id else "",
         "area_id": area_id,
-        "platform": entry.get("platform", ""),
+        "platform": sent_or(entry, "platform"),
         "domain": domain_of(entity_id),
-        "device_id": entry.get("device_id") or "",
-        "original_name": entry.get("original_name") or "",
-        "disabled": bool(entry.get("disabled_by")),
-        "hidden": bool(entry.get("hidden_by")),
-        "entity_category": entry.get("entity_category") or "",
+        "device_id": entry.device_id or "",
+        "original_name": entry.original_name or "",
+        "disabled": bool(entry.disabled_by),
+        "hidden": bool(entry.hidden_by),
+        "entity_category": entry.entity_category or "",
     }
 
 
@@ -180,8 +183,8 @@ def _list(ctx, parsed):
     device_id = parsed.get("device")
     if device_id:
         device = resolve_device(devices, device_id)
-        rows = [row for row in rows if row["device_id"] == device.get("id", "")]
-        scope.append(f"supplied by device {device.get('id', '')}")
+        rows = [row for row in rows if row["device_id"] == sent_or(device, "id")]
+        scope.append(f"supplied by device {sent_or(device, 'id')}")
 
     search = parsed.get("search")
     if search:
@@ -220,9 +223,9 @@ def _list(ctx, parsed):
     return {"count": count, "entities": project(shown, fields), "help": HelpBlock(help_lines)}
 
 
-def _find(entities: list, entity_id: str) -> dict:
+def _find(entities: list, entity_id: str) -> EntityEntry:
     for entry in entities:
-        if entry.get("entity_id") == entity_id:
+        if entry.entity_id == entity_id:
             return entry
     raise NotFound(
         f"no registry entry for {entity_id}",
@@ -240,13 +243,13 @@ def _get(ctx, parsed):
         entities, areas, devices = _snapshot(client)
     entry = _find(entities, entity_id)
     row = _row(entry, area_name_map(areas), device_area_map(devices), device_name_map(devices))
-    row["unique_id"] = entry.get("unique_id") or ""
-    row["icon"] = entry.get("icon") or ""
+    row["unique_id"] = entry.unique_id or ""
+    row["icon"] = entry.icon or ""
     row["area_source"] = _area_source(entry, row["area_id"], areas)
     return {"entity": row}
 
 
-def _area_source(entry: dict, area_id: str, areas: list) -> str:
+def _area_source(entry: EntityEntry, area_id: str, areas: list) -> str:
     """Where an entity's effective area came from: itself, its device, or nowhere.
 
     An `area_id` that names no area is called out rather than reported as a
@@ -256,12 +259,12 @@ def _area_source(entry: dict, area_id: str, areas: list) -> str:
     """
     if area_id and not area_is_placed(area_id, areas):
         return "no area has this id"
-    if entry.get("area_id"):
+    if entry.area_id:
         return "entity"
     return "device" if area_id else ""
 
 
-def _resulting_entry(result, current: dict, pending: dict) -> dict:
+def _resulting_entry(result, current: EntityEntry, pending: dict) -> EntityEntry:
     """The registry entry as it stands after an update.
 
     Home Assistant answers `config/entity_registry/update` with the resulting
@@ -270,14 +273,13 @@ def _resulting_entry(result, current: dict, pending: dict) -> dict:
     the response carries no entry at all, apply the pending changes locally.
     Either way what gets reported is the entity's state, never the request.
     """
-    entry = dict(current)
-    returned = result.get("entity_entry") if isinstance(result, dict) else None
-    if isinstance(returned, dict):
-        entry.update(returned)
-        return entry
+    returned = EntityUpdateResult.read(result).entity_entry if isinstance(result, dict) else None
+    if returned is not None:
+        return EntityEntry.read({**current.raw, **returned.raw})
+    entry = dict(current.raw)
     for key, value in pending.items():
         entry["entity_id" if key == "new_entity_id" else key] = value
-    return entry
+    return EntityEntry.read(entry)
 
 
 def _update(ctx, parsed):
@@ -327,7 +329,7 @@ def _update(ctx, parsed):
         if clear_area:
             changes["area_id"] = None
         elif area_arg is not None:
-            changes["area_id"] = resolve_area(areas, area_arg).get("area_id")
+            changes["area_id"] = resolve_area(areas, area_arg).area_id
 
         # Idempotent: a request that asks for the state already stored is a no-op.
         pending = {k: v for k, v in changes.items() if _differs(current, k, v)}
@@ -362,7 +364,7 @@ def _update(ctx, parsed):
     }
 
 
-def _differs(current: dict, key: str, value) -> bool:
+def _differs(current: EntityEntry, key: str, value) -> bool:
     if key == "new_entity_id":
-        return current.get("entity_id") != value
-    return (current.get(key) or None) != (value or None)
+        return current.entity_id != value
+    return (getattr(current, key) or None) != (value or None)

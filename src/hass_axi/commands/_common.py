@@ -10,6 +10,7 @@ from typing import Any
 from .. import readonly
 from ..argspec import Flag
 from ..errors import AxiError, NotFound, UsageError
+from ..model.readers import AreaEntry, DeviceEntry, EntityEntry, FloorEntry, State, StateAttributes
 from ..output import truncate
 from ..toolkit.names import MAX_CANDIDATES, fold, matches, resolve
 from ..toolkit.shapes import is_entity_id
@@ -23,42 +24,64 @@ def domain_of(entity_id: str) -> str:
     return entity_id.split(".", 1)[0] if "." in entity_id else ""
 
 
-def friendly_name(state: dict) -> str:
-    attributes = state.get("attributes") or {}
-    return attributes.get("friendly_name") or state.get("entity_id", "")
+def read_each(reader, answers) -> list:
+    """Every answer of a list through ``reader``, and nothing for an answer that held none."""
+    return [reader.read(answer) for answer in answers or []]
 
 
-def last_reported(state: dict) -> str:
+def sent_or(answer, name: str, default: Any = ""):
+    """What an answer holds under ``name``, or ``default`` for a name it did not send.
+
+    A reader gives ``None`` for a name that was not sent and for one sent as null,
+    and the two print differently: an id that is missing is blank, and one that is
+    null is null. The attribute is read first, so a name the model does not declare
+    fails here rather than being quietly the default.
+    """
+    value = getattr(answer, name)
+    return value if answer.sent(name) else default
+
+
+def attributes_of(state) -> StateAttributes:
+    """A state's attributes, and none at all for a state that sent no object of them."""
+    return state.attributes or StateAttributes()
+
+
+def friendly_name(state: State) -> str:
+    return attributes_of(state).friendly_name or sent_or(state, "entity_id")
+
+
+def last_reported(state: State) -> str:
     """When the integration last reported a value, whether or not it changed.
 
     `last_reported` moves on every report, `last_updated` only when the state or
     an attribute changed, so the former is the better freshness signal and the
     latter the fallback for an instance that predates it.
     """
-    return state.get("last_reported") or state.get("last_updated") or ""
+    return state.last_reported or state.last_updated or ""
 
 
-def not_reported_for(items: list, threshold, current) -> list:
+def not_reported_for(items: list, threshold, current, *, state, reported) -> list:
     """``(moment, item)`` for each item silent for at least ``threshold``, oldest first.
 
-    ``items`` are states or `state list` rows -- both carry `state` and the
-    report times :func:`last_reported` reads. `unavailable` and `unknown` are
-    left out: they are listed on their own, and a second listing would count
-    one fact twice. The home view's stale count and `state list --stale` both
-    come through here, which is what keeps the two numbers equal.
+    ``items`` are states or `state list` rows, and ``state`` and ``reported`` say
+    how one of them is asked for its state and for the time :func:`last_reported`
+    gives. `unavailable` and `unknown` are left out: they are listed on their own,
+    and a second listing would count one fact twice. The home view's stale count
+    and `state list --stale` both come through here, which is what keeps the two
+    numbers equal.
     """
     found = []
     for item in items:
-        if item.get("state") in ("unavailable", "unknown"):
+        if state(item) in ("unavailable", "unknown"):
             continue
-        moment = _window.parse_timestamp(last_reported(item))
+        moment = _window.parse_timestamp(reported(item))
         if moment is not None and current - moment >= threshold:
             found.append((moment, item))
     found.sort(key=lambda pair: pair[0])
     return found
 
 
-def registry_name(entry: dict, device_names: dict) -> str:
+def registry_name(entry: EntityEntry, device_names: dict) -> str:
     """The name Home Assistant displays for an entity registry entry.
 
     Home Assistant composes a display name from **two** registries, and reading
@@ -81,10 +104,10 @@ def registry_name(entry: dict, device_names: dict) -> str:
     entity row by itself is exactly the defect this replaces, and a default that
     permitted it would let the defect back in one omitted argument at a time.
     """
-    if entry.get("name"):
-        return entry["name"]
-    device_name = device_names.get(entry.get("device_id")) or ""
-    parts = [device_name, entry.get("original_name") or ""]
+    if entry.name:
+        return entry.name
+    device_name = device_names.get(entry.device_id) or ""
+    parts = [device_name, entry.original_name or ""]
     return " ".join(part for part in parts if part)
 
 
@@ -96,10 +119,10 @@ def plural(count: int, singular: str, many: str = "") -> str:
 
 def device_area_map(devices: list) -> dict:
     """Map each device id to the area it sits in."""
-    return {device.get("id"): device.get("area_id") for device in devices}
+    return {device.id: device.area_id for device in devices}
 
 
-def displayed_device_name(device: dict) -> str:
+def displayed_device_name(device: DeviceEntry) -> str:
     """The name Home Assistant displays for one device.
 
     A user rename (`name_by_user`) wins over the integration's own `name`, which
@@ -107,27 +130,27 @@ def displayed_device_name(device: dict) -> str:
     needs, and the reason `device update --name` writes `name_by_user`: the
     integration's `name` is not a field Home Assistant lets anybody change.
     """
-    return device.get("name_by_user") or device.get("name") or ""
+    return device.name_by_user or device.name or ""
 
 
 def device_name_map(devices: list) -> dict:
     """Map each device id to the name Home Assistant displays for it."""
-    return {device.get("id"): displayed_device_name(device) for device in devices}
+    return {device.id: displayed_device_name(device) for device in devices}
 
 
 def area_name_map(areas: list) -> dict:
     """Map each area id to its display name."""
-    return {area.get("area_id"): area.get("name") or "" for area in areas}
+    return {area.area_id: area.name or "" for area in areas}
 
 
-def effective_area_id(entry: dict, device_areas: dict) -> str:
+def effective_area_id(entry: EntityEntry, device_areas: dict) -> str:
     """The area an entity actually belongs to.
 
     An entity with no area of its own inherits its device's. Every count and
     filter has to apply that fallback or it will disagree with what Home
     Assistant itself shows.
     """
-    return entry.get("area_id") or device_areas.get(entry.get("device_id")) or ""
+    return entry.area_id or device_areas.get(entry.device_id) or ""
 
 
 def reject_conflicting_flags(parsed, *pairs: tuple, invocation: str) -> None:
@@ -293,8 +316,8 @@ def parse_json_flag(raw: str | None, *, flag: str) -> dict:
     return parsed
 
 
-def _area_label(area: dict) -> str:
-    return f"{quote(area.get('name') or '')} (id {area.get('area_id', '')})"
+def _area_label(area: AreaEntry) -> str:
+    return f"{quote(area.name or '')} (id {sent_or(area, 'area_id')})"
 
 
 def _did_you_mean(renderings: list) -> list:
@@ -302,7 +325,7 @@ def _did_you_mean(renderings: list) -> list:
     return [f"did you mean: {', '.join(renderings)}"] if renderings else []
 
 
-def resolve_area(areas: list, needle: str, *, offer_create: bool = False) -> dict:
+def resolve_area(areas: list, needle: str, *, offer_create: bool = False) -> AreaEntry:
     """Find an area by ``area_id`` or by name, however the name was typed.
 
     The lookup itself is :func:`hass_axi.toolkit.names.resolve`, which answers
@@ -313,11 +336,11 @@ def resolve_area(areas: list, needle: str, *, offer_create: bool = False) -> dic
     is -- a filter that mistyped `Kitchn` wanted the kitchen, not a second area
     called `Kitchn`.
     """
-    found = resolve(needle, areas, ident=lambda a: a.get("area_id"), name=lambda a: a.get("name"))
+    found = resolve(needle, areas, ident=lambda a: a.area_id, name=lambda a: a.name)
     if found.found:
         return found.match
     if found.ambiguous:
-        ids = ", ".join(a.get("area_id", "") for a in found.ties)
+        ids = ", ".join(sent_or(a, "area_id") for a in found.ties)
         # Exit 1, not 2: the command was well formed, and only a lookup
         # against the live registry could reveal the name is shared.
         raise AxiError(
@@ -343,7 +366,7 @@ def resolve_area(areas: list, needle: str, *, offer_create: bool = False) -> dic
     )
 
 
-def resolve_area_target(areas: list, needle: str) -> dict:
+def resolve_area_target(areas: list, needle: str) -> AreaEntry:
     """Find the one area a service target names, refusing a guess outright.
 
     `resolve_area`'s id-first rule is right for a filter, where the worst
@@ -356,14 +379,14 @@ def resolve_area_target(areas: list, needle: str) -> dict:
     folded name equals it; otherwise this reports the same ambiguity
     `resolve_area`/`entity list --area` give that input.
     """
-    match = next((a for a in areas if a.get("area_id") == needle), None)
+    match = next((a for a in areas if a.area_id == needle), None)
     if match is not None:
         wanted = fold(needle)
-        others = [a for a in areas if a is not match and fold(a.get("name") or "") == wanted]
+        others = [a for a in areas if a is not match and fold(a.name or "") == wanted]
         if not others:
             return match
         ties = [match, *others]
-        ids = ", ".join(a.get("area_id", "") for a in ties)
+        ids = ", ".join(sent_or(a, "area_id") for a in ties)
         raise AxiError(
             f"{needle!r} matches more than one area: {ids}",
             help_lines=[
@@ -376,7 +399,7 @@ def resolve_area_target(areas: list, needle: str) -> dict:
     return resolve_area(areas, needle)
 
 
-def resolve_floor(floors: list, needle: str) -> dict:
+def resolve_floor(floors: list, needle: str) -> FloorEntry:
     """Find a floor by ``floor_id`` or by name.
 
     Home Assistant stores whatever `floor_id` an area update carries, existing
@@ -384,14 +407,14 @@ def resolve_floor(floors: list, needle: str) -> dict:
     floor nothing answers to, stored at exit 0.
     """
 
-    def label(floor: dict) -> str:
-        return f"{quote(floor.get('name') or '')} (id {floor.get('floor_id', '')})"
+    def label(floor: FloorEntry) -> str:
+        return f"{quote(floor.name or '')} (id {sent_or(floor, 'floor_id')})"
 
-    found = resolve(needle, floors, ident=lambda f: f.get("floor_id"), name=lambda f: f.get("name"))
+    found = resolve(needle, floors, ident=lambda f: f.floor_id, name=lambda f: f.name)
     if found.found:
         return found.match
     if found.ambiguous:
-        ids = ", ".join(f.get("floor_id", "") for f in found.ties)
+        ids = ", ".join(sent_or(f, "floor_id") for f in found.ties)
         raise AxiError(
             f"{needle!r} matches more than one floor: {ids}",
             help_lines=[
@@ -402,7 +425,7 @@ def resolve_floor(floors: list, needle: str) -> dict:
         )
     help_lines = _did_you_mean([label(f) for f in found.near])
     if floors:
-        known = ", ".join(sorted(f.get("floor_id", "") for f in floors))
+        known = ", ".join(sorted(sent_or(f, "floor_id") for f in floors))
         help_lines.append(f"floors in this installation: {known}")
     else:
         help_lines.append("This installation has no floors; create one in Home Assistant first")
@@ -427,8 +450,8 @@ def check_icon(value) -> None:
         )
 
 
-def _device_label(device: dict) -> str:
-    return f"{quote(displayed_device_name(device))} (id {device.get('id', '')})"
+def _device_label(device: DeviceEntry) -> str:
+    return f"{quote(displayed_device_name(device))} (id {sent_or(device, 'id')})"
 
 
 def _no_such_device(needle: str, near, *, by_name: bool, devices: list) -> NotFound:
@@ -441,7 +464,7 @@ def _no_such_device(needle: str, near, *, by_name: bool, devices: list) -> NotFo
     not ids: suggesting it for a truncated id suggests a search that finds
     nothing.
     """
-    begun = [d for d in devices if needle and (d.get("id") or "").startswith(needle)]
+    begun = [d for d in devices if needle and (d.id or "").startswith(needle)]
     candidates = begun + [d for d in near if not any(d is b for b in begun)]
     help_lines = _did_you_mean([_device_label(d) for d in candidates[:MAX_CANDIDATES]])
     help_lines.append("Run `hass-axi device list --fields device_id,name` to see each device's id")
@@ -454,7 +477,7 @@ def _no_such_device(needle: str, near, *, by_name: bool, devices: list) -> NotFo
     )
 
 
-def resolve_device(devices: list, device_id: str) -> dict:
+def resolve_device(devices: list, device_id: str) -> DeviceEntry:
     """Find a device by its id alone, which is all `entity list --device` is given.
 
     That flag is declared `<device_id>` and means it: substring-matching an
@@ -467,14 +490,14 @@ def resolve_device(devices: list, device_id: str) -> dict:
     """
     needle = device_id.strip()
     found = resolve(
-        needle, devices, ident=lambda d: d.get("id"), name=displayed_device_name, by_name=False
+        needle, devices, ident=lambda d: d.id, name=displayed_device_name, by_name=False
     )
     if found.found:
         return found.match
     raise _no_such_device(needle, found.near, by_name=False, devices=devices)
 
 
-def resolve_device_ref(devices: list, needle: str) -> dict:
+def resolve_device_ref(devices: list, needle: str) -> DeviceEntry:
     """Find a device by its ``id`` or by the name Home Assistant displays for it.
 
     The id is tried first, so a device whose displayed name happens to be
@@ -486,11 +509,11 @@ def resolve_device_ref(devices: list, needle: str) -> dict:
     same reason it is on an area.
     """
     text = needle.strip()
-    found = resolve(text, devices, ident=lambda d: d.get("id"), name=displayed_device_name)
+    found = resolve(text, devices, ident=lambda d: d.id, name=displayed_device_name)
     if found.found:
         return found.match
     if found.ambiguous:
-        ids = ", ".join(d.get("id", "") for d in found.ties)
+        ids = ", ".join(sent_or(d, "id") for d in found.ties)
         raise AxiError(
             f"{needle!r} matches more than one device: {ids}",
             help_lines=[
@@ -511,7 +534,7 @@ def area_is_placed(area_id: str, areas: list) -> bool:
     is what made such an entity invisible to `--area <id>` and `--area none`
     alike, and made per-area counts stop summing to the total.
     """
-    return bool(area_id) and any(area.get("area_id") == area_id for area in areas)
+    return bool(area_id) and any(area.area_id == area_id for area in areas)
 
 
 def filter_by_area(rows: list, areas: list, area_filter, scope: list) -> list:
@@ -527,8 +550,8 @@ def filter_by_area(rows: list, areas: list, area_filter, scope: list) -> list:
         scope.append("with no area")
         return [row for row in rows if not area_is_placed(row["area_id"], areas)]
     area = resolve_area(areas, area_filter)
-    scope.append(f"in area {area.get('name')}")
-    return [row for row in rows if row["area_id"] == area.get("area_id")]
+    scope.append(f"in area {area.name}")
+    return [row for row in rows if row["area_id"] == area.area_id]
 
 
 def count_line(shown: int, matched: int, total: int, *, filtered: bool) -> str:
@@ -583,7 +606,7 @@ def write_access(parsed) -> str:
     return readonly.WRITE if parsed.get("write") else readonly.READ
 
 
-def change_rows(current: dict, pending: dict, *, rename: dict | None = None) -> list:
+def change_rows(current, pending: dict, *, rename: dict | None = None) -> list:
     """What a registry write would change, one row per field: from, and to.
 
     Built from the entry as it is stored, so a preview says what the value is
@@ -593,7 +616,7 @@ def change_rows(current: dict, pending: dict, *, rename: dict | None = None) -> 
     rename = rename or {}
     rows = []
     for key in sorted(pending):
-        stored = current.get(rename.get(key, key))
+        stored = getattr(current, rename.get(key, key))
         rows.append(
             {
                 "field": key,

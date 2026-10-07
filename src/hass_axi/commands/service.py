@@ -22,6 +22,7 @@ from axi_toolkit.ha import services as model
 from ..argspec import Command, Flag, Sub
 from ..errors import ApiError, AxiError, NotFound, UsageError
 from ..model import rows as vocabulary
+from ..model.readers import AreaEntry, DeviceEntry, EntityEntry, ServiceCallResult, State
 from ..output import HelpBlock, truncate
 from ..readonly import DYNAMIC, READ, WRITE
 from ._common import (
@@ -38,8 +39,10 @@ from ._common import (
     preview_help,
     preview_note,
     project,
+    read_each,
     resolve_area_target,
     select_fields,
+    sent_or,
 )
 
 GET_FIELDS = vocabulary.FIELDS["service_field"]
@@ -449,9 +452,9 @@ def _call(ctx, parsed):
     if changed:
         doc["changed"] = [
             {
-                "entity_id": state.get("entity_id", ""),
+                "entity_id": sent_or(state, "entity_id"),
                 "name": friendly_name(state),
-                "state": state.get("state", ""),
+                "state": sent_or(state, "state"),
             }
             for state in changed
         ]
@@ -491,11 +494,11 @@ def _resolve_area_names(ctx, parsed) -> None:
     if not given:
         return
     with ctx.ws() as client:
-        areas = client.run("area.list") or []
+        areas = read_each(AreaEntry, client.run("area.list"))
     resolved = []
     for value in given:
         try:
-            resolved.append(resolve_area_target(areas, value).get("area_id") or value)
+            resolved.append(resolve_area_target(areas, value).area_id or value)
         except NotFound:
             resolved.append(value)
     parsed.flags["target_area"] = resolved
@@ -595,15 +598,15 @@ def _preview(ctx, live: _Live, domain: str, service: str, data: dict, parsed, ta
         parts.append(
             f"{_scope_phrase(parsed)} would reach {plural(len(acted_on), 'entity', 'entities')}"
         )
-        skipped = [s.get("entity_id", "") for s in matched if s.get("state") == "unavailable"]
+        skipped = [sent_or(s, "entity_id") for s in matched if s.state == "unavailable"]
         if skipped:
             parts.append(f"{', '.join(skipped)} unavailable, which Home Assistant skips")
         doc["target"] = "; ".join(parts)
         doc["would_reach"] = [
             {
-                "entity_id": state.get("entity_id", ""),
+                "entity_id": sent_or(state, "entity_id"),
                 "name": friendly_name(state),
-                "state": state.get("state", ""),
+                "state": sent_or(state, "state"),
             }
             for state in acted_on[:PREVIEW_ROWS]
         ]
@@ -638,11 +641,10 @@ def _preview(ctx, live: _Live, domain: str, service: str, data: dict, parsed, ta
 def _split_result(result):
     """Separate the changed-state list from an optional service response payload."""
     if isinstance(result, list):
-        return result, None
+        return read_each(State, result), None
     if isinstance(result, dict):
-        changed = result.get("changed_states")
-        response = result.get("service_response")
-        return (changed if isinstance(changed, list) else []), response
+        answer = ServiceCallResult.read(result)
+        return list(answer.changed_states or ()), answer.service_response
     return [], None
 
 
@@ -694,7 +696,7 @@ def _precheck(live: _Live, domain: str, service: str, parsed) -> None:
         return
 
     reported = ", ".join(
-        f"{state.get('entity_id', '')} reports {model.entity_features(state)}"
+        f"{sent_or(state, 'entity_id')} reports {model.entity_features(state.raw)}"
         for state in available
     )
     raise ApiError(
@@ -735,7 +737,7 @@ class _Resolved:
         """
         if not domains:
             return list(self.states)
-        return [state for state in self.states if domain_of(state.get("entity_id", "")) in domains]
+        return [state for state in self.states if domain_of(sent_or(state, "entity_id")) in domains]
 
 
 def _resolve(ctx, parsed) -> _Resolved:
@@ -744,7 +746,7 @@ def _resolve(ctx, parsed) -> _Resolved:
     area_ids = list(parsed.get("target_area") or [])
     device_ids = list(parsed.get("target_device") or [])
 
-    states = {state.get("entity_id"): state for state in ctx.rest().states()}
+    states = {state.entity_id: state for state in read_each(State, ctx.rest().states())}
     problems: list = []
     matched: list = []
 
@@ -756,18 +758,18 @@ def _resolve(ctx, parsed) -> _Resolved:
 
     if area_ids or device_ids:
         with ctx.ws() as client:
-            entries = client.run("entity.list") or []
-            areas = client.run("area.list") or []
-            devices = client.run("device.list") or []
+            entries = read_each(EntityEntry, client.run("entity.list"))
+            areas = read_each(AreaEntry, client.run("area.list"))
+            devices = read_each(DeviceEntry, client.run("device.list"))
         device_areas = device_area_map(devices)
-        known_areas = {area.get("area_id") for area in areas}
-        by_name = {(area.get("name") or "").strip().lower(): area.get("area_id") for area in areas}
-        known_devices = {device.get("id") for device in devices}
+        known_areas = {area.area_id for area in areas}
+        by_name = {(area.name or "").strip().lower(): area.area_id for area in areas}
+        known_devices = {device.id for device in devices}
 
         for area_id in area_ids:
             if area_id in known_areas:
                 matched.extend(
-                    entry.get("entity_id")
+                    entry.entity_id
                     for entry in entries
                     if effective_area_id(entry, device_areas) == area_id
                 )
@@ -786,11 +788,7 @@ def _resolve(ctx, parsed) -> _Resolved:
 
         for device_id in device_ids:
             if device_id in known_devices:
-                matched.extend(
-                    entry.get("entity_id")
-                    for entry in entries
-                    if entry.get("device_id") == device_id
-                )
+                matched.extend(entry.entity_id for entry in entries if entry.device_id == device_id)
             else:
                 problems.append(f"no device with id {device_id!r}")
 
@@ -811,7 +809,7 @@ def _available(states: list) -> list:
     service's target -- even one named outright, which is what separates it
     from an entity that lacks a capability and is refused over.
     """
-    return [state for state in states if state.get("state") != "unavailable"]
+    return [state for state in states if state.state != "unavailable"]
 
 
 def _reached(resolved: _Resolved, spec, domain: str) -> list:
@@ -829,7 +827,7 @@ def _reached(resolved: _Resolved, spec, domain: str) -> list:
     return [
         state
         for state in _available(resolved.within(model.target_domains(spec)))
-        if not masks or model.satisfies(model.entity_features(state), masks)
+        if not masks or model.satisfies(model.entity_features(state.raw), masks)
     ]
 
 
@@ -857,9 +855,9 @@ def _report_target(live: _Live, doc, domain: str, service: str, parsed) -> None:
         raise _no_entities_targeted(resolved, domain, service, parsed)
 
     parts.append(f"{scope} matched {plural(len(reachable), 'entity', 'entities')}")
-    unavailable = [state for state in reachable if state.get("state") == "unavailable"]
+    unavailable = [state for state in reachable if state.state == "unavailable"]
     if unavailable:
-        named = ", ".join(state.get("entity_id", "") for state in unavailable)
+        named = ", ".join(sent_or(state, "entity_id") for state in unavailable)
         parts.append(f"{named} unavailable, which Home Assistant skips without a word")
     elif len(reachable) == 1:
         parts.append("which reported no state change")
@@ -1144,17 +1142,17 @@ def _skipped_reasons(matched: list, masks: list) -> list:
     entity it struck.
     """
     reasons = []
-    unavailable = [state for state in matched if state.get("state") == "unavailable"]
+    unavailable = [state for state in matched if state.state == "unavailable"]
     if unavailable:
-        named = ", ".join(state.get("entity_id", "") for state in unavailable)
+        named = ", ".join(sent_or(state, "entity_id") for state in unavailable)
         reasons.append(f"{named} {'is' if len(unavailable) == 1 else 'are'} unavailable")
     wanted = ", ".join(str(mask) for mask in masks)
     for state in matched:
-        if state.get("state") == "unavailable":
+        if state.state == "unavailable":
             continue
-        features = model.entity_features(state)
+        features = model.entity_features(state.raw)
         if masks and not model.satisfies(features, masks):
-            reasons.append(f"{state.get('entity_id', '')} reports {features}, not any of {wanted}")
+            reasons.append(f"{sent_or(state, 'entity_id')} reports {features}, not any of {wanted}")
     return reasons
 
 
@@ -1175,11 +1173,11 @@ def _incapable(live: _Live, parsed, masks) -> list:
         return []
     out = []
     for state in _available(resolved.states):
-        if state.get("entity_id") not in (parsed.get("target_entity") or []):
+        if state.entity_id not in (parsed.get("target_entity") or []):
             continue
-        features = model.entity_features(state)
+        features = model.entity_features(state.raw)
         if not model.satisfies(features, masks):
-            out.append((state.get("entity_id", ""), features))
+            out.append((sent_or(state, "entity_id"), features))
     return out
 
 

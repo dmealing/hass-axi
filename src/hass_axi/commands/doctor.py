@@ -5,9 +5,10 @@ from __future__ import annotations
 from ..argspec import Command, Sub
 from ..config import describe_environment, missing_env_vars, setup_help
 from ..errors import AxiError, fault_class
+from ..model.readers import ApiRoot, Config
 from ..output import HelpBlock
 from ..readonly import READ
-from ._common import plural
+from ._common import plural, sent_or
 
 COMMAND = Command(
     name="doctor",
@@ -49,10 +50,10 @@ def run(ctx, sub: str, parsed):
     version = ""
     try:
         health = ctx.rest().health()
-        detail = health.get("message") if isinstance(health, dict) else str(health)
+        detail = ApiRoot.read(health).message if isinstance(health, dict) else str(health)
         info = ctx.rest().config_info()
         if isinstance(info, dict):
-            version = info.get("version", "")
+            version = sent_or(Config.read(info), "version")
         checks.append(
             _check(
                 "rest", "ok", f"{detail or 'reachable'}{f' (version {version})' if version else ''}"

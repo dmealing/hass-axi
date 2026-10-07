@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import re
 
+from ..model.readers import ApiRoot
+
 _JSON = "application/json"
 
 #: Content types that are text whatever they are called. Anything else that is
@@ -70,7 +72,7 @@ def health_fault(value) -> str | None:
     """
     if not isinstance(value, dict):
         return describe(value)
-    if not isinstance(value.get("message"), str):
+    if not isinstance(ApiRoot.read(value).message, str):
         return "a JSON object with no `message`"
     return None
 
