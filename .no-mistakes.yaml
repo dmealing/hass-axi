@@ -25,3 +25,12 @@
 commands:
   test: "scripts/ci-local.sh --only leakcheck --only commits --only test --only skill"
   lint: "scripts/ci-local.sh --only lint --only model"
+
+# Public repository: keep PR bodies short and the run intent out of them.
+pr:
+  publish_intent: false
+  appendix: collapsed
+
+# Mark a failing test command as pre-existing when it also fails on the base.
+test:
+  base_attribution: true
