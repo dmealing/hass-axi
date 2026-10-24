@@ -1211,12 +1211,12 @@ off. Run `hass-axi setup hooks` once after upgrading: it rewrites the hook entry
 OpenCode plugin the old name installed. It recognises them by the exact command this tool wrote, so
 a hook belonging to the other `ha-axi` is left alone.
 
-**The final `ha-axi` release is a transitional package.** `legacy/ha-axi/` in this repository builds
-`ha-axi` 0.8.0, which contains no code of its own: it depends on `hass-axi`, so `pip install -U
+**The current `ha-axi` release is a transitional package.** `legacy/ha-axi/` in this repository builds
+`ha-axi` 0.8.1, which contains no code of its own: it depends on `hass-axi`, so `pip install -U
 ha-axi` brings the renamed tool in, and its `ha-axi` command forwards to `hass-axi` after a
 deprecation notice on stderr, so existing scripts and hooks keep working until they are moved. It is
-published once, by hand, after `hass-axi` itself is on PyPI, and nothing is published under the old
-name after it. Uninstalling it (`pip uninstall ha-axi`) removes the forwarding command and frees the
+published by hand, after `hass-axi` itself is on PyPI, and republished only to refresh its PyPI text.
+Uninstalling it (`pip uninstall ha-axi`) removes the forwarding command and frees the
 name for the other tool.
 
 ## License
