@@ -22,7 +22,15 @@ from axi_toolkit.ha import services as model
 from ..argspec import Command, Flag, Sub
 from ..errors import ApiError, AxiError, NotFound, UsageError
 from ..model import rows as vocabulary
-from ..model.readers import AreaEntry, DeviceEntry, EntityEntry, ServiceCallResult, State
+from ..model.readers import (
+    AreaEntry,
+    DeviceEntry,
+    EntityEntry,
+    FloorEntry,
+    LabelEntry,
+    ServiceCallResult,
+    State,
+)
 from ..output import HelpBlock, truncate
 from ..readonly import DYNAMIC, READ, WRITE
 from ._common import (
@@ -106,6 +114,8 @@ COMMAND = Command(
                 Flag("--target-entity", "<entity_id>", repeat=True),
                 Flag("--target-area", "<id|name>", repeat=True),
                 Flag("--target-device", "<device_id>", repeat=True),
+                Flag("--target-floor", "<floor_id>", repeat=True),
+                Flag("--target-label", "<label_id>", repeat=True),
                 Flag(
                     "--data", "<key=value>", repeat=True, note="value parsed as JSON when it parses"
                 ),
@@ -114,7 +124,7 @@ COMMAND = Command(
                 Flag(
                     "--no-check",
                     boolean=True,
-                    note="skip the capability pre-check on --target-area/--target-device",
+                    note="skip the capability pre-check on an area, device, floor or label target",
                 ),
                 WRITE_FLAG,
             ),
@@ -127,8 +137,9 @@ COMMAND = Command(
         "that reaches nothing",
         "--data-json takes a whole JSON object; --data takes repeated key=value pairs",
         "a refused call is explained from `/api/services`, which a sent call reads on failure only",
-        "--target-area and --target-device pre-check the published capability, because"
-        " Home Assistant drops an entity that lacks it without saying so",
+        "--target-area, --target-device, --target-floor and --target-label pre-check the "
+        "published capability, because Home Assistant drops an entity that lacks it without "
+        "saying so; `hass-axi floor list` and `hass-axi label list` show the ids",
     ),
     examples=(
         "hass-axi service list",
@@ -137,6 +148,7 @@ COMMAND = Command(
         "hass-axi service call light.turn_on --target-entity light.example_lamp",
         "hass-axi service call light.turn_on --target-entity light.example_lamp --write",
         "hass-axi service call light.turn_on --target-area example_room --data brightness=180 --write",
+        "hass-axi service call light.turn_off --target-label example_label --write",
         "hass-axi service call climate.set_temperature --target-entity climate.example_thermostat --data-json '{\"temperature\": 21}' --write",
     ),
 )
@@ -394,6 +406,19 @@ class _Live:
         return self._resolved
 
 
+def _targeted(parsed) -> bool:
+    """Whether any target flag was given."""
+    return bool(parsed.get("target_entity")) or _registry_targeted(parsed)
+
+
+def _registry_targeted(parsed) -> bool:
+    """Whether the target is reached through a registry, which is where Home Assistant skips silently."""
+    return any(
+        parsed.get(flag)
+        for flag in ("target_area", "target_device", "target_floor", "target_label")
+    )
+
+
 def _call(ctx, parsed):
     domain, service = _split_name(parsed.positionals[0])
 
@@ -411,14 +436,14 @@ def _call(ctx, parsed):
         ("target_entity", "entity_id"),
         ("target_area", "area_id"),
         ("target_device", "device_id"),
+        ("target_floor", "floor_id"),
+        ("target_label", "label_id"),
     ):
         selected = parsed.get(flag)
         if selected:
             data[key] = selected
 
-    targeted = bool(
-        parsed.get("target_entity") or parsed.get("target_area") or parsed.get("target_device")
-    )
+    targeted = _targeted(parsed)
     live = _Live(ctx)
     if not parsed.get("write"):
         return _preview(ctx, live, domain, service, data, parsed, targeted)
@@ -653,7 +678,7 @@ def _precheck(live: _Live, domain: str, service: str, parsed) -> None:
     """
     if parsed.get("no_check"):
         return
-    if not (parsed.get("target_area") or parsed.get("target_device")):
+    if not _registry_targeted(parsed):
         return
 
     spec = live.spec(domain, service)
@@ -729,6 +754,8 @@ def _resolve(ctx, parsed) -> _Resolved:
     entity_ids = list(parsed.get("target_entity") or [])
     area_ids = list(parsed.get("target_area") or [])
     device_ids = list(parsed.get("target_device") or [])
+    floor_ids = list(parsed.get("target_floor") or [])
+    label_ids = list(parsed.get("target_label") or [])
 
     states = {state.entity_id: state for state in read_each(State, ctx.rest().states())}
     problems: list = []
@@ -740,11 +767,13 @@ def _resolve(ctx, parsed) -> _Resolved:
         else:
             problems.append(f"no entity with id {entity_id!r} in this installation")
 
-    if area_ids or device_ids:
+    if area_ids or device_ids or floor_ids or label_ids:
         with ctx.ws() as client:
             entries = read_each(EntityEntry, client.run("entity.list"))
             areas = read_each(AreaEntry, client.run("area.list"))
             devices = read_each(DeviceEntry, client.run("device.list"))
+            floors = read_each(FloorEntry, client.run("floor.list")) if floor_ids else []
+            labels = read_each(LabelEntry, client.run("label.list")) if label_ids else []
         device_areas = device_area_map(devices)
         known_areas = {area.area_id for area in areas}
         by_name = {(area.name or "").strip().lower(): area.area_id for area in areas}
@@ -775,6 +804,35 @@ def _resolve(ctx, parsed) -> _Resolved:
                 matched.extend(entry.entity_id for entry in entries if entry.device_id == device_id)
             else:
                 problems.append(f"no device with id {device_id!r}")
+
+        known_floors = {floor.floor_id for floor in floors}
+        for floor_id in floor_ids:
+            if floor_id not in known_floors:
+                problems.append(f"no floor with id {floor_id!r}")
+                continue
+            on_floor = {area.area_id for area in areas if area.floor_id == floor_id}
+            matched.extend(
+                entry.entity_id
+                for entry in entries
+                if effective_area_id(entry, device_areas) in on_floor
+            )
+
+        known_labels = {label.label_id for label in labels}
+        for label_id in label_ids:
+            if label_id not in known_labels:
+                problems.append(f"no label with id {label_id!r}")
+                continue
+            # A label reaches what carries it, what its device carries it for, and
+            # what is in an area that carries it.
+            labelled_devices = {d.id for d in devices if label_id in (d.labels or ())}
+            labelled_areas = {a.area_id for a in areas if label_id in (a.labels or ())}
+            matched.extend(
+                entry.entity_id
+                for entry in entries
+                if label_id in (entry.labels or ())
+                or entry.device_id in labelled_devices
+                or effective_area_id(entry, device_areas) in labelled_areas
+            )
 
     seen: set = set()
     resolved = []
@@ -882,6 +940,8 @@ def _scope_phrase(parsed) -> str:
         ("target_entity", "entity"),
         ("target_area", "area"),
         ("target_device", "device"),
+        ("target_floor", "floor"),
+        ("target_label", "label"),
     ):
         values = parsed.get(flag) or []
         if values:
@@ -893,6 +953,8 @@ def _target_help(domain: str, service: str, parsed) -> list:
     lines = []
     areas = parsed.get("target_area") or []
     devices = parsed.get("target_device") or []
+    floors = parsed.get("target_floor") or []
+    labels = parsed.get("target_label") or []
     if areas:
         lines.append(
             f"Run `hass-axi state list --area {areas[0]} --domain {domain}` to see what is there"
@@ -903,7 +965,11 @@ def _target_help(domain: str, service: str, parsed) -> list:
         # search haystack, so the line this replaces named a command that
         # answered `0 registry entries found` every single time it was run.
         lines.append(f"Run `hass-axi entity list --device {devices[0]}` to see a device's entities")
-    if not areas and not devices:
+    if floors:
+        lines.append("Run `hass-axi floor list` to see each floor's id and how many areas it holds")
+    if labels:
+        lines.append("Run `hass-axi label list` to see each label's id and what carries it")
+    if not (areas or devices or floors or labels):
         lines.append("Run `hass-axi state get <entity_id>` to see an entity's current state")
     lines.append(f"Run `hass-axi service get {domain}.{service}` to see what this service targets")
     return lines
@@ -953,9 +1019,7 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
     if fault is not None:
         return fault
 
-    targeted = bool(
-        parsed.get("target_entity") or parsed.get("target_area") or parsed.get("target_device")
-    )
+    targeted = _targeted(parsed)
     if model.takes_target(spec) and not targeted and exc.code == "BAD_REQUEST":
         return ApiError(
             f"{domain}.{service} acts on a target and none was given",
@@ -986,7 +1050,8 @@ def _missing_target_help(domain: str, service: str) -> list:
     return [
         f"Run `hass-axi service call {domain}.{service} --target-entity <entity_id>` "
         "to name what it acts on",
-        "--target-area <id|name> and --target-device <device_id> name several at once",
+        "--target-area <id|name>, --target-device <device_id>, --target-floor <floor_id> and "
+        "--target-label <label_id> name several at once",
         f"Run `hass-axi state list --domain {domain}` to find an entity id",
     ]
 
@@ -1086,9 +1151,7 @@ def _unreached_target(live: _Live, spec, domain: str, service: str, parsed):
     target and that nothing else could explain. A transport that will not answer
     is no reason to invent a verdict: the original refusal stands instead.
     """
-    if not (
-        parsed.get("target_entity") or parsed.get("target_area") or parsed.get("target_device")
-    ):
+    if not _targeted(parsed):
         return None
     try:
         resolved = live.resolved(parsed)

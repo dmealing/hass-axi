@@ -907,10 +907,14 @@ rule rather than by reach: `sensor` crosses transports on every run (1); `statis
 recorder's metadata to choose what to ask for and reports a derived summary with caveats (5);
 `history` and `logbook` answer with derived summaries — time in each state, one folded `cause` —
 rather than the raw rows (5), and reach a recorder no existing noun reads; `ping` is the one
-authenticated round-trip a liveness gate needs, which `doctor`'s four checks are not. Sixteen is the
-ceiling this argument supports; the next noun has to displace one or fold into one. `--data key=value`
-stays first-class in every case, because it reaches every field of every service forever with no
-metadata to go stale.
+authenticated round-trip a liveness gate needs, which `doctor`'s four checks are not. `floor` and
+`label` were added for `service call --target-floor` and `--target-label`: each crosses registries on
+every run (1) — a floor's area count and a label's entity, device and area counts are registry reads
+folded into one row, which no existing noun answers — and the id a target flag takes has nowhere
+else to be found. There is no numeric cap on nouns: each one argues by the promotion rule or is
+demoted, and root help and the `context` document are held to what they say by their snapshots
+rather than by a count. `--data key=value` stays first-class in every case, because it reaches
+every field of every service forever with no metadata to go stale.
 
 **Never validate an argument against metadata you cannot refresh.** Undeclared flags are rejected by
 name, so stale metadata converts a valid operation into a hard failure with a "valid flags" list

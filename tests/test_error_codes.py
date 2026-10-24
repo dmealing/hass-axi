@@ -492,6 +492,8 @@ def test_every_declared_websocket_error_maps_to_a_declared_code(
 INVOCATIONS = {
     ("api", "api"): ["api", "/config"],
     ("area", "list"): ["area", "list"],
+    ("floor", "list"): ["floor", "list"],
+    ("label", "list"): ["label", "list"],
     ("area", "get"): ["area", "get", "example_room"],
     ("area", "create"): ["area", "create", "--write", "--name", "Example Room Two"],
     ("area", "update"): ["area", "update", "--write", "example_room", "--name", "Renamed"],

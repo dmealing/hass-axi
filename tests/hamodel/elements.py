@@ -26,6 +26,7 @@ ELEMENT = {
     "device_entry": "device registry entry",
     "area_entry": "area registry entry",
     "floor_entry": "floor registry entry",
+    "label_entry": "label registry entry",
     "entity_update_result": "entity update result",
     "service_domain": "service domain",
     "service": "service",
@@ -169,6 +170,7 @@ ATTRIBUTES = {
         "aliases",
         "floor_id",
         "icon",
+        "labels",
     ),
     "floor_entry": (
         "floor_id",
@@ -176,6 +178,15 @@ ATTRIBUTES = {
         "aliases",
         "icon",
         "level",
+        "created_at",
+        "modified_at",
+    ),
+    "label_entry": (
+        "label_id",
+        "name",
+        "icon",
+        "color",
+        "description",
         "created_at",
         "modified_at",
     ),
@@ -299,6 +310,10 @@ REQUIRED = {
     ),
     "floor_entry": (
         "floor_id",
+        "name",
+    ),
+    "label_entry": (
+        "label_id",
         "name",
     ),
     "entity_update_result": ("entity_entry",),
@@ -428,6 +443,11 @@ def area_entry(**keys) -> dict:
 def floor_entry(**keys) -> dict:
     """The keys of one floor registry entry object, as homeassistant::registry::FloorEntry declares them."""
     return _object("floor_entry", keys)
+
+
+def label_entry(**keys) -> dict:
+    """The keys of one label registry entry object, as homeassistant::registry::LabelEntry declares them."""
+    return _object("label_entry", keys)
 
 
 def entity_update_result(**keys) -> dict:

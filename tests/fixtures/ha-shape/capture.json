@@ -163,6 +163,15 @@
       "modified_at": ["number"],
       "name": ["string"]
     },
+    "registry.label": {
+      "color": ["null", "string"],
+      "created_at": ["number"],
+      "description": ["null", "string"],
+      "icon": ["null", "string"],
+      "label_id": ["string"],
+      "modified_at": ["number"],
+      "name": ["string"]
+    },
     "rest.api_root": {
       "message": ["string"]
     },

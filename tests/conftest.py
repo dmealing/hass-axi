@@ -391,6 +391,7 @@ ENTITY_REGISTRY = [
         has_entity_name=True,
         area_id="example_room",
         device_id="device_one",
+        labels=["example_label"],
         unique_id="unique-one",
     ),
     # The majority case: names nothing itself, so its whole name is its
@@ -507,6 +508,41 @@ AREA_REGISTRY = [
         icon="mdi:door",
         floor_id="ground",
         aliases=[],
+        labels=["hall_label"],
+    ),
+]
+
+#: The label registry, as `config/label_registry/list` publishes an entry. One
+#: label sits on an entity and on a device, one on an area, and one on nothing,
+#: so "a label that exists" and "a label in use" are two cases, and a label has
+#: three different places to be carried from.
+LABEL_REGISTRY = [
+    elements.label_entry(
+        color="red",
+        created_at=1767225600.0,
+        description=None,
+        icon="mdi:tag",
+        label_id="example_label",
+        modified_at=1767225600.0,
+        name="Example Label",
+    ),
+    elements.label_entry(
+        color=None,
+        created_at=1767225600.0,
+        description=None,
+        icon=None,
+        label_id="hall_label",
+        modified_at=1767225600.0,
+        name="Hall Label",
+    ),
+    elements.label_entry(
+        color=None,
+        created_at=1767225600.0,
+        description=None,
+        icon=None,
+        label_id="unused_label",
+        modified_at=1767225600.0,
+        name="Unused Label",
     ),
 ]
 
@@ -551,6 +587,7 @@ DEVICE_REGISTRY = [
         name="Ceiling Fitting",
         name_by_user="Example Ceiling",
         disabled_by=None,
+        labels=["example_label"],
         area_id="example_hall",
         manufacturer="Example Co",
         model="Model Y",
@@ -879,9 +916,19 @@ def entities_targeted(body) -> list:
 
     found = list(listed("entity_id"))
     areas, devices = listed("area_id"), listed("device_id")
-    if areas or devices:
+    floors, labels = listed("floor_id"), listed("label_id")
+    # A floor is the areas on it; a label is whatever carries it -- the entity,
+    # its device, or the area it sits in.
+    areas += [a["area_id"] for a in AREA_REGISTRY if a.get("floor_id") in floors]
+    areas += [a["area_id"] for a in AREA_REGISTRY if set(a.get("labels") or ()) & set(labels)]
+    devices += [d["id"] for d in DEVICE_REGISTRY if set(d.get("labels") or ()) & set(labels)]
+    if areas or devices or labels:
         for entry in ENTITY_REGISTRY:
-            if area_of_registry_entry(entry) in areas or entry.get("device_id") in devices:
+            if (
+                area_of_registry_entry(entry) in areas
+                or entry.get("device_id") in devices
+                or set(entry.get("labels") or ()) & set(labels)
+            ):
                 found.append(entry["entity_id"])
     seen, ordered = set(), []
     for entity_id in found:
@@ -1638,6 +1685,7 @@ class FakeWsServer:
         self.areas = [json.loads(json.dumps(a)) for a in AREA_REGISTRY]
         self.devices = [json.loads(json.dumps(d)) for d in DEVICE_REGISTRY]
         self.floors = [json.loads(json.dumps(f)) for f in FLOOR_REGISTRY]
+        self.labels = [json.loads(json.dumps(entry)) for entry in LABEL_REGISTRY]
         #: The credential this server accepts; see `FakeRestServer.token`.
         self.token = FAKE_TOKEN
         self.statistics_meta = [json.loads(json.dumps(m)) for m in STATISTICS_METADATA]
@@ -1958,7 +2006,7 @@ class FakeWsServer:
                 return ok(device)
             return unhandled()
         if type_ == "config/label_registry/list":
-            return ok([])
+            return ok(self.labels)
         if type_ == "get_config":
             return ok(elements.config(version="2026.1.0", location_name="Example Home"))
         if type_ == "get_services":

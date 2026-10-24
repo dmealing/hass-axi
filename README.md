@@ -267,6 +267,12 @@ reaching something exits 0 with the count and any entity that was `unavailable` 
 skipped. Which domains a service can reach is read from its published `target`, never guessed from
 its name.
 
+A target can be an entity, an area, a device, a floor (`--target-floor <floor_id>`) or a label
+(`--target-label <label_id>`), each repeatable. A floor reaches the entities in the areas on it, and a
+label reaches whatever carries it: the entity, its device, or the area it is in. `hass-axi floor list`
+and `hass-axi label list` show the ids, with how many areas each floor holds and what each label is
+on, and an id that no floor or label has is reported by name rather than reaching nothing.
+
 **A refusal carries no reason at all.** Home Assistant renders a rejected service call as an empty
 `400` — the status line and no body — so an unknown service, an undeclared field and a missing
 required one are indistinguishable on the wire. (Two refusals are worse still: a named entity
@@ -555,6 +561,8 @@ The whole command surface, and the transport each half runs on:
 | --- | --- | --- |
 | `hass-axi entity list\|get\|update` | WebSocket | The entity registry: names, areas, platforms, entity ids |
 | `hass-axi area list\|get\|create\|update` | WebSocket | The area registry |
+| `hass-axi floor list` | WebSocket | The floor registry, with how many areas each floor holds |
+| `hass-axi label list` | WebSocket | The label registry, with what carries each label |
 | `hass-axi device list\|get\|update` | WebSocket | The device registry: device names and areas, which entities inherit |
 | `hass-axi service list\|get\|call` | REST | Discover services, read one's fields, preview a call and send it |
 | `hass-axi state list\|get` | REST | Entity states and attributes as they are right now |

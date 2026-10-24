@@ -429,7 +429,7 @@ def resolve_floor(floors: list, needle: str) -> FloorEntry:
         help_lines.append(f"floors in this installation: {known}")
     else:
         help_lines.append("This installation has no floors; create one in Home Assistant first")
-    help_lines.append("Run `hass-axi ws floor.list` to see each floor's id and name")
+    help_lines.append("Run `hass-axi floor list` to see each floor's id and name")
     raise NotFound(
         f"no floor with id or name {needle!r}",
         help_lines=help_lines,

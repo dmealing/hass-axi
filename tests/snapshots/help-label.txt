@@ -1,0 +1,10 @@
+usage: hass-axi label <subcommand>
+description: Read the label registry over the WebSocket API
+subcommands[1]:
+  list
+flags{list}:
+  (none)
+note:
+  a label can sit on an entity, a device or an area, and `--target-label` on `service call` reaches everything that carries it
+examples:
+  hass-axi label list

@@ -104,6 +104,18 @@ UNOBSERVED = _unobserved()
 #: Types the doubles send for a key the capture has, where the lab showed the
 #: key with other types only: (object, key, type) -> why.
 UNOBSERVED_TYPES = {
+    ("registry.area", "labels[]", "string"): (
+        "the lab assigns no labels, so every list of them it sent was empty"
+    ),
+    ("registry.device", "labels[]", "string"): (
+        "the lab assigns no labels, so every list of them it sent was empty"
+    ),
+    ("registry.entity", "labels[]", "string"): (
+        "the lab assigns no labels, so every list of them it sent was empty"
+    ),
+    ("registry.entity.extended", "labels[]", "string"): (
+        "the lab assigns no labels, so every list of them it sent was empty"
+    ),
     ("service.call", "changed_states[]", "object"): (
         "the list holds the states a call changed, and the lab's one service that "
         "answers with data changes none, so the list it sent was empty"
@@ -171,8 +183,10 @@ OWN = {
     "commands/device.py": {"row"},
     "commands/doctor.py": {"env"},
     "commands/entity.py": {"row"},
+    "commands/floor.py": {"row"},
     "commands/history.py": {"e", "summary"},
     "commands/home.py": {"row"},
+    "commands/label.py": {"row"},
     "commands/logbook.py": {"r"},
     "commands/sensor.py": {"r", "row"},
     "commands/service.py": {"detail", "doc", "rows[0]"},

@@ -94,6 +94,7 @@ EXPECTED = (
     "registry.entity",
     "registry.entity.extended",
     "registry.floor",
+    "registry.label",
     "rest.api_root",
     "rest.config",
     "rest.error",
@@ -133,6 +134,7 @@ READ_TYPES = frozenset(
         "config/entity_registry/get",
         "config/entity_registry/list",
         "config/floor_registry/list",
+        "config/label_registry/list",
         "ping",
         "recorder/get_statistics_metadata",
         "recorder/list_statistic_ids",
@@ -415,6 +417,15 @@ def seed(target: Target) -> None:
         # A second floor and an area with nothing set beyond a name: what
         # either carries when nobody chose an icon or a level for it.
         socket.must("config/floor_registry/create", name="Example Annex")
+        # A label with everything set and one with only a name, for the same reason.
+        socket.must(
+            "config/label_registry/create",
+            name="Example Label",
+            icon="mdi:tag",
+            color="red",
+            description="Example description",
+        )
+        socket.must("config/label_registry/create", name="Example Tag")
         socket.must("config/area_registry/create", name="Example Room")
         areas = socket.must("config/area_registry/list")
         area_id = areas[0]["area_id"]
@@ -620,6 +631,7 @@ def _read_websocket(target: Target, shapes: Shapes, states: list) -> str:
         shapes.add("registry.device", socket.result("config/device_registry/list"))
         shapes.add("registry.area", socket.result("config/area_registry/list"))
         shapes.add("registry.floor", socket.result("config/floor_registry/list"))
+        shapes.add("registry.label", socket.result("config/label_registry/list"))
 
         metadata = socket.result("recorder/list_statistic_ids") or []
         shapes.add("recorder.statistic_meta", metadata)
