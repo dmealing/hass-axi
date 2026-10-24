@@ -5,11 +5,11 @@ build-backend = "hatchling.build"
 [project]
 name = "hass-axi"
 version = "0.10.3"
-description = "Agent eXperience Interface (AXI) CLI for Home Assistant: entity, area and device registry administration over the WebSocket API, and service calls that explain their refusals"
+description = "Home Assistant CLI for LLM agents, in Python: an AXI (Agent eXperience Interface) tool for the entity, area and device registries, and for service calls that explain their refusals"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
-keywords = ["home-assistant", "home-automation", "cli", "axi", "agent", "registry", "websocket", "toon", "llm", "homeassistant", "ai-agent", "claude-code"]
+keywords = ["home-assistant", "home-automation", "cli", "axi", "agent", "registry", "websocket", "toon", "llm", "homeassistant", "ai-agent", "claude-code", "home-assistant-cli", "ai-agents"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
