@@ -36,10 +36,12 @@ from ..readonly import DYNAMIC, READ, WRITE
 from ._common import (
     WRITE_FLAG,
     WRITE_FLAG_NAME,
+    carries,
     device_area_map,
     domain_of,
     effective_area_id,
     empty_listing,
+    entities_in_areas,
     friendly_name,
     parse_json_flag,
     parse_pairs,
@@ -781,11 +783,7 @@ def _resolve(ctx, parsed) -> _Resolved:
 
         for area_id in area_ids:
             if area_id in known_areas:
-                matched.extend(
-                    entry.entity_id
-                    for entry in entries
-                    if effective_area_id(entry, device_areas) == area_id
-                )
+                matched.extend(entities_in_areas(entries, {area_id}, device_areas))
                 continue
             real = by_name.get(area_id.strip().lower())
             if real:
@@ -811,11 +809,7 @@ def _resolve(ctx, parsed) -> _Resolved:
                 problems.append(f"no floor with id {floor_id!r}")
                 continue
             on_floor = {area.area_id for area in areas if area.floor_id == floor_id}
-            matched.extend(
-                entry.entity_id
-                for entry in entries
-                if effective_area_id(entry, device_areas) in on_floor
-            )
+            matched.extend(entities_in_areas(entries, on_floor, device_areas))
 
         known_labels = {label.label_id for label in labels}
         for label_id in label_ids:
@@ -824,12 +818,12 @@ def _resolve(ctx, parsed) -> _Resolved:
                 continue
             # A label reaches what carries it, what its device carries it for, and
             # what is in an area that carries it.
-            labelled_devices = {d.id for d in devices if label_id in (d.labels or ())}
-            labelled_areas = {a.area_id for a in areas if label_id in (a.labels or ())}
+            labelled_devices = {d.id for d in devices if carries(d, label_id)}
+            labelled_areas = {a.area_id for a in areas if carries(a, label_id)}
             matched.extend(
                 entry.entity_id
                 for entry in entries
-                if label_id in (entry.labels or ())
+                if carries(entry, label_id)
                 or entry.device_id in labelled_devices
                 or effective_area_id(entry, device_areas) in labelled_areas
             )

@@ -153,6 +153,18 @@ def effective_area_id(entry: EntityEntry, device_areas: dict) -> str:
     return entry.area_id or device_areas.get(entry.device_id) or ""
 
 
+def entities_in_areas(entries: list, area_ids, device_areas: dict) -> list:
+    """Entity ids whose effective area is one of ``area_ids``."""
+    return [
+        entry.entity_id for entry in entries if effective_area_id(entry, device_areas) in area_ids
+    ]
+
+
+def carries(entry, label_id: str) -> bool:
+    """Whether a registry entry carries a label."""
+    return label_id in (entry.labels or ())
+
+
 def reject_conflicting_flags(parsed, *pairs: tuple, invocation: str) -> None:
     """Reject each set flag used together with its ``--clear`` counterpart."""
     for set_flag, clear_flag in pairs:

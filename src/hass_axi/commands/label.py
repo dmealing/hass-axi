@@ -6,7 +6,7 @@ from ..argspec import Command, Sub
 from ..model.readers import AreaEntry, DeviceEntry, EntityEntry, LabelEntry
 from ..output import HelpBlock
 from ..readonly import READ
-from ._common import empty_listing, plural, read_each, sent_or
+from ._common import carries, empty_listing, plural, read_each, sent_or
 
 COMMAND = Command(
     name="label",
@@ -29,18 +29,17 @@ COMMAND = Command(
 
 
 def _carrying(label_id, entries) -> int:
-    return sum(1 for entry in entries if label_id in (entry.labels or ()))
+    return sum(1 for entry in entries if carries(entry, label_id))
 
 
 def run(ctx, sub: str, parsed):
     with ctx.ws() as client:
         labels = read_each(LabelEntry, client.run("label.list"))
+        if not labels:
+            return empty_listing("labels", "0 labels defined in this installation")
         entities = read_each(EntityEntry, client.run("entity.list"))
         devices = read_each(DeviceEntry, client.run("device.list"))
         areas = read_each(AreaEntry, client.run("area.list"))
-
-    if not labels:
-        return empty_listing("labels", "0 labels defined in this installation")
 
     rows = [
         {

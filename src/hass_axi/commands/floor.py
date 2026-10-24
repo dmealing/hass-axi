@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 from ..argspec import Command, Sub
 from ..model.readers import AreaEntry, FloorEntry
 from ..output import HelpBlock
@@ -39,19 +41,19 @@ def run(ctx, sub: str, parsed):
             "areas_without_floor": len(areas),
         }
 
-    counts: dict = {}
-    for area in areas:
-        counts[area.floor_id] = counts.get(area.floor_id, 0) + 1
+    counts = Counter(area.floor_id for area in areas)
+    floors.sort(
+        key=lambda floor: (floor.level is None, floor.level or 0, (floor.name or "").lower())
+    )
     rows = [
         {
             "floor_id": sent_or(floor, "floor_id"),
             "name": floor.name or "",
             "level": floor.level if floor.level is not None else "",
-            "areas": counts.get(floor.floor_id, 0),
+            "areas": counts[floor.floor_id],
         }
         for floor in floors
     ]
-    rows.sort(key=lambda row: (row["level"] == "", row["level"] or 0, row["name"].lower()))
 
     on_a_floor = sum(row["areas"] for row in rows)
     return {
