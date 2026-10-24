@@ -4,7 +4,7 @@ An Agent eXperience Interface (AXI) CLI for Home Assistant: rename and move enti
 
 [![PyPI](https://img.shields.io/pypi/v/hass-axi)](https://pypi.org/project/hass-axi/)
 [![Python versions](https://img.shields.io/pypi/pyversions/hass-axi)](https://pypi.org/project/hass-axi/)
-[![License: MIT](https://img.shields.io/pypi/l/hass-axi)](LICENSE)
+[![License: MIT](https://img.shields.io/pypi/l/hass-axi)](https://github.com/dmealing/hass-axi/blob/main/LICENSE)
 
 > Formerly published as `ha-axi`, which is now an unrelated project's name: see [Moving from `ha-axi`](#moving-from-ha-axi).
 
@@ -48,7 +48,7 @@ Plex user with Home Assistant? [plex-axi](https://github.com/dmealing/plex-axi) 
 library and leaves playback to Home Assistant, which `hass-axi service call` can dispatch.
 
 Not affiliated with or endorsed by Nabu Casa or the Open Home Foundation. Not affiliated with or
-endorsed by Plex Inc. Plex is a trademark of Plex, Inc.
+endorsed by Plex, Inc. Plex is a trademark of Plex, Inc.
 
 ---
 
