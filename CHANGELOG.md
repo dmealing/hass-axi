@@ -4,6 +4,13 @@ This project was published as `ha-axi` up to and including 0.7.1, and as `hass-a
 release after it. The entries below 0.7.1 describe `ha-axi`; their links point at the repository's
 old name, which GitHub redirects.
 
+## [0.10.3](https://github.com/dmealing/hass-axi/compare/v0.10.2...v0.10.3) (2026-10-24)
+
+
+### Bug Fixes
+
+* **service:** read the service model through generated readers ([#51](https://github.com/dmealing/hass-axi/issues/51)) ([a1afb0f](https://github.com/dmealing/hass-axi/commit/a1afb0fae89902d066711504f98c988b83dc1a60))
+
 ## [0.10.2](https://github.com/dmealing/hass-axi/compare/v0.10.1...v0.10.2) (2026-10-06)
 
 
