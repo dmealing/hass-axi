@@ -4,6 +4,25 @@ This project was published as `ha-axi` up to and including 0.7.1, and as `hass-a
 release after it. The entries below 0.7.1 describe `ha-axi`; their links point at the repository's
 old name, which GitHub redirects.
 
+## [0.11.0](https://github.com/dmealing/hass-axi/compare/v0.10.3...v0.11.0) (2026-10-24)
+
+
+### Features
+
+* **commands:** target floors and labels in service call, add floor and label list ([#53](https://github.com/dmealing/hass-axi/issues/53)) ([34de90c](https://github.com/dmealing/hass-axi/commit/34de90c303a24b5bf869c2deb6abb6dd033ab8d1))
+
+
+### Bug Fixes
+
+* **context:** name the default subcommand show ([34de90c](https://github.com/dmealing/hass-axi/commit/34de90c303a24b5bf869c2deb6abb6dd033ab8d1))
+* **packaging:** list only the Python versions the local matrix runs ([34de90c](https://github.com/dmealing/hass-axi/commit/34de90c303a24b5bf869c2deb6abb6dd033ab8d1))
+
+
+### Documentation
+
+* lead the PyPI summary with the words people search for ([#54](https://github.com/dmealing/hass-axi/issues/54)) ([03cb815](https://github.com/dmealing/hass-axi/commit/03cb8151065c09ba621149f11ec86aa407666f30))
+* republish transitional ha-axi as 0.8.1 with current PyPI text ([#55](https://github.com/dmealing/hass-axi/issues/55)) ([e4213b2](https://github.com/dmealing/hass-axi/commit/e4213b28bd124b6ed8c5039c2c15315c60a6e3fd))
+
 ## [0.10.3](https://github.com/dmealing/hass-axi/compare/v0.10.2...v0.10.3) (2026-10-24)
 
 
