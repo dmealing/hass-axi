@@ -338,6 +338,21 @@ DECLARED = {
         ),
         "unobserved": {},
     },
+    "homeassistant::websocket::Frame": {
+        "key": "frame",
+        "capture": (
+            "websocket.auth_invalid",
+            "websocket.auth_ok",
+            "websocket.auth_required",
+            "websocket.error",
+            "websocket.result",
+        ),
+        "fields": (
+            "type",
+            "id",
+        ),
+        "unobserved": {},
+    },
     "homeassistant::websocket::AuthRequired": {
         "key": "auth_required",
         "capture": ("websocket.auth_required",),

@@ -33,12 +33,11 @@ the doubles make their answers through, and the check beside them that every dec
 key is in the capture. The last section here holds the vocabularies and the builders
 to what the commands print and to what a builder refuses.
 
-**What the scan is still for.** Two places read an answer by key, and :data:`READERS`
-is exactly those: `service`'s reads of the published service model, which it hands on
-to the hand-written reader in the shared package, and the WebSocket client's reads of
-a frame, which is one of five objects until its ``type`` has been read. Everywhere
-else the scan finds only the tool's own structures, and it stays switched on there so
-that an answer read by key again is a failure rather than a habit.
+**What the scan is still for.** No place reads an answer by key now, and :data:`READERS`
+is empty: `service` reads the published service model through the shared package's
+readers, and the WebSocket client reads a frame as a ``Frame`` before the object its
+``type`` picks. Everywhere the scan finds only the tool's own structures, and it stays
+switched on so that an answer read by key again is a failure rather than a habit.
 """
 
 from __future__ import annotations
@@ -158,28 +157,11 @@ ARGUMENTS = "parsed"
 AREA = "registry.area"
 DEVICE = "registry.device"
 ATTRIBUTES = "state.attributes"
-FRAMES = (
-    "websocket.auth_invalid",
-    "websocket.auth_ok",
-    "websocket.auth_required",
-    "websocket.error",
-    "websocket.result",
-)
 
 #: Every expression an upstream answer is still read off by key: module -> expression
 #: -> the object it holds, or the objects where one name holds several in turn. A
 #: module that is not here reads its answers through the generated readers.
-READERS = {
-    "commands/service.py": {
-        "entry": ("service.domain", "service.target.entity"),
-        "field": "service.field",
-        "match": "service.domain",
-        "spec": "service",
-        "spec or {}": "service",
-        "target": "service.target",
-    },
-    "ws.py": {"error": "websocket.error.error", "message": FRAMES},
-}
+READERS = {}
 
 #: Expressions that hold the tool's own structures: a row it built, a document it
 #: is about to print, a message it composed.
@@ -193,25 +175,18 @@ OWN = {
     "commands/home.py": {"row"},
     "commands/logbook.py": {"r"},
     "commands/sensor.py": {"r", "row"},
-    "commands/service.py": {"detail", "doc", "row", "rows[0]"},
+    "commands/service.py": {"detail", "doc", "rows[0]"},
     "commands/state.py": {"row"},
     "commands/statistics.py": {"r", "row"},
 }
 
 #: The service reader the tool imports from the shared package, classified the
-#: same way. It reads nothing of its own, so there is no second table.
+#: same way. It reads through the generated readers, so what is left is the one option
+#: it takes apart and the state it is handed.
 SERVICE_READERS = {
-    "config": "service.field.selector.select",
-    "entry": ("service.domain", "service.target.entity"),
-    "entry or {}": "service.domain",
-    "field": "service.field",
     "o": "service.field.selector.select.option",
-    "response": "service.response",
-    "selector": "service.field.selector",
-    "spec": "service",
     "state": "state",
     "state.get('attributes') or {}": ATTRIBUTES,
-    "target": "service.target",
 }
 
 _KEY = re.compile(r"[a-z_][a-z0-9_]*\Z")
@@ -655,6 +630,14 @@ def attribute_reads() -> set:
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Attribute):
                 found.add(node.attr)
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "sent"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+            ):
+                found.add(node.args[0].value)
             elif (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)

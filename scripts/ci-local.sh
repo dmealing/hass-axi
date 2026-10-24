@@ -62,7 +62,7 @@ cd "$root" || exit 1
 
 SECTIONS=(leakcheck commits lint test skill model)
 METAOBJECTS=${METAOBJECTS:-"metaobjects==1.1.0"}
-AXI_TOOLKIT=${AXI_TOOLKIT:-"axi-toolkit[metagen]==0.7.1"}
+AXI_TOOLKIT=${AXI_TOOLKIT:-"axi-toolkit[metagen]==0.8.0"}
 MATRIX_PYTHONS=${MATRIX_PYTHONS:-"3.9 3.10 3.11 3.12"}
 
 usage() { sed -n '2,/^set -uo/p' "$0" | sed '$d; s/^# \{0,1\}//'; }

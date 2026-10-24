@@ -3,6 +3,27 @@ metadata:
   package: homeassistant::websocket
   children:
     - object.value:
+        name: Frame
+        description: >-
+          Any frame of the connection, read for its `type` and `id` before the object they
+          pick: the greeting, the verdict on a token, or the answer to a command.
+        children:
+          - attr.properties:
+              name: wire
+              value:
+                key: frame
+                element: frame
+                format: json
+                capture:
+                  - websocket.auth_invalid
+                  - websocket.auth_ok
+                  - websocket.auth_required
+                  - websocket.error
+                  - websocket.result
+          - field.string: { name: type, required: true }
+          - field.int: { name: id }
+
+    - object.value:
         name: AuthRequired
         description: The first frame of a connection.
         children:

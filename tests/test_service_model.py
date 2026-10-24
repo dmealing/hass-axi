@@ -678,3 +678,83 @@ def test_a_device_target_that_reached_nothing_suggests_a_command_that_works(
     listed_code, listed = run_cli(["entity", "list", "--device", "device_three"], installation_env)
     assert listed_code == 0
     assert "sensor.example_temperature" in listed
+
+
+# ------------------------------------------- a listing walks the model once
+
+
+class _Parsed(dict):
+    """The parsed command line, which `_list` reads only through `get`."""
+
+
+class _Published:
+    """A context whose REST client publishes a fixed model, as `GET /api/services` would."""
+
+    def __init__(self, published):
+        self._published = published
+
+    def rest(self):
+        return self
+
+    def services(self):
+        return self._published
+
+
+def _published_model():
+    return [
+        {
+            "domain": "alpha",
+            "services": {
+                "on": {"name": "On", "target": {"entity": [{"domain": "alpha"}]}},
+                "off": {"fields": {"level": {"required": True}}},
+                "gone": None,
+            },
+        },
+        {"domain": "beta", "services": {"ping": {"response": {"optional": False}}}},
+        {"domain": "gamma", "services": {"poke": {}}},
+    ]
+
+
+def _count_domain_reads(monkeypatch):
+    from axi_toolkit.ha.model import readers
+
+    reads = []
+    read = readers.ServiceDomain.read.__func__
+
+    def counting(cls, raw):
+        reads.append(raw.get("domain"))
+        return read(cls, raw)
+
+    monkeypatch.setattr(readers.ServiceDomain, "read", classmethod(counting))
+    return reads
+
+
+def test_a_full_listing_reads_each_domain_once(monkeypatch):
+    """Every row of a listing comes from one pass: a lookup per row reads the model again."""
+    from hass_axi.commands import service
+
+    reads = _count_domain_reads(monkeypatch)
+    ctx = _Published(_published_model())
+
+    listed = service._list(ctx, _Parsed())
+    assert [row["domain"] for row in listed["domains"]] == ["alpha", "beta", "gamma"]
+    assert sorted(reads) == ["alpha", "beta", "gamma"]
+
+    reads.clear()
+    service._list(ctx, _Parsed(domain="alpha"))
+    # Finding the domain reads every entry up to it, once each, and its services are
+    # then walked from that reader.
+    assert reads == ["alpha"]
+
+
+def test_a_service_published_as_null_still_gets_a_row():
+    from hass_axi.commands import service
+
+    parsed = _Parsed(domain="alpha", fields="service,name,fields,target")
+    listed = service._list(_Published(_published_model()), parsed)
+    rows = {row["service"]: row for row in listed["services"]}
+    assert set(rows) == {"alpha.on", "alpha.off", "alpha.gone"}
+    assert rows["alpha.gone"]["name"] == "gone"
+    assert rows["alpha.gone"]["fields"] == 0
+    assert rows["alpha.on"]["target"] is True
+    assert rows["alpha.off"]["fields"] == 1

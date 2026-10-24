@@ -10,7 +10,7 @@ metadata:
               name: wire
               value: { key: service_domain, element: service domain, format: json, capture: [service.domain] }
           - field.string: { name: domain, required: true }
-          - field.map: { name: services, objectRef: Service, required: true, description: Keyed by service name. }
+          - field.map: { name: services, objectRef: Service, required: true, wire: { every_key: true }, description: Keyed by service name. }
 
     - object.value:
         name: Service
@@ -21,7 +21,7 @@ metadata:
               value: { key: service, element: service, format: json, capture: [service] }
           - field.string: { name: name, description: "Empty where the prose lives in translation files, which this API does not serve." }
           - field.string: { name: description }
-          - field.map: { name: fields, objectRef: ServiceField, description: "Keyed by field name. A section is a key too, holding its own `fields`." }
+          - field.map: { name: fields, objectRef: ServiceField, wire: { every_key: true }, description: "Keyed by field name. A section is a key too, holding its own `fields`." }
           - field.object: { name: target, objectRef: ServiceTarget, storage: jsonb }
           - field.object: { name: response, objectRef: ServiceResponse, storage: jsonb }
 
@@ -37,7 +37,7 @@ metadata:
           - field.string: { name: example, dbColumnType: jsonb, description: Any JSON value. }
           - field.object: { name: selector, objectRef: Selector, storage: jsonb }
           - field.object: { name: filter, objectRef: ServiceFieldFilter, storage: jsonb }
-          - field.map: { name: fields, objectRef: ServiceField, description: On a section only. }
+          - field.map: { name: fields, objectRef: ServiceField, wire: { every_key: true }, description: On a section only. }
           - field.boolean: { name: collapsed, description: On a section only. }
 
     - object.value:
@@ -104,7 +104,7 @@ metadata:
           - attr.properties:
               name: wire
               value: { key: service_target_entity, element: target entity filter, format: json, capture: [service.target.entity] }
-          - field.string[]: { name: domain }
+          - field.string[]: { name: domain, wire: { single: true } }
           - field.int[]: { name: supported_features, description: "A disjunction: any one mask, and every bit of that one." }
 
     - object.value:

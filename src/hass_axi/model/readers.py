@@ -13,6 +13,12 @@ apart. Nothing is invented and nothing is lost: the answer itself is kept as
 A name that holds another declared object is read through that object's reader:
 one as that reader, a list of them as a tuple and a map of them as a dict. What
 is there and is not an object is left out, and is still in ``raw``.
+
+A list the model says may be sent as one value alone reads that value as a
+list of one, so whoever reads it never asks which of the two it was sent as.
+
+A map the model says keeps every key has an entry for each key it was sent
+with: what is under one and is not an object reads as ``None``.
 """
 
 from __future__ import annotations
@@ -34,6 +40,13 @@ def _items(value):
     return tuple(value) if isinstance(value, (list, tuple)) else None
 
 
+def _listed(value):
+    """What a list held, as a tuple, and one value sent alone as a list of one."""
+    if value is None:
+        return None
+    return tuple(value) if isinstance(value, (list, tuple)) else (value,)
+
+
 def _one(reader, value):
     """A nested object through its own reader, or ``None`` for no object."""
     return reader.read(value) if isinstance(value, Mapping) else None
@@ -47,14 +60,13 @@ def _many(reader, value):
     return tuple(reader.read(item) for item in objects)
 
 
-def _keyed(reader, value):
-    """A map of nested objects, each through its reader, or ``None``."""
+def _every_key(reader, value):
+    """A map of nested objects, every key kept and ``None`` where no object is."""
     if not isinstance(value, Mapping):
         return None
     found = {}
     for key, item in value.items():
-        if isinstance(item, Mapping):
-            found[key] = reader.read(item)
+        found[key] = reader.read(item) if isinstance(item, Mapping) else None
     return found
 
 
@@ -686,7 +698,7 @@ class ServiceDomain:
     """One service domain object, as homeassistant::services::ServiceDomain declares it."""
 
     domain: str | None = None
-    services: dict[str, Service] | None = None
+    services: dict[str, Service | None] | None = None
     raw: Mapping = field(default_factory=dict, repr=False, compare=False)
 
     @classmethod
@@ -695,7 +707,7 @@ class ServiceDomain:
         raw = _answer("ServiceDomain", raw)
         return cls(
             domain=raw.get("domain"),
-            services=_keyed(Service, raw.get("services")),
+            services=_every_key(Service, raw.get("services")),
             raw=raw,
         )
 
@@ -718,7 +730,7 @@ class Service:
 
     name: str | None = None
     description: str | None = None
-    fields: dict[str, ServiceField] | None = None
+    fields: dict[str, ServiceField | None] | None = None
     target: ServiceTarget | None = None
     response: ServiceResponse | None = None
     raw: Mapping = field(default_factory=dict, repr=False, compare=False)
@@ -730,7 +742,7 @@ class Service:
         return cls(
             name=raw.get("name"),
             description=raw.get("description"),
-            fields=_keyed(ServiceField, raw.get("fields")),
+            fields=_every_key(ServiceField, raw.get("fields")),
             target=_one(ServiceTarget, raw.get("target")),
             response=_one(ServiceResponse, raw.get("response")),
             raw=raw,
@@ -754,7 +766,7 @@ class ServiceField:
     example: object = None
     selector: Selector | None = None
     filter: ServiceFieldFilter | None = None
-    fields: dict[str, ServiceField] | None = None
+    fields: dict[str, ServiceField | None] | None = None
     collapsed: bool | None = None
     raw: Mapping = field(default_factory=dict, repr=False, compare=False)
 
@@ -768,7 +780,7 @@ class ServiceField:
             example=raw.get("example"),
             selector=_one(Selector, raw.get("selector")),
             filter=_one(ServiceFieldFilter, raw.get("filter")),
-            fields=_keyed(ServiceField, raw.get("fields")),
+            fields=_every_key(ServiceField, raw.get("fields")),
             collapsed=raw.get("collapsed"),
             raw=raw,
         )
@@ -931,7 +943,7 @@ class ServiceTargetEntity:
         """Read one answer. A key it did not carry is ``None``."""
         raw = _answer("ServiceTargetEntity", raw)
         return cls(
-            domain=_items(raw.get("domain")),
+            domain=_listed(raw.get("domain")),
             supported_features=_items(raw.get("supported_features")),
             raw=raw,
         )
@@ -971,6 +983,36 @@ class ServiceCallResult:
         """The keys a real service call result object always carries and this lacks."""
         carried = {
             "changed_states": self.changed_states,
+        }
+        return tuple(name for name, value in carried.items() if value is None)
+
+
+@dataclass(frozen=True)
+class Frame:
+    """One frame object, as homeassistant::websocket::Frame declares it."""
+
+    type: str | None = None
+    id: int | None = None
+    raw: Mapping = field(default_factory=dict, repr=False, compare=False)
+
+    @classmethod
+    def read(cls, raw) -> Frame:
+        """Read one answer. A key it did not carry is ``None``."""
+        raw = _answer("Frame", raw)
+        return cls(
+            type=raw.get("type"),
+            id=raw.get("id"),
+            raw=raw,
+        )
+
+    def sent(self, name: str) -> bool:
+        """Whether the answer carried this key at all, as null or not."""
+        return name in self.raw
+
+    def missing(self) -> tuple:
+        """The keys a real frame object always carries and this lacks."""
+        carried = {
+            "type": self.type,
         }
         return tuple(name for name, value in carried.items() if value is None)
 

@@ -184,13 +184,9 @@ def _list(ctx, parsed):
 
     if not wanted:
         rows = [
-            {
-                "domain": entry.get("domain", ""),
-                "services": len(entry.get("services") or {}),
-            }
-            for entry in domains
+            {"domain": entry.domain, "services": len(entry.services or {})}
+            for entry in model.read_domains(domains)
         ]
-        rows.sort(key=lambda row: row["domain"])
         if not rows:
             return empty_listing("services", "0 service domains registered in this installation")
         return {
@@ -210,18 +206,19 @@ def _list(ctx, parsed):
     if match is None:
         raise _no_such_domain(domains, wanted)
 
-    services = match.get("services") or {}
+    # One pass over the domain's reader: a service published as null is None
+    # here and still gets its row.
     rows = [
         {
             "service": f"{wanted}.{name}",
-            "name": (spec or {}).get("name") or name,
+            "name": (spec.name if spec is not None else None) or name,
             # Counted through the model's own flattening: a section is not a
             # field, and reporting it as one invites an agent to send it.
-            "fields": len(model.field_names(spec if isinstance(spec, dict) else {})),
-            "response": model.response_mode(spec if isinstance(spec, dict) else {}),
-            "target": bool(isinstance(spec, dict) and spec.get("target")),
+            "fields": len(model.field_names(spec)),
+            "response": model.response_mode(spec),
+            "target": model.describes_target(spec),
         }
-        for name, spec in sorted(services.items())
+        for name, spec in sorted((match.services or {}).items())
     ]
     if not rows:
         return empty_listing("services", f"0 services registered in domain {wanted}")
@@ -245,11 +242,12 @@ def _get(ctx, parsed):
     domain, service = _split_name(parsed.positionals[0])
     fields = select_fields(parsed.get("fields"), GET_FIELDS, DEFAULT_GET_FIELDS)
     published = ctx.rest().services()
-    if model.find_domain(published, domain) is None:
+    entry = model.find_domain(published, domain)
+    if entry is None:
         # Before the service, because the next step differs: a missing domain
         # has no services to list, and suggesting its list suggests an error.
         raise _no_such_domain(published, domain)
-    spec = model.find_service(published, domain, service)
+    spec = (entry.services or {}).get(service)
     if spec is None:
         raise _no_such_service(published, domain, service)
 
@@ -257,7 +255,7 @@ def _get(ctx, parsed):
     hint = ""
     rows = []
     for name, field, section in model.fields(spec):
-        description = str(field.get("description") or "")
+        description = str(field.description or "")
         if not full:
             description, note = truncate(
                 description,
@@ -268,11 +266,11 @@ def _get(ctx, parsed):
         rows.append(
             {
                 "field": name,
-                "required": bool(field.get("required")),
+                "required": bool(field.required),
                 "type": model.selector_kind(field),
                 "description": description,
                 "options": ", ".join(model.selector_options(field)),
-                "example": str(field.get("example") or ""),
+                "example": str(field.example or ""),
                 "section": section,
             }
         )
@@ -280,8 +278,8 @@ def _get(ctx, parsed):
     response = model.response_mode(spec)
     doc = {
         "service": f"{domain}.{service}",
-        "name": spec.get("name") or service,
-        "description": spec.get("description") or "",
+        "name": spec.name or service,
+        "description": spec.description or "",
         "response": response,
     }
 
@@ -319,31 +317,17 @@ def _get(ctx, parsed):
 
 def _target_summary(spec, domain: str) -> str:
     """What the service says about the entities it can be aimed at."""
-    target = spec.get("target")
-    if not isinstance(target, dict) or not target:
+    if not model.describes_target(spec):
         return ""
     parts = []
-    entries = target.get("entity")
-    if isinstance(entries, list):
-        wanted = sorted(
-            {
-                name
-                for entry in entries
-                if isinstance(entry, dict)
-                for name in (
-                    [entry["domain"]]
-                    if isinstance(entry.get("domain"), str)
-                    else entry.get("domain") or []
-                )
-            }
-        )
-        if wanted:
-            parts.append(f"entity domain {'|'.join(wanted)}")
+    wanted = sorted({name for entry in spec.target.entity or () for name in entry.domain or ()})
+    if wanted:
+        parts.append(f"entity domain {'|'.join(wanted)}")
     masks = model.feature_masks(spec, domain)
     if masks:
         joined = ", ".join(str(mask) for mask in masks)
         parts.append(f"supported_features matching any of {joined}")
-    if "device" in target:
+    if spec.target.sent("device"):
         parts.append("device")
     return "; ".join(parts)
 
@@ -566,7 +550,7 @@ def _preview(ctx, live: _Live, domain: str, service: str, data: dict, parsed, ta
     if not targeted:
         doc["target"] = (
             "none given - this service acts on a target and Home Assistant refuses it without one"
-            if _needs_target(spec)
+            if model.takes_target(spec)
             else "none given"
         )
         doc["capability_check"] = "not applicable without a target"
@@ -624,7 +608,7 @@ def _preview(ctx, live: _Live, domain: str, service: str, data: dict, parsed, ta
             )
 
     help_lines = preview_help(ctx.environ)
-    if not targeted and _needs_target(spec):
+    if not targeted and model.takes_target(spec):
         # Not sendable as it stands, so the way forward leads rather than the
         # flag that would send it.
         help_lines = [*_missing_target_help(domain, service), *help_lines]
@@ -972,7 +956,7 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
     targeted = bool(
         parsed.get("target_entity") or parsed.get("target_area") or parsed.get("target_device")
     )
-    if _needs_target(spec) and not targeted and exc.code == "BAD_REQUEST":
+    if model.takes_target(spec) and not targeted and exc.code == "BAD_REQUEST":
         return ApiError(
             f"{domain}.{service} acts on a target and none was given",
             help_lines=_missing_target_help(domain, service),
@@ -996,16 +980,6 @@ def _explain(live: _Live, exc: AxiError, domain: str, service: str, data: dict, 
         return unreached
 
     return _with_help(exc, _generic_help(domain, service))
-
-
-def _needs_target(spec) -> bool:
-    """Whether a service publishes a target, which is what an entity service does.
-
-    Home Assistant validates an entity service's call with
-    `cv.has_at_least_one_key` over the target keys, so one sent with none is a
-    `vol.Invalid` -- the same empty 400 as every other refusal.
-    """
-    return isinstance(spec, dict) and spec.get("target") is not None
 
 
 def _missing_target_help(domain: str, service: str) -> list:
