@@ -16,19 +16,16 @@ COMMAND = Command(
         Sub(
             name="list",
             access=READ,
-            summary="List labels with the entities, devices and areas that carry each",
+            summary="List labels with the entities, devices and areas that carry each directly",
         ),
     ),
     notes=(
         "a label can sit on an entity, a device or an area, and `--target-label` on "
-        "`service call` reaches everything that carries it",
+        "`service call` reaches everything that carries it, so a label on a device reaches the "
+        "device's entities although `label list` counts it under devices",
     ),
     examples=("hass-axi label list",),
 )
-
-
-def access(sub: str, parsed) -> str:
-    return READ
 
 
 def _carrying(label_id, entries) -> int:

@@ -666,7 +666,7 @@ def _precheck(live: _Live, domain: str, service: str, parsed) -> None:
     Home Assistant refuses an entity named outright that lacks the capability a
     service needs, but an entity reached through an area or a device is skipped
     in silence -- the call comes back 200 with an empty list and the agent
-    learns nothing. So the gate runs for those two target kinds and not for
+    learns nothing. So the gate runs for an area, a device, a floor or a label target and not for
     `--target-entity`, where the refusal already arrives loudly and is enriched
     on the failure path for free.
 

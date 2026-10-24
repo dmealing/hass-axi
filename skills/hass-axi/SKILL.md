@@ -215,7 +215,7 @@ Read the label registry over the WebSocket API.
 hass-axi label list
 ```
 
-- a label can sit on an entity, a device or an area, and `--target-label` on `service call` reaches everything that carries it
+- a label can sit on an entity, a device or an area, and `--target-label` on `service call` reaches everything that carries it, so a label on a device reaches the device's entities although `label list` counts it under devices
 
 ### `hass-axi device`
 

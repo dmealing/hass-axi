@@ -28,17 +28,16 @@ COMMAND = Command(
 )
 
 
-def access(sub: str, parsed) -> str:
-    return READ
-
-
 def run(ctx, sub: str, parsed):
     with ctx.ws() as client:
         floors = read_each(FloorEntry, client.run("floor.list"))
         areas = read_each(AreaEntry, client.run("area.list"))
 
     if not floors:
-        return empty_listing("floors", "0 floors defined in this installation")
+        return {
+            **empty_listing("floors", "0 floors defined in this installation"),
+            "areas_without_floor": len(areas),
+        }
 
     counts: dict = {}
     for area in areas:
