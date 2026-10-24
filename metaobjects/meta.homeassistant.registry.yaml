@@ -1,4 +1,4 @@
-# The four registries, which only the WebSocket API publishes.
+# The five registries, which only the WebSocket API publishes.
 metadata:
   package: homeassistant::registry
   children:
@@ -73,6 +73,7 @@ metadata:
           - field.string[]: { name: aliases }
           - field.string: { name: floor_id }
           - field.string: { name: icon }
+          - field.string[]: { name: labels }
           - identity.primary: { name: pk, fields: area_id }
 
     - object.entity:
@@ -90,6 +91,22 @@ metadata:
           - field.double: { name: created_at, description: Epoch seconds. }
           - field.double: { name: modified_at, description: Epoch seconds. }
           - identity.primary: { name: pk, fields: floor_id }
+
+    - object.entity:
+        name: LabelEntry
+        description: One label registry entry, a row of config/label_registry/list.
+        children:
+          - attr.properties:
+              name: wire
+              value: { key: label_entry, element: label registry entry, format: json, capture: [registry.label] }
+          - field.string: { name: label_id, required: true }
+          - field.string: { name: name, required: true }
+          - field.string: { name: icon }
+          - field.string: { name: color }
+          - field.string: { name: description }
+          - field.double: { name: created_at, description: Epoch seconds. }
+          - field.double: { name: modified_at, description: Epoch seconds. }
+          - identity.primary: { name: pk, fields: label_id }
 
     - object.value:
         name: EntityUpdateResult

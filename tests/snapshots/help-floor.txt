@@ -1,0 +1,12 @@
+usage: hass-axi floor <subcommand>
+description: Read the floor registry over the WebSocket API
+subcommands[1]:
+  list
+flags{list}:
+  (none)
+note:
+  a floor holds areas and an area holds entities, so `--target-floor` on `service call` reaches every entity in every area on the floor
+note:
+  areas are placed on a floor with `hass-axi area update <id|name> --floor <id|name>`
+examples:
+  hass-axi floor list

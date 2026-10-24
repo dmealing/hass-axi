@@ -134,7 +134,7 @@ def test_one_command_does_not_import_the_others():
 
     A version flag after a command, `--help` for one noun and the session
     hook's `context` all go through `cli.main`, and none of them should pay for
-    sixteen modules and two transports to run one.
+    every command module and two transports to run one.
     """
     out = _in_a_fresh_interpreter(
         "import sys\n"

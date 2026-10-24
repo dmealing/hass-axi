@@ -492,6 +492,8 @@ def test_every_declared_websocket_error_maps_to_a_declared_code(
 INVOCATIONS = {
     ("api", "api"): ["api", "/config"],
     ("area", "list"): ["area", "list"],
+    ("floor", "list"): ["floor", "list"],
+    ("label", "list"): ["label", "list"],
     ("area", "get"): ["area", "get", "example_room"],
     ("area", "create"): ["area", "create", "--write", "--name", "Example Room Two"],
     ("area", "update"): ["area", "update", "--write", "example_room", "--name", "Renamed"],
@@ -535,7 +537,7 @@ INVOCATIONS = {
 #: The subcommands that never reach Home Assistant. Named rather than inferred,
 #: and asserted below, so "it does not touch a transport" has to be a claim
 #: somebody made rather than a gap nobody noticed.
-LOCAL_ONLY = {("setup", "hooks"), ("setup", "skill"), ("context", "context"), ("context", "end")}
+LOCAL_ONLY = {("setup", "hooks"), ("setup", "skill"), ("context", "show"), ("context", "end")}
 
 #: The one subcommand that meets a fault and still exits 0. The home view
 #: answers "what is here", and an installation that did not answer is what is

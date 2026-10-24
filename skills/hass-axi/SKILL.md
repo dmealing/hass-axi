@@ -136,13 +136,14 @@ hass-axi service get light.turn_on
 hass-axi service call light.turn_on --target-entity light.example_lamp
 hass-axi service call light.turn_on --target-entity light.example_lamp --write
 hass-axi service call light.turn_on --target-area example_room --data brightness=180 --write
+hass-axi service call light.turn_off --target-label example_label --write
 hass-axi service call climate.set_temperature --target-entity climate.example_thermostat --data-json '{"temperature": 21}' --write
 ```
 
 - `service call` sends nothing without --write: it checks the call against the published service, resolves the target, runs the capability pre-check and shows the request -- and fails, as the call would, for a service that does not exist or a target that reaches nothing
 - --data-json takes a whole JSON object; --data takes repeated key=value pairs
 - a refused call is explained from `/api/services`, which a sent call reads on failure only
-- --target-area and --target-device pre-check the published capability, because Home Assistant drops an entity that lacks it without saying so
+- --target-area, --target-device, --target-floor and --target-label pre-check the published capability, because Home Assistant drops an entity that lacks it without saying so; `hass-axi floor list` and `hass-axi label list` show the ids
 
 ### `hass-axi template`
 
@@ -192,8 +193,29 @@ hass-axi area update 'Example Room' --icon mdi:sofa --write
 
 - areas accept an area_id or a name anywhere <id|name> appears
 - create and update show what they would do and send nothing until --write is given
-- --floor has to name a floor that exists; run `hass-axi ws floor.list` to see them
+- --floor has to name a floor that exists; run `hass-axi floor list` to see them
 - deleting an area is deliberately not exposed here; use `hass-axi ws area.delete` if you mean it
+
+### `hass-axi floor`
+
+Read the floor registry over the WebSocket API.
+
+```sh
+hass-axi floor list
+```
+
+- a floor holds areas and an area holds entities, so `--target-floor` on `service call` reaches every entity in every area on the floor
+- areas are placed on a floor with `hass-axi area update <id|name> --floor <id|name>`
+
+### `hass-axi label`
+
+Read the label registry over the WebSocket API.
+
+```sh
+hass-axi label list
+```
+
+- a label can sit on an entity, a device or an area, and `--target-label` on `service call` reaches everything that carries it, so a label on a device reaches the device's entities although `label list` counts it under devices
 
 ### `hass-axi device`
 

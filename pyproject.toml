@@ -9,13 +9,18 @@ description = "Agent eXperience Interface (AXI) CLI for Home Assistant: entity, 
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
-keywords = ["home-assistant", "home-automation", "cli", "axi", "agent", "registry", "websocket", "toon"]
+keywords = ["home-assistant", "home-automation", "cli", "axi", "agent", "registry", "websocket", "toon", "llm", "homeassistant", "ai-agent", "claude-code"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Intended Audience :: Developers",
+  "Intended Audience :: End Users/Desktop",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Topic :: Home Automation",
 ]
 dependencies = [
@@ -42,6 +47,9 @@ hass-axi = "hass_axi.entry:main"
 [project.urls]
 Homepage = "https://github.com/dmealing/hass-axi"
 Source = "https://github.com/dmealing/hass-axi"
+Documentation = "https://github.com/dmealing/hass-axi#readme"
+Changelog = "https://github.com/dmealing/hass-axi/blob/main/CHANGELOG.md"
+Issues = "https://github.com/dmealing/hass-axi/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hass_axi"]

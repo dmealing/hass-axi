@@ -153,6 +153,18 @@ def effective_area_id(entry: EntityEntry, device_areas: dict) -> str:
     return entry.area_id or device_areas.get(entry.device_id) or ""
 
 
+def entities_in_areas(entries: list, area_ids, device_areas: dict) -> list:
+    """Entity ids whose effective area is one of ``area_ids``."""
+    return [
+        entry.entity_id for entry in entries if effective_area_id(entry, device_areas) in area_ids
+    ]
+
+
+def carries(entry, label_id: str) -> bool:
+    """Whether a registry entry carries a label."""
+    return label_id in (entry.labels or ())
+
+
 def reject_conflicting_flags(parsed, *pairs: tuple, invocation: str) -> None:
     """Reject each set flag used together with its ``--clear`` counterpart."""
     for set_flag, clear_flag in pairs:
@@ -429,7 +441,7 @@ def resolve_floor(floors: list, needle: str) -> FloorEntry:
         help_lines.append(f"floors in this installation: {known}")
     else:
         help_lines.append("This installation has no floors; create one in Home Assistant first")
-    help_lines.append("Run `hass-axi ws floor.list` to see each floor's id and name")
+    help_lines.append("Run `hass-axi floor list` to see each floor's id and name")
     raise NotFound(
         f"no floor with id or name {needle!r}",
         help_lines=help_lines,

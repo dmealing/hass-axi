@@ -78,7 +78,7 @@ COMMAND = Command(
     notes=(
         "areas accept an area_id or a name anywhere <id|name> appears",
         "create and update show what they would do and send nothing until --write is given",
-        "--floor has to name a floor that exists; run `hass-axi ws floor.list` to see them",
+        "--floor has to name a floor that exists; run `hass-axi floor list` to see them",
         "deleting an area is deliberately not exposed here; use `hass-axi ws area.delete` if you mean it",
     ),
     examples=(

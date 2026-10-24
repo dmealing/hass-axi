@@ -7,7 +7,7 @@ flags{list}:
 flags{get}:
   --fields <a,b,c> (from field|required|type|description|options|example|section), --full (do not truncate field descriptions)
 flags{call}:
-  --target-entity <entity_id> (repeatable), --target-area <id|name> (repeatable), --target-device <device_id> (repeatable), --data <key=value> (repeatable, value parsed as JSON when it parses), --data-json <object> (merged over --data), --response (request the service response payload), --no-check (skip the capability pre-check on --target-area/--target-device), --write (send it; without this the command shows what would be sent and sends nothing)
+  --target-entity <entity_id> (repeatable), --target-area <id|name> (repeatable), --target-device <device_id> (repeatable), --target-floor <floor_id> (repeatable), --target-label <label_id> (repeatable), --data <key=value> (repeatable, value parsed as JSON when it parses), --data-json <object> (merged over --data), --response (request the service response payload), --no-check (skip the capability pre-check on an area, device, floor or label target), --write (send it; without this the command shows what would be sent and sends nothing)
 note:
   `service call` sends nothing without --write: it checks the call against the published service, resolves the target, runs the capability pre-check and shows the request -- and fails, as the call would, for a service that does not exist or a target that reaches nothing
 note:
@@ -15,7 +15,7 @@ note:
 note:
   a refused call is explained from `/api/services`, which a sent call reads on failure only
 note:
-  --target-area and --target-device pre-check the published capability, because Home Assistant drops an entity that lacks it without saying so
+  --target-area, --target-device, --target-floor and --target-label pre-check the published capability, because Home Assistant drops an entity that lacks it without saying so; `hass-axi floor list` and `hass-axi label list` show the ids
 examples:
   hass-axi service list
   hass-axi service list --domain light
@@ -23,4 +23,5 @@ examples:
   hass-axi service call light.turn_on --target-entity light.example_lamp
   hass-axi service call light.turn_on --target-entity light.example_lamp --write
   hass-axi service call light.turn_on --target-area example_room --data brightness=180 --write
+  hass-axi service call light.turn_off --target-label example_label --write
   hass-axi service call climate.set_temperature --target-entity climate.example_thermostat --data-json '{"temperature": 21}' --write

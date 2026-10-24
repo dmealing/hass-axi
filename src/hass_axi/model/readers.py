@@ -594,6 +594,7 @@ class AreaEntry:
     aliases: tuple[str, ...] | None = None
     floor_id: str | None = None
     icon: str | None = None
+    labels: tuple[str, ...] | None = None
     raw: Mapping = field(default_factory=dict, repr=False, compare=False)
 
     @classmethod
@@ -606,6 +607,7 @@ class AreaEntry:
             aliases=_items(raw.get("aliases")),
             floor_id=raw.get("floor_id"),
             icon=raw.get("icon"),
+            labels=_items(raw.get("labels")),
             raw=raw,
         )
 
@@ -658,6 +660,47 @@ class FloorEntry:
         """The keys a real floor registry entry object always carries and this lacks."""
         carried = {
             "floor_id": self.floor_id,
+            "name": self.name,
+        }
+        return tuple(name for name, value in carried.items() if value is None)
+
+
+@dataclass(frozen=True)
+class LabelEntry:
+    """One label registry entry object, as homeassistant::registry::LabelEntry declares it."""
+
+    label_id: str | None = None
+    name: str | None = None
+    icon: str | None = None
+    color: str | None = None
+    description: str | None = None
+    created_at: float | None = None
+    modified_at: float | None = None
+    raw: Mapping = field(default_factory=dict, repr=False, compare=False)
+
+    @classmethod
+    def read(cls, raw) -> LabelEntry:
+        """Read one answer. A key it did not carry is ``None``."""
+        raw = _answer("LabelEntry", raw)
+        return cls(
+            label_id=raw.get("label_id"),
+            name=raw.get("name"),
+            icon=raw.get("icon"),
+            color=raw.get("color"),
+            description=raw.get("description"),
+            created_at=raw.get("created_at"),
+            modified_at=raw.get("modified_at"),
+            raw=raw,
+        )
+
+    def sent(self, name: str) -> bool:
+        """Whether the answer carried this key at all, as null or not."""
+        return name in self.raw
+
+    def missing(self) -> tuple:
+        """The keys a real label registry entry object always carries and this lacks."""
+        carried = {
+            "label_id": self.label_id,
             "name": self.name,
         }
         return tuple(name for name, value in carried.items() if value is None)
