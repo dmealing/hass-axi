@@ -6,7 +6,7 @@ pip install hass-axi
 
 `ha-axi` has been renamed to `hass-axi`.
 
-This is the last release of `ha-axi`. The Home Assistant AXI CLI it used to install is now published
+This is the current release of `ha-axi`, and the package is only republished to refresh this text. The Home Assistant AXI CLI it used to install is now published
 as [`hass-axi`](https://pypi.org/project/hass-axi/), because an unrelated Home Assistant CLI is also
 published as `ha-axi` and the two installed the same binary.
 

@@ -16,9 +16,10 @@ Three things outlive the rename, and each is deliberate:
   per process on stderr (`output.deprecated_variable`). The read-only one must never be dropped
   quietly: an upgrade that turned the guard off is the one outcome that variable cannot have.
 - **`setup hooks` adopts what the old name installed** — see "The session-hook installer".
-- **`legacy/ha-axi/` is the final `ha-axi` release**: a package with no code of its own that
+- **`legacy/ha-axi/` is the transitional `ha-axi` release**: a package with no code of its own that
   depends on `hass-axi` and whose `ha-axi` command forwards to it with a stderr notice. It is built
-  and published by hand, once, after `hass-axi` is on PyPI; no workflow builds it, and
+  and published by hand, and republished only to refresh its PyPI text (0.8.1 is the current one);
+  no workflow builds it, and
   `tests/test_legacy_shim.py` is the only thing that runs it before somebody's upgrade does.
 
 Historical prose below that names `ha-axi` (a release number, a defect) describes the tool under its
