@@ -37,6 +37,7 @@ ELEMENT = {
     "service_target": "service target",
     "service_target_entity": "target entity filter",
     "service_call_result": "service call result",
+    "frame": "frame",
     "auth_required": "auth_required frame",
     "auth_ok": "auth_ok frame",
     "auth_invalid": "auth_invalid frame",
@@ -223,6 +224,10 @@ ATTRIBUTES = {
         "changed_states",
         "service_response",
     ),
+    "frame": (
+        "type",
+        "id",
+    ),
     "auth_required": (
         "type",
         "ha_version",
@@ -310,6 +315,7 @@ REQUIRED = {
     "service_target": (),
     "service_target_entity": (),
     "service_call_result": ("changed_states",),
+    "frame": ("type",),
     "auth_required": (
         "type",
         "ha_version",
@@ -477,6 +483,11 @@ def service_target_entity(**keys) -> dict:
 def service_call_result(**keys) -> dict:
     """The keys of one service call result object, as homeassistant::services::ServiceCallResult declares them."""
     return _object("service_call_result", keys)
+
+
+def frame(**keys) -> dict:
+    """The keys of one frame object, as homeassistant::websocket::Frame declares them."""
+    return _object("frame", keys)
 
 
 def auth_required(**keys) -> dict:

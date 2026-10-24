@@ -631,13 +631,11 @@ The generators are [`axi-toolkit`](https://github.com/dmealing/axi-toolkit)'s, s
 sibling AXI CLI, and run under `uvx` because the toolchain needs Python 3.11 or newer. Nothing
 generated imports it: the package still supports Python 3.9 and gains no dependency.
 
-**Two places still read an answer by key**, and the scan in `tests/test_shape_contract.py` holds
-exactly those to the capture. `service` reads the published service model by key, because it hands
-the same objects on to the hand-written reader in `axi_toolkit.ha.services`, and one name there is
-accepted as a list or as a single string, which a generated reader of a list gives as nothing. And
-the WebSocket client reads a frame by key, because a frame is one of five objects until its `type`
-has been read. Everywhere else that scan finds only the tool's own rows, and it fails if an answer
-is read by key again.
+**No place reads an answer by key.** `service` reads the published service model through the
+readers `axi_toolkit.ha.services` hands back, one pass over the model for a listing, and the WebSocket
+client reads each frame as a `Frame` before the object its `type` picks. The scan in
+`tests/test_shape_contract.py` finds only the tool's own rows everywhere, and it fails if an answer is
+read by key again.
 
 ## Output format
 

@@ -219,9 +219,9 @@ lives in the toolkit so other programs can use it without duplicating the logic 
 `servicemodel.py` was moved to `axi_toolkit.ha.services` — whole, with a single edit: one docstring
 sentence cited this file by name and would have dangled in the other repository. Everything below
 that docstring is byte-for-byte what this repository used to carry. `commands/service.py` imports it
-under the same local alias, `model`, which is why the swap is one line and nothing else in that file
-moved: all nineteen names reached through that alias resolve on the new module, and that was checked
-rather than assumed.
+under the same local alias, `model`, which is why the swap was one line. Since 0.8.0 that module hands
+back generated readers (a domain, a service, a field) instead of dicts, and `commands/service.py` reads
+them by attribute and walks a domain's `.services` once rather than looking a name up per row.
 
 **Why a package rather than two copies.** The two AXI CLIs measured 1,378 identical lines of toolkit
 between them, and the duplication had already cost a TOON specification fix that landed in one copy
@@ -234,9 +234,10 @@ double are this repository's own and stay — they are the evidence that the swa
 behaviour, and the capability rule that matters most to this tool is still exercised end to end by
 `test_a_service_with_an_upstream_fallback_is_not_gated`.
 
-**The floor is `>=0.4.2` because that is the first release whose encoder quotes a key ending in a
-newline**; the reader itself arrived in 0.3.0. It is a floor and not a pin, so the command-path
-suite is what checks the reader still reads the way this tool needs it to.
+**The floor is `>=0.8.0` because that is the first release whose service reader hands back the
+generated readers** (`read_domains`, `find_domain`, `takes_target`, `describes_target`) that
+`commands/service.py` is written against; the reader itself arrived in 0.3.0. It is a floor and not a
+pin, so the command-path suite is what checks the reader still reads the way this tool needs it to.
 
 **Two direct dependencies, one added to the installed closure, and that is measured rather than
 asserted.** `axi-toolkit` declares no runtime dependency of its own — its `ha` extra is empty,

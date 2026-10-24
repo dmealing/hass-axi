@@ -28,6 +28,7 @@ from .errors import (
     NotFound,
     UsageError,
 )
+from .model.readers import AuthOk, AuthRequired, ErrorDetail, ErrorMessage, Frame, ResultMessage
 from .output import debug
 from .readonly import READ, WRITE, guard
 
@@ -431,20 +432,20 @@ class WsClient:
     # ------------------------------------------------------------- handshake
 
     def _authenticate(self) -> None:
-        message = self._receive()
-        if message.get("type") != "auth_required":
+        frame = self._receive()
+        if frame.type != "auth_required":
             raise ConnectionFailed(
-                f"unexpected greeting from the WebSocket API: {message.get('type')!r}",
+                f"unexpected greeting from the WebSocket API: {frame.type!r}",
                 code="WS_PROTOCOL",
             )
-        self.ha_version = message.get("ha_version", "")
+        self.ha_version = AuthRequired.read(frame.raw).ha_version or ""
         self._send({"type": "auth", "access_token": self.config.token})
 
         while True:
-            message = self._receive()
-            kind = message.get("type")
+            frame = self._receive()
+            kind = frame.type
             if kind == "auth_ok":
-                self.ha_version = message.get("ha_version", self.ha_version)
+                self.ha_version = AuthOk.read(frame.raw).ha_version or self.ha_version
                 return
             if kind == "auth_invalid":
                 raise AuthFailed(
@@ -473,7 +474,8 @@ class WsClient:
         except Exception as exc:
             raise self._closed(exc) from None
 
-    def _receive(self) -> dict:
+    def _receive(self) -> Frame:
+        """The next frame, read for its ``type`` and ``id``; ``raw`` holds the rest."""
         try:
             raw = self._socket.recv(timeout=self.config.timeout)
         except Exception as exc:
@@ -490,7 +492,7 @@ class WsClient:
             raise ConnectionFailed(
                 "the WebSocket API sent a message that is not an object", code="WS_PROTOCOL"
             )
-        return message
+        return Frame.read(message)
 
     # -------------------------------------------------------------- commands
 
@@ -517,13 +519,14 @@ class WsClient:
         self._send(payload)
 
         while True:
-            message = self._receive()
-            if message.get("id") != message_id or message.get("type") != "result":
+            frame = self._receive()
+            if frame.id != message_id or frame.type != "result":
                 # Event and pong frames may interleave; they are not our answer.
                 continue
-            if message.get("success"):
-                return message.get("result")
-            raise self._command_error(type_, message.get("error") or {})
+            answer = ResultMessage.read(frame.raw)
+            if answer.success:
+                return answer.result
+            raise self._command_error(type_, ErrorMessage.read(frame.raw).error)
 
     def run(self, name: str, params: dict | None = None) -> Any:
         """Send a command declared in :data:`REGISTRY` by its friendly name."""
@@ -541,7 +544,7 @@ class WsClient:
             )
         return self.send_command(command.type, params)
 
-    def _command_error(self, type_: str, error: dict):
+    def _command_error(self, type_: str, error: ErrorDetail | None):
         """Classify one refused command, for every WebSocket command there is.
 
         The classification is by Home Assistant's published error code, mapped
@@ -552,8 +555,9 @@ class WsClient:
         whole of the difference from what stood here before, and it is the
         difference between a closed vocabulary and an open one.
         """
-        reported = str(error.get("code") or "unknown_error")
-        message = str(error.get("message") or "the WebSocket API refused the command")
+        error = error or ErrorDetail()
+        reported = str(error.code or "unknown_error")
+        message = str(error.message or "the WebSocket API refused the command")
         code = WS_ERROR_CODES.get(reported)
 
         if code == "FORBIDDEN":
