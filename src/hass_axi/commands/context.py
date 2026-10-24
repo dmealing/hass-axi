@@ -47,10 +47,10 @@ COMMAND = Command(
     name="context",
     summary="Print the ambient context a session hook puts in front of an agent",
     usage="usage: hass-axi context [end]",
-    default_sub="context",
+    default_sub="show",
     subs=(
         Sub(
-            name="context",
+            name="show",
             access=READ,
             summary="Describe this installation without connecting to it",
         ),

@@ -1,8 +1,8 @@
 usage: hass-axi context [end]
 description: Print the ambient context a session hook puts in front of an agent
 subcommands[2]:
-  context, end
-flags{context}:
+  show, end
+flags{show}:
   (none)
 flags{end}:
   (none)

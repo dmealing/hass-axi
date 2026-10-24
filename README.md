@@ -1,11 +1,56 @@
 # hass-axi
 
-An Agent eXperience Interface (AXI) CLI for Home Assistant.
+An Agent eXperience Interface (AXI) CLI for Home Assistant: rename and move entities, areas and devices through the registries only the WebSocket API exposes, and call services with a check before sending and an explanation when Home Assistant refuses.
 
-> **Renamed from `ha-axi`.** Up to 0.7.1 this tool was published as `ha-axi`. An unrelated Home
-> Assistant CLI is also published under that name, and the two install the same binary, so this one
-> is now `hass-axi`. See [Moving from `ha-axi`](#moving-from-ha-axi) — the old variables keep
-> working, and `hass-axi setup hooks` repairs the hooks the old name installed.
+[![PyPI](https://img.shields.io/pypi/v/hass-axi)](https://pypi.org/project/hass-axi/)
+[![Python versions](https://img.shields.io/pypi/pyversions/hass-axi)](https://pypi.org/project/hass-axi/)
+[![License: MIT](https://img.shields.io/pypi/l/hass-axi)](LICENSE)
+
+> Formerly published as `ha-axi`, which is now an unrelated project's name: see [Moving from `ha-axi`](#moving-from-ha-axi).
+
+```sh
+pipx install hass-axi
+# or run it without installing
+uvx hass-axi entity list --area 'Example Room'
+```
+
+Set `HA_URL` and `HA_TOKEN` first ([Configure](#configure)). One command renames an entity and
+moves it to a room. Without `--write` it only shows what it would change; with it:
+
+```
+$ hass-axi entity update light.example_lamp --name 'Reading Lamp' --area 'Example Room' --write
+entity: light.example_lamp
+updated[2]: area_id,name
+name: Reading Lamp
+area: Example Room
+area_id: example_room
+area_source: entity
+```
+
+**Contents:**
+[The registries REST does not expose](#the-registries-rest-does-not-expose) ·
+[Service calls](#service-calls-that-are-checked-not-forwarded) ·
+[Install](#install) ·
+[Configure](#configure) ·
+[Readings and history](#readings-history-and-energy-summarised-with-their-caveats) ·
+[Read-only sessions](#read-only-sessions) ·
+[Everything else it reaches](#everything-else-it-reaches) ·
+[Library](#library-hass_axitoolkit) ·
+[Output format](#output-format) ·
+[Error codes](#error-codes) ·
+[Agent integration](#agent-integration) ·
+[Testing](#testing) ·
+[Releasing](#releasing) ·
+[Moving from `ha-axi`](#moving-from-ha-axi) ·
+[License](#license)
+
+Plex user with Home Assistant? [plex-axi](https://github.com/dmealing/plex-axi) searches a Plex
+library and leaves playback to Home Assistant, which `hass-axi service call` can dispatch.
+
+Not affiliated with or endorsed by Nabu Casa or the Open Home Foundation. Not affiliated with or
+endorsed by Plex Inc. Plex is a trademark of Plex, Inc.
+
+---
 
 Home Assistant's REST API will happily tell you a lamp is off, and even the name it displays. It
 will not tell you where that name came from, which room the lamp is in, or whether that room came

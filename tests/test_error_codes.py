@@ -535,7 +535,7 @@ INVOCATIONS = {
 #: The subcommands that never reach Home Assistant. Named rather than inferred,
 #: and asserted below, so "it does not touch a transport" has to be a claim
 #: somebody made rather than a gap nobody noticed.
-LOCAL_ONLY = {("setup", "hooks"), ("setup", "skill"), ("context", "context"), ("context", "end")}
+LOCAL_ONLY = {("setup", "hooks"), ("setup", "skill"), ("context", "show"), ("context", "end")}
 
 #: The one subcommand that meets a fault and still exits 0. The home view
 #: answers "what is here", and an installation that did not answer is what is
