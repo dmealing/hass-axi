@@ -1,7 +1,7 @@
 """The transitional `ha-axi` package under `legacy/ha-axi/`.
 
-It is published once, by hand, and never again, so the suite is the only thing
-that ever runs it before somebody's upgrade does.
+It is published by hand, and only to refresh its PyPI text, so the suite is the
+only thing that runs it before somebody's upgrade does.
 """
 
 from __future__ import annotations

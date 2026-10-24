@@ -1,8 +1,8 @@
-# The final release of the `ha-axi` distribution: a transitional package with no
-# code of its own. The tool was renamed to `hass-axi`; this exists so that
-# `pip install -U ha-axi` brings the renamed tool in rather than leaving an
-# installation behind on 0.7.1. Built and published by hand, once, after
-# `hass-axi` itself is on PyPI -- see "Moving from ha-axi" in the README.
+# The transitional `ha-axi` distribution: a package with no code of its own.
+# The tool was renamed to `hass-axi`; this exists so that `pip install -U ha-axi`
+# brings the renamed tool in rather than leaving an installation behind on 0.7.1.
+# Built and published by hand, and republished only to refresh its PyPI text;
+# 0.8.1 is the current one. See "Moving from ha-axi" in the README.
 
 [build-system]
 requires = ["hatchling>=1.21"]
@@ -10,7 +10,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ha-axi"
-version = "0.8.0"
+version = "0.8.1"
 description = "Renamed: install hass-axi, the Home Assistant CLI for LLM agents (AXI); this package only forwards to it"
 readme = "README.md"
 license = { text = "MIT" }
