@@ -1,4 +1,10 @@
-# ha-axi has been renamed to hass-axi
+# Renamed: install hass-axi, the Home Assistant CLI for LLM agents (AXI)
+
+```sh
+pip install hass-axi
+```
+
+`ha-axi` has been renamed to `hass-axi`.
 
 This is the last release of `ha-axi`. The Home Assistant AXI CLI it used to install is now published
 as [`hass-axi`](https://pypi.org/project/hass-axi/), because an unrelated Home Assistant CLI is also
