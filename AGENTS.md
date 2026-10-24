@@ -219,9 +219,9 @@ lives in the toolkit so other programs can use it without duplicating the logic 
 `servicemodel.py` was moved to `axi_toolkit.ha.services` — whole, with a single edit: one docstring
 sentence cited this file by name and would have dangled in the other repository. Everything below
 that docstring is byte-for-byte what this repository used to carry. `commands/service.py` imports it
-under the same local alias, `model`, which is why the swap is one line and nothing else in that file
-moved: all nineteen names reached through that alias resolve on the new module, and that was checked
-rather than assumed.
+under the same local alias, `model`, which is why the swap was one line. Since 0.8.0 that module hands
+back generated readers (a domain, a service, a field) instead of dicts, and `commands/service.py` reads
+them by attribute and walks a domain's `.services` once rather than looking a name up per row.
 
 **Why a package rather than two copies.** The two AXI CLIs measured 1,378 identical lines of toolkit
 between them, and the duplication had already cost a TOON specification fix that landed in one copy

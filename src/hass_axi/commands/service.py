@@ -999,10 +999,11 @@ def _model_fault(published, domain: str, service: str, wants_response: bool):
     as after a refused one: the preview and the failure path both come through
     here, which is what makes a preview fail where the call would have.
     """
-    if model.find_domain(published, domain) is None:
+    entry = model.find_domain(published, domain)
+    if entry is None:
         return _no_such_domain(published, domain)
 
-    spec = model.find_service(published, domain, service)
+    spec = (entry.services or {}).get(service)
     if spec is None:
         return _no_such_service(published, domain, service)
 
