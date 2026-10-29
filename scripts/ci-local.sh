@@ -15,7 +15,7 @@
 #   lint       ruff check . && ruff format --check .
 #   test       pytest, once, on the interpreter that built .venv
 #   skill      hass-axi setup skill --check
-#   model      metaobjects verify --codegen, then the capture report
+#   model      metaobjects verify --codegen and --templates, then the capture report
 #
 # Usage:
 #   scripts/ci-local.sh                        # every section
@@ -144,6 +144,7 @@ sec_skill() {
 sec_model() {
   command -v uvx >/dev/null 2>&1 || { echo "ci-local: model needs uv on PATH" >&2; return 1; }
   uvx --quiet --python 3.12 --from "$METAOBJECTS" --with "$AXI_TOOLKIT" metaobjects verify --codegen
+  uvx --quiet --python 3.12 --from "$METAOBJECTS" --with "$AXI_TOOLKIT" metaobjects verify --templates
   # Both directions of the capture check, in words; pytest runs the failing one.
   python3 tests/hamodel/capture_contract.py
 }
