@@ -45,6 +45,11 @@
 # and never touches .venv; like `--matrix`, it fails without `uv` on PATH rather
 # than passing unrun.
 #
+# The checks passed explicitly are --codegen only, because the rest have nothing to
+# check here: no template.* nodes (no `templates` in metaobjects.config.yaml), no
+# requirements ledger, and the Python port does not support --db (it exits 2).
+# Add --templates when a template appears.
+#
 # NOT COVERED. hygiene.yml's pull request title and body leak scan
 # (`leakcheck.py --pull-request N`) has no local home: the text it scans exists
 # only on GitHub, after the pull request is opened.
@@ -61,8 +66,8 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root" || exit 1
 
 SECTIONS=(leakcheck commits lint test skill model)
-METAOBJECTS=${METAOBJECTS:-"metaobjects==1.1.0"}
-AXI_TOOLKIT=${AXI_TOOLKIT:-"axi-toolkit[metagen]==0.8.0"}
+METAOBJECTS=${METAOBJECTS:-"metaobjects==1.1.4"}
+AXI_TOOLKIT=${AXI_TOOLKIT:-"axi-toolkit[metagen]==1.0.1"}
 MATRIX_PYTHONS=${MATRIX_PYTHONS:-"3.9 3.10 3.11 3.12"}
 
 usage() { sed -n '2,/^set -uo/p' "$0" | sed '$d; s/^# \{0,1\}//'; }
