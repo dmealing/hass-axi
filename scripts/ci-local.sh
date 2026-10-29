@@ -45,10 +45,10 @@
 # and never touches .venv; like `--matrix`, it fails without `uv` on PATH rather
 # than passing unrun.
 #
-# The checks passed explicitly are --codegen only, because the rest have nothing to
-# check here: no template.* nodes (no `templates` in metaobjects.config.yaml), no
-# requirements ledger, and the Python port does not support --db (it exits 2).
-# Add --templates when a template appears.
+# The checks passed explicitly are --codegen and --templates. Not passed: --db, because
+# the Python port does not support it (it exits 2), and requirements, because there is
+# no requirements ledger here. Plain `meta verify` is not used until the release that
+# runs every check in every port ships.
 #
 # NOT COVERED. hygiene.yml's pull request title and body leak scan
 # (`leakcheck.py --pull-request N`) has no local home: the text it scans exists
