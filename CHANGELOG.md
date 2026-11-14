@@ -4,6 +4,13 @@ This project was published as `ha-axi` up to and including 0.7.1, and as `hass-a
 release after it. The entries below 0.7.1 describe `ha-axi`; their links point at the repository's
 old name, which GitHub redirects.
 
+## [0.11.1](https://github.com/dmealing/hass-axi/compare/v0.11.0...v0.11.1) (2026-11-14)
+
+
+### Documentation
+
+* add disk I/O guidance for throwaway data to agent instructions ([#58](https://github.com/dmealing/hass-axi/issues/58)) ([e3c1fe5](https://github.com/dmealing/hass-axi/commit/e3c1fe5d2eb7e94fc17b8b4a52370667fd972dff))
+
 ## [0.11.0](https://github.com/dmealing/hass-axi/compare/v0.10.3...v0.11.0) (2026-10-24)
 
 
